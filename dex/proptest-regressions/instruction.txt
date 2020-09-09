@@ -1,0 +1,12 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc dc758f26e9bad880e0b29f8c6b96931a0141fe1bfc9e81abd72e38accdd4dbde # shrinks to inst = NewOrder(NewOrderInstruction { side: Bid, limit_price: 1, max_qty: 1, order_type: Limit })
+cc 3482f4d18fa551459dd078c65e4cc70b0687e2bef80cd11b47ef15b62226d60c # shrinks to inst = NewOrder(NewOrderInstruction { side: Bid, limit_price: 1, max_qty: 1, order_type: ImmediateOrCancel })
+cc a4118a6d7c82c191d95704129985f0761b3c6b82a056485e88ea549e6145608a # shrinks to inst = InitializeMarket(InitializeMarketInstruction { coin_lot_size: 0, pc_lot_size: 0, fee_rate_bps: 0, vault_signer_nonce: 0, pc_dust_threshold: 0 })
+cc f8cb82aea20fce7b1585efea458f5a8d08c967df78da4720197145e6fa587f80 # shrinks to inst = CancelOrder(CancelOrderInstruction { side: Bid, order_id: 0, owner: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], owner_slot: 0 })
+cc 9b33e7cb4c2b4e3a34b7b6fdeb7feb49cee9196047870cff53dac8b9483e9245 # shrinks to inst = NewOrder(NewOrderInstruction { side: Bid, limit_price: 1, max_qty: 1, order_type: Limit, client_id: 0 })
+cc 2a279ee739ee4b89416a838543703ace70b994031ac37da2f863025d828bfca6 # shrinks to inst = NewOrder(NewOrderInstruction { side: Bid, limit_price: 1, max_qty: 1, order_type: Limit, client_id: 0 })

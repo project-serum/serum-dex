@@ -1,0 +1,13 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 0876445e5c3699127c5a7f27d7f1068477f42622cd1e12edca3fc0d955670bfc # shrinks to bps = 625
+cc 3cd122d99d14f559653d04979f162024723e4a74f9aae9163c7dbd713e2844f0 # shrinks to tt = MSRM, mt = MSRM, qty = 6667
+cc 7626d767949c432929fea050694d682148d436c2a84ef8f37cbc2e4e0a27a0ec # shrinks to tt = MSRM, mt = MSRM, qty = 16592196636803650000
+cc b3842b8e54e75a5cb3ea6d88502e5554b85b0692f9052c10d63e9cff22d7f109 # shrinks to r = 162213299712820849
+cc 5cd1755c99d9ae0ebb337bea4e06232b56969eb3de16b6046ab412c917c42110 # shrinks to tier = Base, qty = 8145290727158952980
+cc cb5c7d1e0d218ac8e9d2805ea0dbba23f00b9ca3cd0aa7ef3ab476f23bf99960 # shrinks to tier = Base, qty = 18373251069431824319
+cc 8d3d8a94b4828fa9e1d3af1ad47cf00e348b3fb69dd62092737de4fb58af0237 # shrinks to tier = SRM5, qty = 13208427130465543844
