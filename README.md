@@ -1,8 +1,10 @@
 # serum-dex
 
-Docker Image: https://hub.docker.com/r/michaelhly/serum_dex_localnet
+| Docker           |                                                                             |
+|:----------------:|:---------------------------------------------------------------------------:|
+| Image            |  https://hub.docker.com/r/michaelhly/serum_dex_localnet                     |
+| Dex Program ID   |  `HrH1LR2ba4GrGi6LRRdUUAHThcv9hMh3vsYfMSrvQGfA`                             |
 
-ProgramId: `35xWbYPmt7hzyjsmJ9m3hZekN63mmeQDTygd7i8zudiy`
 
 ## Run unit tests
 ```
@@ -21,11 +23,11 @@ Install the Solana Tool Suite:
 curl -sSf https://raw.githubusercontent.com/solana-labs/solana/v1.3.9/install/solana-install-init.sh | sh -s - v1.3.9
 ```
 
-## To pre-configured solana cluster
+### To pre-configured solana cluster
 ```
 DEX_PROGRAM_ID="$(solana deploy dex/target/bpfel-unknown-unknown/release/serum_dex.so | jq .programId -r)"
 ```
-## To local network
+### To local network
 1. Install [docker](https://www.docker.com/)
 2. Generate Keypair
 ```
@@ -41,7 +43,7 @@ solana airdrop -u http://localhost:8899 10000
 ```
 5. Deploy the dex to your localnet instance
 ```
-solana deploy -u http://localhost:8899 dex/target/bpfel-unknown-unknown/release/serum_dex.so
+solana deploy --use-deprecated-loader -u http://localhost:8899 dex/target/bpfel-unknown-unknown/release/serum_dex.so
 ```
 
 ## Using the client utility
