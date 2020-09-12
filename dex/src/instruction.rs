@@ -137,6 +137,7 @@ pub enum MarketInstruction {
     /// 6. `[writable]` pc wallet
     /// 7. `[]` vault signer
     /// 8. `[]` spl token program
+    /// 9. `[writable]` (optional) referrer pc wallet
     SettleFunds,
     /// 0. `[]` market
     /// 1. `[writable]` OpenOrders

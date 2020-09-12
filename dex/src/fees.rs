@@ -117,6 +117,11 @@ impl FeeTier {
     }
 }
 
+#[inline]
+pub fn referrer_rebate(amount: u64) -> u64 {
+    amount / 5
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -126,12 +131,12 @@ mod tests {
         #[test]
         fn positive_net_fees(tt: FeeTier, mt: FeeTier, qty in 1..=std::u64::MAX) {
             let fee = tt.taker_fee(qty);
-            let rebate = mt.maker_rebate(qty);
+            let rebate = mt.maker_rebate(qty) + referrer_rebate(fee);
             assert!(fee > rebate);
             let net_bps_u64f64 = (fee - rebate) as u128 * 10_000;
-            let four_bps = (qty as u128) * 4;
+            let three_bps = (qty as u128) * 3;
             let dust_qty_u64f64 = 1 << 32;
-            assert!(net_bps_u64f64 + dust_qty_u64f64 > four_bps, "{:x}, {:x}, {:x}", qty, net_bps_u64f64, four_bps);
+            assert!(net_bps_u64f64 + dust_qty_u64f64 > three_bps, "{:x}, {:x}, {:x}", qty, net_bps_u64f64, three_bps);
         }
 
         #[test]

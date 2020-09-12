@@ -348,7 +348,8 @@ fn test_new_order() {
     .unwrap();
     {
         let market = MarketState::load(&accounts.market, &dex_program_id).unwrap();
-        assert_eq!(market.pc_fees_accrued, 760);
+        assert_eq!(market.referrer_rebates_accrued, 176);
+        assert_eq!(market.pc_fees_accrued, 584);
         assert_eq!(market.pc_deposits_total, 500_340);
     }
     {
@@ -387,7 +388,8 @@ fn test_new_order() {
 
     {
         let market = MarketState::load(&accounts.market, &dex_program_id).unwrap();
-        assert_eq!(market.pc_fees_accrued, 760);
+        assert_eq!(market.referrer_rebates_accrued, 176);
+        assert_eq!(market.pc_fees_accrued, 584);
         assert_eq!(market.pc_deposits_total, 500_340);
     }
     {

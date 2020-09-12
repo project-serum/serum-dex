@@ -34,6 +34,7 @@ use crate::{
     critbit::Slab,
     error::{DexErrorCode, DexResult, SourceFileId},
     fees::FeeTier,
+    fees,
     instruction::{
         disable_authority, fee_sweeper, msrm_token, srm_token, CancelOrderInstruction,
         InitializeMarketInstruction, MarketInstruction, NewOrderInstruction,
@@ -117,6 +118,8 @@ pub struct MarketState {
 
     // 45
     pub fee_rate_bps: u64,
+    // 46
+    pub referrer_rebates_accrued: u64,
 }
 #[cfg(target_endian = "little")]
 unsafe impl Zeroable for MarketState {}
@@ -386,6 +389,7 @@ pub struct OpenOrders {
     pub orders: [u128; 128],
     // Using Option<NonZeroU64> in a pod type requires nightly
     pub client_order_ids: [u64; 128],
+    pub referrer_rebates_accrued: u64,
 }
 unsafe impl Pod for OpenOrders {}
 unsafe impl Zeroable for OpenOrders {}
@@ -907,6 +911,7 @@ pub struct Event {
     order_id: u128,
     pub owner: [u64; 4],
     client_order_id: u64,
+
 }
 unsafe impl Zeroable for Event {}
 unsafe impl Pod for Event {}
@@ -1130,6 +1135,39 @@ fn invoke_spl_token(
         &account_infos,
         &instruction.data,
     )
+}
+
+fn send_from_vault<'a, 'b: 'a>(
+    native_amount: u64,
+    recipient: account_parser::TokenAccount<'a, 'b>,
+    vault: account_parser::TokenAccount<'a, 'b>,
+    spl_token_program: account_parser::SplTokenProgram<'a, 'b>,
+    vault_signer: account_parser::VaultSigner<'a, 'b>,
+    vault_signer_seeds: &[&[u8]],
+) -> DexResult {
+    let deposit_instruction = spl_token::instruction::transfer(
+        &spl_token::ID,
+        vault.inner().key,
+        recipient.inner().key,
+        &vault_signer.inner().key,
+        &[],
+        native_amount,
+    )?;
+    let accounts: &[AccountInfo] = &[
+        vault.inner().clone(),
+        recipient.inner().clone(),
+        vault_signer.inner().clone(),
+        spl_token_program.inner().clone(),
+    ];
+    info!("invoking...");
+    invoke_spl_token(
+        &deposit_instruction,
+        &accounts[..],
+        &[vault_signer_seeds],
+    )
+    .map_err(|_| DexErrorCode::TransferFailed)?;
+    info!("invoked");
+    Ok(())
 }
 
 pub mod account_parser {
@@ -1649,6 +1687,7 @@ pub mod account_parser {
         pub pc_wallet: PcWallet<'a, 'b>,
         pub vault_signer: VaultSigner<'a, 'b>,
         pub spl_token_program: SplTokenProgram<'a, 'b>,
+        pub referrer: Option<PcWallet<'a, 'b>>,
     }
     impl<'a, 'b: 'a> SettleFundsArgs<'a, 'b> {
         pub fn with_parsed_args<T>(
@@ -1656,8 +1695,8 @@ pub mod account_parser {
             accounts: &'a [AccountInfo<'b>],
             f: impl FnOnce(SettleFundsArgs) -> DexResult<T>,
         ) -> DexResult<T> {
-            check_assert_eq!(accounts.len(), 9)?;
-            let &[
+            check_assert!(accounts.len() == 9 || accounts.len() == 10)?;
+            let (&[
                 ref market_acc,
                 ref open_orders_acc,
                 ref owner_acc,
@@ -1667,7 +1706,7 @@ pub mod account_parser {
                 ref pc_wallet_acc,
                 ref vault_signer_acc,
                 ref spl_token_program_acc,
-            ]: &'a [AccountInfo<'b>; 9] = array_ref![accounts, 0, 9];
+            ], remaining_accounts) = array_refs![accounts, 9; ..;];
             let spl_token_program = SplTokenProgram::new(spl_token_program_acc)?;
             let mut market = MarketState::load(market_acc, program_id)?;
             let owner = SignerAccount::new(owner_acc).or(check_unreachable!())?;
@@ -1679,6 +1718,12 @@ pub mod account_parser {
                 CoinWallet::from_account(coin_wallet_acc, &market).or(check_unreachable!())?;
             let pc_wallet =
                 PcWallet::from_account(pc_wallet_acc, &market).or(check_unreachable!())?;
+
+            let referrer = match remaining_accounts {
+                &[] => None,
+                &[ref referrer_acc] => Some(PcWallet::from_account(referrer_acc, &market).or(check_unreachable!())?),
+                _ => check_unreachable!()?,
+            };
 
             let vault_signer = VaultSigner::new(vault_signer_acc, &market, program_id)?;
 
@@ -1694,6 +1739,7 @@ pub mod account_parser {
                 pc_wallet,
                 vault_signer,
                 spl_token_program,
+                referrer,
             };
             f(args)
         }
@@ -1862,6 +1908,7 @@ impl State {
             pc_wallet,
             vault_signer,
             spl_token_program,
+            referrer,
         } = args;
 
         let native_coin_amount = open_orders.native_coin_free;
@@ -1899,30 +1946,35 @@ impl State {
         let market_pubkey = market.pubkey();
         let vault_signer_seeds = gen_vault_signer_seeds(&market.vault_signer_nonce, &market_pubkey);
 
-        for (token_amount, wallet_account, vault) in token_infos.iter() {
-            let deposit_instruction = spl_token::instruction::transfer(
-                &spl_token::ID,
-                vault.inner().key,
-                wallet_account.inner().key,
-                &vault_signer.inner().key,
-                &[],
-                *token_amount,
+        for &(token_amount, wallet_account, vault) in token_infos.iter() {
+            send_from_vault(
+                token_amount,
+                wallet_account,
+                vault,
+                spl_token_program,
+                vault_signer,
+                &vault_signer_seeds,
             )?;
-            let accounts: &[AccountInfo] = &[
-                vault.inner().clone(),
-                wallet_account.inner().clone(),
-                vault_signer.inner().clone(),
-                spl_token_program.inner().clone(),
-            ];
-            info!("invoking...");
-            invoke_spl_token(
-                &deposit_instruction,
-                &accounts[..],
-                &[&vault_signer_seeds[..]],
-            )
-            .map_err(|_| DexErrorCode::TransferFailed)?;
-            info!("invoked");
         }
+
+        match referrer {
+            Some(referrer_pc_wallet) if open_orders.referrer_rebates_accrued > 0 => {
+                send_from_vault(
+                    open_orders.referrer_rebates_accrued,
+                    referrer_pc_wallet.token_account(),
+                    pc_vault.token_account(),
+                    spl_token_program,
+                    vault_signer,
+                    &vault_signer_seeds,
+                )?;
+            }
+            _ => {
+                market.pc_fees_accrued += open_orders.referrer_rebates_accrued;
+            }
+        };
+        market.referrer_rebates_accrued -= open_orders.referrer_rebates_accrued;
+        open_orders.referrer_rebates_accrued = 0;
+
         info!("finished transfers");
         Ok(())
     }
@@ -2038,6 +2090,7 @@ impl State {
                             open_orders.native_pc_total -= native_qty_paid;
                             open_orders.native_coin_total += native_qty_received;
                             open_orders.native_coin_free += native_qty_received;
+
                             if maker {
                                 open_orders.native_pc_free += native_fee_or_rebate;
                             }
@@ -2048,6 +2101,9 @@ impl State {
                             open_orders.native_pc_free += native_qty_received;
                         }
                     };
+                    if !maker {
+                        open_orders.referrer_rebates_accrued += fees::referrer_rebate(native_fee_or_rebate);
+                    }
                     if let Some(client_id) = client_order_id {
                         debug_assert_eq!(
                             client_id.get(),
@@ -2248,32 +2304,17 @@ impl State {
         } = args;
         let token_amount = market.pc_fees_accrued;
         market.pc_fees_accrued = 0;
-        let deposit_instruction = spl_token::instruction::transfer(
-            &spl_token::ID,
-            pc_vault.account().key,
-            fee_receiver.account().key,
-            &vault_signer.inner().key,
-            &[],
-            token_amount,
-        )?;
 
         let market_pubkey = market.pubkey();
         let vault_signer_seeds = gen_vault_signer_seeds(&market.vault_signer_nonce, &market_pubkey);
-        let accounts: &[AccountInfo] = &[
-            pc_vault.account().clone(),
-            fee_receiver.account().clone(),
-            vault_signer.inner().clone(),
-            spl_token_program.inner().clone(),
-        ];
-        info!("invoking...");
-        invoke_spl_token(
-            &deposit_instruction,
-            &accounts[..],
-            &[&vault_signer_seeds[..]],
+        send_from_vault(
+            token_amount,
+            fee_receiver.token_account(),
+            pc_vault.token_account(),
+            spl_token_program,
+            vault_signer,
+            &vault_signer_seeds,
         )
-        .map_err(|_| DexErrorCode::TransferFailed)?;
-        info!("invoked");
-        Ok(())
     }
 
     #[inline(never)]
@@ -2377,6 +2418,7 @@ impl State {
 
             pc_dust_threshold,
             fee_rate_bps: fee_rate_bps as u64,
+            referrer_rebates_accrued: 0,
         };
         Ok(())
     }
