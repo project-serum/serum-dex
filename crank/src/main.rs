@@ -1,8 +1,8 @@
 #![allow(unused)]
 use anyhow::{format_err, Result};
 use clap::Clap;
-use rand::prelude::*;
 use log::{error, info, warn};
+use rand::prelude::*;
 use rand::rngs::OsRng;
 use safe_transmute::{
     guard::{PermissiveGuard, SingleManyGuard, SingleValueGuard},
@@ -32,15 +32,18 @@ use spl_token::instruction as token_instruction;
 use spl_token::pack::Pack;
 use std::borrow::Cow;
 use std::collections::BTreeSet;
+use std::fmt::format;
+use std::fs::File;
+use std::io::prelude::*;
 use std::mem::size_of;
 use std::num::NonZeroU64;
 use std::str::FromStr;
 use std::{thread, time};
 
-use std::sync::mpsc::{Sender, Receiver};
 use sloggers::file::FileLoggerBuilder;
 use sloggers::types::Severity;
 use sloggers::Build;
+use std::sync::mpsc::{Receiver, Sender};
 
 pub fn with_logging<F: FnOnce()>(to: &str, fnc: F) {
     fnc();
@@ -223,6 +226,10 @@ enum Command {
         mint: Pubkey,
         owner_account: String,
     },
+    PyserumSetup {
+        payer_path: String,
+        dex_program_id: Pubkey,
+    },
 }
 
 impl Opts {
@@ -328,10 +335,9 @@ fn main() -> Result<()> {
             let client = opts.client();
             let _ = std::thread::spawn(move || accept_loop(port, send));
             let websockets = std::thread::spawn(move || websockets_loop(recv));
-            let _ = std::thread::spawn(move || read_queue_length_loop(client,
-            dex_program_id,
-            market,
-            queue_send));
+            let _ = std::thread::spawn(move || {
+                read_queue_length_loop(client, dex_program_id, market, queue_send)
+            });
             // Failures in the others will propagate to this loop via timeout
             websockets.join();
         }
@@ -404,6 +410,13 @@ fn main() -> Result<()> {
             let owner = read_keypair_file(owner_account)?;
             let initialized_account = initialize_token_account(&client, mint, &owner)?;
             println!("Initialized account: {}", initialized_account.pubkey());
+        }
+        Command::PyserumSetup {
+            ref dex_program_id,
+            ref payer_path,
+        } => {
+            let payer = read_keypair_file(&payer_path)?;
+            pyserum_setup(&client, dex_program_id, &payer)?;
         }
     }
     Ok(())
@@ -772,6 +785,87 @@ fn consume_events(
     );
     info!("Consuming events ...");
     send_txn(client, &txn, false)?;
+    Ok(())
+}
+
+fn pyserum_setup(client: &RpcClient, program_id: &Pubkey, payer: &Keypair) -> Result<()> {
+    let mut f = File::create("crank.log")?;
+    // Initialize mints
+    let coin_mint = Keypair::generate(&mut OsRng);
+    genesis(client, payer, &coin_mint, &payer.pubkey(), 3)?;
+    let mut log_string = String::from(format!("coin_mint: {}\n", coin_mint.pubkey()));
+    f.write_all(log_string.as_bytes())?;
+    let pc_mint = Keypair::generate(&mut OsRng);
+    genesis(client, payer, &pc_mint, &payer.pubkey(), 3)?;
+    log_string = String::from(format!("pc_mint: {}\n", coin_mint.pubkey()));
+    f.write_all(log_string.as_bytes())?;
+    // Initialize market
+    let market_keys = list_market(
+        client,
+        program_id,
+        payer,
+        &coin_mint.pubkey(),
+        &pc_mint.pubkey(),
+        1_000_000,
+        10_000,
+    )?;
+    log_string = String::from(format!("{:#?}\n", market_keys));
+    f.write_all(log_string.as_bytes())?;
+    // Mint coins to wallet
+    let coin_wallet = mint_to_new_account(
+        client,
+        payer,
+        payer,
+        &coin_mint.pubkey(),
+        1_000_000_000_000_000,
+    )?;
+    let pc_wallet = mint_to_new_account(
+        client,
+        payer,
+        payer,
+        &pc_mint.pubkey(),
+        1_000_000_000_000_000,
+    )?;
+    log_string = String::from(format!("wallet: {}\n", payer.pubkey()));
+    f.write_all(log_string.as_bytes())?;
+    // Placing orders
+    let mut orders = None;
+    place_order(
+        client,
+        program_id,
+        payer,
+        &pc_wallet.pubkey(),
+        &market_keys,
+        &mut orders,
+        NewOrderInstruction {
+            side: Side::Bid,
+            limit_price: NonZeroU64::new(500).unwrap(),
+            max_qty: NonZeroU64::new(1_000).unwrap(),
+            order_type: OrderType::Limit,
+            client_id: 019269,
+        },
+    )?;
+    log_string = String::from(format!("bid_account: {}\n", orders.unwrap()));
+    f.write_all(log_string.as_bytes())?;
+    let mut orders = None;
+    place_order(
+        client,
+        program_id,
+        payer,
+        &coin_wallet.pubkey(),
+        &market_keys,
+        &mut orders,
+        NewOrderInstruction {
+            side: Side::Ask,
+            limit_price: NonZeroU64::new(499).unwrap(),
+            max_qty: NonZeroU64::new(1_000).unwrap(),
+            order_type: OrderType::Limit,
+            client_id: 985982,
+        },
+    )?;
+    log_string = String::from(format!("ask_account: {}\n", orders.unwrap()));
+    f.write_all(log_string.as_bytes())?;
+    println!("Done!");
     Ok(())
 }
 
@@ -1414,7 +1508,7 @@ fn websockets_loop(mut recv: Receiver<MonitorEvent>) {
                 for socket in &mut websockets {
                     socket.write_message(message.clone()).unwrap();
                 }
-            },
+            }
             MonitorEvent::NewConn(conn) => {
                 // Tungstenite errors don't implement debug so we can't unwrap?
                 // Generally we just die here anyways
@@ -1432,7 +1526,7 @@ fn read_queue_length_loop(
     client: RpcClient,
     program_id: Pubkey,
     market: Pubkey,
-    sender: std::sync::mpsc::Sender<MonitorEvent>
+    sender: std::sync::mpsc::Sender<MonitorEvent>,
 ) -> Result<()> {
     let market_keys = get_keys_for_market(&client, &program_id, &market)?;
     loop {
