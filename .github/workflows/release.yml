@@ -22,10 +22,14 @@ jobs:
     - uses: actions/checkout@v2
 
     - name: Install deps
-    run: |
-      if [ "$RUNNER_OS" == "Linux" ]; then
-        sudo apt-get install libudev-dev
-      fi
+      run: |
+        if [ "$RUNNER_OS" == "Linux" ]; then
+          sudo apt-get install libudev-dev
+        fi
 
     - name: Build
-      run: ./do.sh build dex
+      run: |
+        cd crank
+        cargo build --release --locked
+        
+      
