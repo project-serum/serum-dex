@@ -1,0 +1,14 @@
+language: minimal
+
+sudo: required
+
+services:
+  - docker
+
+before_install:
+- docker pull projectserum/development:latest
+- docker run -it -d --name dev projectserum/development:latest bash
+- docker exec dev git clone https://github.com/project-serum/serum-dex.git
+
+script:
+  - docker exec dev serum-dex/do.sh test dex
