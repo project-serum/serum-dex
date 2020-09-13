@@ -1,0 +1,31 @@
+name: Release
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  crank:
+      runs-on: ${{ matrix.os }}
+      strategy:
+        matrix:
+          os: [ubuntu-latest, macos-latest]
+      env:
+        OS: ${{ matrix.os }}
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Install deps
+    run: |
+      if [ "$RUNNER_OS" == "Linux" ]; then
+        sudo apt-get install libudev-dev
+      fi
+
+    - name: Build
+      run: ./do.sh build dex
