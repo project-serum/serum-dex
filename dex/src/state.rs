@@ -33,8 +33,7 @@ use spl_token::pack::Pack;
 use crate::{
     critbit::Slab,
     error::{DexErrorCode, DexResult, SourceFileId},
-    fees::FeeTier,
-    fees,
+    fees::{self, FeeTier},
     instruction::{
         disable_authority, fee_sweeper, msrm_token, srm_token, CancelOrderInstruction,
         InitializeMarketInstruction, MarketInstruction, NewOrderInstruction,
@@ -911,7 +910,6 @@ pub struct Event {
     order_id: u128,
     pub owner: [u64; 4],
     client_order_id: u64,
-
 }
 unsafe impl Zeroable for Event {}
 unsafe impl Pod for Event {}
@@ -1160,12 +1158,8 @@ fn send_from_vault<'a, 'b: 'a>(
         spl_token_program.inner().clone(),
     ];
     info!("invoking...");
-    invoke_spl_token(
-        &deposit_instruction,
-        &accounts[..],
-        &[vault_signer_seeds],
-    )
-    .map_err(|_| DexErrorCode::TransferFailed)?;
+    invoke_spl_token(&deposit_instruction, &accounts[..], &[vault_signer_seeds])
+        .map_err(|_| DexErrorCode::TransferFailed)?;
     info!("invoked");
     Ok(())
 }
@@ -1696,6 +1690,7 @@ pub mod account_parser {
             f: impl FnOnce(SettleFundsArgs) -> DexResult<T>,
         ) -> DexResult<T> {
             check_assert!(accounts.len() == 9 || accounts.len() == 10)?;
+            #[rustfmt::skip]
             let (&[
                 ref market_acc,
                 ref open_orders_acc,
@@ -1721,7 +1716,9 @@ pub mod account_parser {
 
             let referrer = match remaining_accounts {
                 &[] => None,
-                &[ref referrer_acc] => Some(PcWallet::from_account(referrer_acc, &market).or(check_unreachable!())?),
+                &[ref referrer_acc] => {
+                    Some(PcWallet::from_account(referrer_acc, &market).or(check_unreachable!())?)
+                }
                 _ => check_unreachable!()?,
             };
 
@@ -2102,7 +2099,8 @@ impl State {
                         }
                     };
                     if !maker {
-                        open_orders.referrer_rebates_accrued += fees::referrer_rebate(native_fee_or_rebate);
+                        let referrer_rebate = fees::referrer_rebate(native_fee_or_rebate);
+                        open_orders.referrer_rebates_accrued += referrer_rebate;
                     }
                     if let Some(client_id) = client_order_id {
                         debug_assert_eq!(

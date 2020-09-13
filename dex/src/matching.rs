@@ -13,8 +13,7 @@ use crate::error::{DexErrorCode, DexResult, SourceFileId};
 use crate::{
     critbit::{LeafNode, NodeHandle, Slab, SlabView},
     error::DexError,
-    fees::FeeTier,
-    fees,
+    fees::{self, FeeTier},
     state::{Event, EventQueue, EventView, MarketState, Request, RequestQueue, RequestView},
 };
 
