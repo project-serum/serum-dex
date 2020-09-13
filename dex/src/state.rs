@@ -1911,6 +1911,9 @@ impl State {
         let native_coin_amount = open_orders.native_coin_free;
         let native_pc_amount = open_orders.native_pc_free;
 
+        market.coin_deposits_total -= native_coin_amount;
+        market.pc_deposits_total -= native_pc_amount;
+
         open_orders.native_coin_free = 0;
         open_orders.native_pc_free = 0;
 

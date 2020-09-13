@@ -15,7 +15,7 @@ use spl_token::state::Account as SplAccount;
 use spl_token::state::Mint;
 
 use serum_dex::error::DexResult;
-use serum_dex::instruction::initialize_market;
+use serum_dex::instruction::{fee_sweeper, initialize_market};
 use serum_dex::state::{
     gen_vault_signer_key, strip_header, EventQueue, MarketState, Queue, RequestQueue, State,
 };
@@ -32,8 +32,16 @@ fn allocate_dex_owned_account(unpadded_size: usize, bump: &Bump) -> &mut [u8] {
 }
 
 pub fn new_sol_account(lamports: u64, bump: &Bump) -> AccountInfo {
+    new_sol_account_with_pubkey(random_pubkey(bump), lamports, bump)
+}
+
+pub fn new_sol_account_with_pubkey<'bump>(
+    pubkey: &'bump Pubkey,
+    lamports: u64,
+    bump: &'bump Bump,
+) -> AccountInfo<'bump> {
     AccountInfo::new(
-        random_pubkey(bump),
+        pubkey,
         true,
         false,
         bump.alloc(lamports),
@@ -179,6 +187,8 @@ pub struct MarketAccounts<'bump> {
     pub vault_signer: AccountInfo<'bump>,
     pub spl_token_program: AccountInfo<'bump>,
     pub rent_sysvar: AccountInfo<'bump>,
+    pub sweep_authority: AccountInfo<'bump>,
+    pub fee_receiver: AccountInfo<'bump>,
 }
 
 pub const COIN_LOT_SIZE: u64 = 100_000;
@@ -202,6 +212,8 @@ pub fn setup_market(bump: &Bump) -> MarketAccounts {
 
     let coin_vault = new_token_account(coin_mint.key, vault_signer.key, 0, bump);
     let pc_vault = new_token_account(pc_mint.key, vault_signer.key, 0, bump);
+    let fee_receiver = new_token_account(pc_mint.key, random_pubkey(bump), 0, bump);
+    let sweep_authority = new_sol_account_with_pubkey(bump.alloc(fee_sweeper::ID), 0, bump);
 
     let spl_token_program = new_spl_token_program(bump);
 
@@ -258,6 +270,8 @@ pub fn setup_market(bump: &Bump) -> MarketAccounts {
         vault_signer,
         spl_token_program,
         rent_sysvar,
+        fee_receiver,
+        sweep_authority,
     }
 }
 

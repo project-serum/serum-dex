@@ -26,12 +26,12 @@ pub mod msrm_token {
     declare_id!("MSRMcoVyrFxnSgo5uXwone5SKcGhT1KEJMFEkMEWf9L");
 }
 
-pub(crate) mod disable_authority {
+pub mod disable_authority {
     use solana_sdk::declare_id;
     declare_id!("5ZVJgwWxMsqXxRMYHXqMwH2hd4myX5Ef4Au2iUsuNQ7V");
 }
 
-pub(crate) mod fee_sweeper {
+pub mod fee_sweeper {
     use solana_sdk::declare_id;
     declare_id!("DeqYsmBd9BnrbgUwQjVH4sQWK71dEgE6eoZFw3Rp4ftE");
 }
