@@ -790,14 +790,33 @@ fn consume_events(
 
 fn pyserum_setup(client: &RpcClient, program_id: &Pubkey, payer: &Keypair) -> Result<()> {
     let mut f = File::create("crank.log")?;
-    // Initialize mints
+    // Log payer
+    let mut log_string = String::from(format!("payer: {}\n", payer.pubkey()));
+    f.write_all(log_string.as_bytes())?;
+    log_string = String::from(format!(
+        "payer_secret: {:?}\n",
+        &payer.secret().to_bytes()[..]
+    ));
+    f.write_all(log_string.as_bytes())?;
+    // Initialize coin mint
     let coin_mint = Keypair::generate(&mut OsRng);
     genesis(client, payer, &coin_mint, &payer.pubkey(), 3)?;
-    let mut log_string = String::from(format!("coin_mint: {}\n", coin_mint.pubkey()));
+    log_string = String::from(format!("coin_mint: {}\n", coin_mint.pubkey()));
     f.write_all(log_string.as_bytes())?;
+    log_string = String::from(format!(
+        "coin_mint_secret: {:?}\n",
+        &coin_mint.secret().to_bytes()[..]
+    ));
+    f.write_all(log_string.as_bytes())?;
+    // Initialize pc mint
     let pc_mint = Keypair::generate(&mut OsRng);
     genesis(client, payer, &pc_mint, &payer.pubkey(), 3)?;
-    log_string = String::from(format!("pc_mint: {}\n", coin_mint.pubkey()));
+    log_string = String::from(format!("pc_mint: {}\n", pc_mint.pubkey()));
+    f.write_all(log_string.as_bytes())?;
+    log_string = String::from(format!(
+        "pc_mint_secret: {:?}\n",
+        &pc_mint.secret().to_bytes()[..]
+    ));
     f.write_all(log_string.as_bytes())?;
     // Initialize market
     let market_keys = list_market(
@@ -811,7 +830,7 @@ fn pyserum_setup(client: &RpcClient, program_id: &Pubkey, payer: &Keypair) -> Re
     )?;
     log_string = String::from(format!("{:#?}\n", market_keys));
     f.write_all(log_string.as_bytes())?;
-    // Mint coins to wallet
+    // Create coin wallet
     let coin_wallet = mint_to_new_account(
         client,
         payer,
@@ -819,6 +838,14 @@ fn pyserum_setup(client: &RpcClient, program_id: &Pubkey, payer: &Keypair) -> Re
         &coin_mint.pubkey(),
         1_000_000_000_000_000,
     )?;
+    log_string = String::from(format!("coin_wallet: {}\n", coin_wallet.pubkey()));
+    f.write_all(log_string.as_bytes())?;
+    log_string = String::from(format!(
+        "coin_wallet_secret: {:?}\n",
+        &coin_wallet.secret().to_bytes()[..]
+    ));
+    f.write_all(log_string.as_bytes())?;
+    // Create pc wallet
     let pc_wallet = mint_to_new_account(
         client,
         payer,
@@ -826,7 +853,12 @@ fn pyserum_setup(client: &RpcClient, program_id: &Pubkey, payer: &Keypair) -> Re
         &pc_mint.pubkey(),
         1_000_000_000_000_000,
     )?;
-    log_string = String::from(format!("wallet: {}\n", payer.pubkey()));
+    log_string = String::from(format!("pc_wallet: {}\n", pc_wallet.pubkey()));
+    f.write_all(log_string.as_bytes())?;
+    log_string = String::from(format!(
+        "pc_wallet_secret: {:?}\n",
+        &pc_wallet.secret().to_bytes()[..]
+    ));
     f.write_all(log_string.as_bytes())?;
     // Placing orders
     let mut orders = None;
