@@ -1,0 +1,2100 @@
+#![feature(prelude_import)]
+#[prelude_import]
+use std::prelude::v1::*;
+#[macro_use]
+extern crate std;
+use serde::{Deserialize, Serialize};
+use solana_client_gen::prelude::*;
+use solana_sdk::pubkey::Pubkey;
+#[cfg(feature = "client")]
+pub mod client {
+    use super::*;
+    pub enum ClientError {
+        #[error("Invalid keypair filename")]
+        InvalidKeyPairFile(String),
+        #[error("Error invoking rpc")]
+        RpcError(solana_client::client_error::ClientError),
+    }
+    #[automatically_derived]
+    #[allow(unused_qualifications)]
+    impl ::core::fmt::Debug for ClientError {
+        fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+            match (&*self,) {
+                (&ClientError::InvalidKeyPairFile(ref __self_0),) => {
+                    let mut debug_trait_builder = f.debug_tuple("InvalidKeyPairFile");
+                    let _ = debug_trait_builder.field(&&(*__self_0));
+                    debug_trait_builder.finish()
+                }
+                (&ClientError::RpcError(ref __self_0),) => {
+                    let mut debug_trait_builder = f.debug_tuple("RpcError");
+                    let _ = debug_trait_builder.field(&&(*__self_0));
+                    debug_trait_builder.finish()
+                }
+            }
+        }
+    }
+    #[allow(unused_qualifications)]
+    impl std::error::Error for ClientError {}
+    #[allow(unused_qualifications)]
+    impl std::fmt::Display for ClientError {
+        fn fmt(&self, __formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            #[allow(unused_variables, deprecated, clippy::used_underscore_binding)]
+            match self {
+                ClientError::InvalidKeyPairFile(_0) => {
+                    __formatter.write_fmt(::core::fmt::Arguments::new_v1(
+                        &["Invalid keypair filename"],
+                        &match () {
+                            () => [],
+                        },
+                    ))
+                }
+                ClientError::RpcError(_0) => __formatter.write_fmt(::core::fmt::Arguments::new_v1(
+                    &["Error invoking rpc"],
+                    &match () {
+                        () => [],
+                    },
+                )),
+            }
+        }
+    }
+    pub struct RequestOptions {
+        pub commitment: CommitmentConfig,
+        pub tx: RpcSendTransactionConfig,
+    }
+    #[automatically_derived]
+    #[allow(unused_qualifications)]
+    impl ::core::fmt::Debug for RequestOptions {
+        fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+            match *self {
+                RequestOptions {
+                    commitment: ref __self_0_0,
+                    tx: ref __self_0_1,
+                } => {
+                    let mut debug_trait_builder = f.debug_struct("RequestOptions");
+                    let _ = debug_trait_builder.field("commitment", &&(*__self_0_0));
+                    let _ = debug_trait_builder.field("tx", &&(*__self_0_1));
+                    debug_trait_builder.finish()
+                }
+            }
+        }
+    }
+    pub struct Client {
+        program_id: Pubkey,
+        payer: Keypair,
+        rpc: RpcClient,
+        opts: RequestOptions,
+    }
+    impl Client {
+        pub fn new(
+            program_id: Pubkey,
+            payer: Keypair,
+            url: &str,
+            given_opts: Option<RequestOptions>,
+        ) -> Self {
+            let rpc = RpcClient::new(url.to_string());
+            let opts = match given_opts {
+                Some(opts) => opts,
+                None => RequestOptions {
+                    commitment: CommitmentConfig::single(),
+                    tx: RpcSendTransactionConfig {
+                        skip_preflight: true,
+                        preflight_commitment: None,
+                    },
+                },
+            };
+            Self {
+                program_id,
+                payer,
+                rpc,
+                opts,
+            }
+        }
+        pub fn from_keypair_file(
+            program_id: Pubkey,
+            filename: &str,
+            url: &str,
+        ) -> Result<Self, ClientError> {
+            let kp = solana_sdk::signature::read_keypair_file(filename)
+                .map_err(|_| ClientError::InvalidKeyPairFile(filename.to_string()))?;
+            Ok(Self::new(program_id, kp, url, None))
+        }
+        pub fn with_options(mut self, opts: RequestOptions) -> Self {
+            self.opts = opts;
+            self
+        }
+        pub fn initialize(
+            &self,
+            accounts: &[AccountInfo],
+            admin: Pubkey,
+        ) -> Result<Signature, ClientError> {
+            let instructions = <[_]>::into_vec(box [super::instruction::initialize(
+                self.program_id,
+                accounts,
+                admin,
+            )]);
+            let (recent_hash, _fee_calc) = self
+                .rpc
+                .get_recent_blockhash()
+                .map_err(|e| ClientError::RpcError(e))?;
+            let txn = Transaction::new_signed_with_payer(
+                &instructions,
+                Some(&self.payer.pubkey()),
+                &[&self.payer],
+                recent_hash,
+            );
+            self.rpc
+                .send_and_confirm_transaction_with_spinner_and_config(
+                    &txn,
+                    self.opts.commitment,
+                    self.opts.tx,
+                )
+                .map_err(|e| ClientError::RpcError(e))
+        }
+        pub fn slash(&self, accounts: &[AccountInfo]) -> Result<Signature, ClientError> {
+            let instructions =
+                <[_]>::into_vec(box [super::instruction::slash(self.program_id, accounts)]);
+            let (recent_hash, _fee_calc) = self
+                .rpc
+                .get_recent_blockhash()
+                .map_err(|e| ClientError::RpcError(e))?;
+            let txn = Transaction::new_signed_with_payer(
+                &instructions,
+                Some(&self.payer.pubkey()),
+                &[&self.payer],
+                recent_hash,
+            );
+            self.rpc
+                .send_and_confirm_transaction_with_spinner_and_config(
+                    &txn,
+                    self.opts.commitment,
+                    self.opts.tx,
+                )
+                .map_err(|e| ClientError::RpcError(e))
+        }
+        pub fn deposit_srm(
+            &self,
+            accounts: &[AccountInfo],
+            user_spl_wallet_owner: Pubkey,
+            slot_number: u64,
+            amount: u64,
+            lsrm_amount: u64,
+        ) -> Result<Signature, ClientError> {
+            let instructions = <[_]>::into_vec(box [super::instruction::deposit_srm(
+                self.program_id,
+                accounts,
+                user_spl_wallet_owner,
+                slot_number,
+                amount,
+                lsrm_amount,
+            )]);
+            let (recent_hash, _fee_calc) = self
+                .rpc
+                .get_recent_blockhash()
+                .map_err(|e| ClientError::RpcError(e))?;
+            let txn = Transaction::new_signed_with_payer(
+                &instructions,
+                Some(&self.payer.pubkey()),
+                &[&self.payer],
+                recent_hash,
+            );
+            self.rpc
+                .send_and_confirm_transaction_with_spinner_and_config(
+                    &txn,
+                    self.opts.commitment,
+                    self.opts.tx,
+                )
+                .map_err(|e| ClientError::RpcError(e))
+        }
+        pub fn withdraw_srm(
+            &self,
+            accounts: &[AccountInfo],
+            amount: u64,
+        ) -> Result<Signature, ClientError> {
+            let instructions = <[_]>::into_vec(box [super::instruction::withdraw_srm(
+                self.program_id,
+                accounts,
+                amount,
+            )]);
+            let (recent_hash, _fee_calc) = self
+                .rpc
+                .get_recent_blockhash()
+                .map_err(|e| ClientError::RpcError(e))?;
+            let txn = Transaction::new_signed_with_payer(
+                &instructions,
+                Some(&self.payer.pubkey()),
+                &[&self.payer],
+                recent_hash,
+            );
+            self.rpc
+                .send_and_confirm_transaction_with_spinner_and_config(
+                    &txn,
+                    self.opts.commitment,
+                    self.opts.tx,
+                )
+                .map_err(|e| ClientError::RpcError(e))
+        }
+        pub fn mint_locked_srm(
+            &self,
+            accounts: &[AccountInfo],
+            amount: u64,
+        ) -> Result<Signature, ClientError> {
+            let instructions = <[_]>::into_vec(box [super::instruction::mint_locked_srm(
+                self.program_id,
+                accounts,
+                amount,
+            )]);
+            let (recent_hash, _fee_calc) = self
+                .rpc
+                .get_recent_blockhash()
+                .map_err(|e| ClientError::RpcError(e))?;
+            let txn = Transaction::new_signed_with_payer(
+                &instructions,
+                Some(&self.payer.pubkey()),
+                &[&self.payer],
+                recent_hash,
+            );
+            self.rpc
+                .send_and_confirm_transaction_with_spinner_and_config(
+                    &txn,
+                    self.opts.commitment,
+                    self.opts.tx,
+                )
+                .map_err(|e| ClientError::RpcError(e))
+        }
+        pub fn burn_locked_srm(
+            &self,
+            accounts: &[AccountInfo],
+            amount: u64,
+        ) -> Result<Signature, ClientError> {
+            let instructions = <[_]>::into_vec(box [super::instruction::burn_locked_srm(
+                self.program_id,
+                accounts,
+                amount,
+            )]);
+            let (recent_hash, _fee_calc) = self
+                .rpc
+                .get_recent_blockhash()
+                .map_err(|e| ClientError::RpcError(e))?;
+            let txn = Transaction::new_signed_with_payer(
+                &instructions,
+                Some(&self.payer.pubkey()),
+                &[&self.payer],
+                recent_hash,
+            );
+            self.rpc
+                .send_and_confirm_transaction_with_spinner_and_config(
+                    &txn,
+                    self.opts.commitment,
+                    self.opts.tx,
+                )
+                .map_err(|e| ClientError::RpcError(e))
+        }
+    }
+}
+pub mod instruction {
+    use super::*;
+    pub fn initialize(program_id: Pubkey, accounts: &[AccountInfo], admin: Pubkey) -> Instruction {
+        let instruction = SrmSafeInstruction::Initialize { admin };
+        let data = _DefaultCoder::to_bytes(instruction);
+        Instruction {
+            program_id: program_id,
+            data,
+            accounts: accounts.to_vec(),
+        }
+    }
+    pub fn slash(program_id: Pubkey, accounts: &[AccountInfo]) -> Instruction {
+        let instruction = SrmSafeInstruction::Slash {};
+        let data = _DefaultCoder::to_bytes(instruction);
+        Instruction {
+            program_id: program_id,
+            data,
+            accounts: accounts.to_vec(),
+        }
+    }
+    pub fn deposit_srm(
+        program_id: Pubkey,
+        accounts: &[AccountInfo],
+        user_spl_wallet_owner: Pubkey,
+        slot_number: u64,
+        amount: u64,
+        lsrm_amount: u64,
+    ) -> Instruction {
+        let instruction = SrmSafeInstruction::DepositSrm {
+            user_spl_wallet_owner,
+            slot_number,
+            amount,
+            lsrm_amount,
+        };
+        let data = _DefaultCoder::to_bytes(instruction);
+        Instruction {
+            program_id: program_id,
+            data,
+            accounts: accounts.to_vec(),
+        }
+    }
+    pub fn withdraw_srm(program_id: Pubkey, accounts: &[AccountInfo], amount: u64) -> Instruction {
+        let instruction = SrmSafeInstruction::WithdrawSrm { amount };
+        let data = _DefaultCoder::to_bytes(instruction);
+        Instruction {
+            program_id: program_id,
+            data,
+            accounts: accounts.to_vec(),
+        }
+    }
+    pub fn mint_locked_srm(
+        program_id: Pubkey,
+        accounts: &[AccountInfo],
+        amount: u64,
+    ) -> Instruction {
+        let instruction = SrmSafeInstruction::MintLockedSrm { amount };
+        let data = _DefaultCoder::to_bytes(instruction);
+        Instruction {
+            program_id: program_id,
+            data,
+            accounts: accounts.to_vec(),
+        }
+    }
+    pub fn burn_locked_srm(
+        program_id: Pubkey,
+        accounts: &[AccountInfo],
+        amount: u64,
+    ) -> Instruction {
+        let instruction = SrmSafeInstruction::BurnLockedSrm { amount };
+        let data = _DefaultCoder::to_bytes(instruction);
+        Instruction {
+            program_id: program_id,
+            data,
+            accounts: accounts.to_vec(),
+        }
+    }
+    pub enum SrmSafeInstruction {
+        /// Initialize instruction configures the safe with an admin that is
+        /// responsible for slashing people who use their locked serum for
+        /// invalid purposes.
+        ///
+        /// Accounts:
+        /// 0. `[writable]` the admin account.
+        Initialize { admin: Pubkey },
+        /// Slash punishes a vesting account who misbehaved, punititvely
+        /// revoking funds.
+        ///
+        /// 0. `[signer]`   the admin account configured with initialize.
+        /// 1. `[writable]` the vesting account to slash.
+        ///
+        /// Access control assertions:
+        ///   * Accounts[0]
+        Slash {},
+        /// DepositSrm initializes the deposit, transferring tokens from the controlling SPL token
+        /// account to one owned by the SrmSafe program.
+        ///
+        /// Accounts:
+        ///
+        /// 0. `[signer]`   the payer SRM SPL token account, transferring ownership *from*.
+        ///                 The owner of this account is expected to be Alameda.
+        /// 1. `[writable]` the SrmSafe SPL account vault, transferring ownership *to*.
+        ///                 The owner of this account is the SrmSafe program.
+        /// 2. `[writable]  the vesting account representing the user's deposit. It is
+        ///                 initialized with the data provided by the instruction.
+        ///                 The owner of this account is the SrmSafe program.
+        ///
+        /// Access control assertions:
+        ///
+        ///  * Accounts[0].owner == SrmSafe.program_id
+        ///  * Accounts[1].owner == SrmSafe.program_id
+        ///
+        DepositSrm {
+            user_spl_wallet_owner: Pubkey,
+            slot_number: u64,
+            amount: u64,
+            lsrm_amount: u64,
+        },
+        /// WithdrawSrm withdraws the given amount from the SrmSafe SPL account vault,
+        /// updating the user's vesting account.
+        ///
+        /// Accounts:
+        ///
+        /// 0. `[signer]`   the vesting account's `user_spl_wallet_owner`. I.e., the
+        ///                 owner of the spl wallet assigned to the vesting account.
+        /// 1. `[writable]` the vesting account to withdraw from.
+        /// 2. `[writable]` the SRM SPL token account to withdraw to.
+        /// 3. `[writable]` the SrmSafe SPL account vault from which we are transferring
+        ///                 ownership of the SRM out of.
+        ///
+        /// Access control assertions:
+        ///
+        ///  * VestingAccount.owner == SrmSafe.program_id
+        ///  * VestingAccountInner.user_spl_wallet_owner == Accounts[0]
+        ///  * Solana::current_slot() >= VestingAccountInner.slot_number
+        ///
+        WithdrawSrm { amount: u64 },
+        /// MintLockedSrm mints an lSRM token and sends it to the depositor's lSRM SPL account,
+        /// adjusting the vesting account's metadata as needed--increasing the amount of
+        /// lSRM minted so that subsequent withdrawals will be affected by any outstanding
+        /// locked srm associated with a vesting account.
+        ///
+        /// Accounts:
+        ///
+        /// 0. `[signer]`   the vesting account's `user_spl_wallet_owner`. I.e., the
+        ///                 owner of the spl wallet assigned to the vesting account.
+        /// 1. `[writable]` the lSRM SPL token account to send the newly minted lSRM to.
+        /// 2. `[writable]` the vesting account.
+        ///
+        /// Access control assertions:
+        ///
+        ///  * VestingAccount.owner == SrmSafe.program_id
+        ///  * VestingAccountInner.user_spl_wallet_owner == Accounts[0]
+        ///  * VestingAccountInner.amount - VestingAccountInner.lsrm_amount >= amount
+        ///
+        MintLockedSrm { amount: u64 },
+        /// BurnLockedSrm destroys the lSRM associated with the vesting account, updating
+        /// the vesting account's metadata so that subsequent withdrawals are not affected
+        /// by the burned lSRM.
+        ///
+        /// Accounts:
+        ///
+        /// 0. `[signer]`   the owner of the lSRM SPL token account to burn from.
+        /// 1. `[writable]` the lSRM SPL token account to burn from.
+        /// 2. `[writable]` the vesting account.
+        ///
+        /// Access control assertions:
+        ///
+        ///  * VestingAccount.owner == SrmSafe.program_id
+        ///  * VestingAccountInner.user_spl_wallet_owner == Accounts[0]
+        ///  * VestingAccountInner.lsrm_amount >= amount
+        ///
+        /// Note that the signer, i.e., the owner of the lSRM SPL token account must be
+        /// equal to the vesting' account's spl wallet owner, i.e. `user_spl_wallet_owner`.
+        /// This means the same address must be the owner of *both* the lSRM account and
+        /// the final SRM wallet account to withdraw from.
+        ///
+        BurnLockedSrm { amount: u64 },
+    }
+    #[doc(hidden)]
+    #[allow(non_upper_case_globals, unused_attributes, unused_qualifications)]
+    const _: () = {
+        #[allow(rust_2018_idioms, clippy::useless_attribute)]
+        extern crate serde as _serde;
+        #[automatically_derived]
+        impl _serde::Serialize for SrmSafeInstruction {
+            fn serialize<__S>(
+                &self,
+                __serializer: __S,
+            ) -> _serde::export::Result<__S::Ok, __S::Error>
+            where
+                __S: _serde::Serializer,
+            {
+                match *self {
+                    SrmSafeInstruction::Initialize { ref admin } => {
+                        let mut __serde_state = match _serde::Serializer::serialize_struct_variant(
+                            __serializer,
+                            "SrmSafeInstruction",
+                            0u32,
+                            "Initialize",
+                            0 + 1,
+                        ) {
+                            _serde::export::Ok(__val) => __val,
+                            _serde::export::Err(__err) => {
+                                return _serde::export::Err(__err);
+                            }
+                        };
+                        match _serde::ser::SerializeStructVariant::serialize_field(
+                            &mut __serde_state,
+                            "admin",
+                            admin,
+                        ) {
+                            _serde::export::Ok(__val) => __val,
+                            _serde::export::Err(__err) => {
+                                return _serde::export::Err(__err);
+                            }
+                        };
+                        _serde::ser::SerializeStructVariant::end(__serde_state)
+                    }
+                    SrmSafeInstruction::Slash {} => {
+                        let __serde_state = match _serde::Serializer::serialize_struct_variant(
+                            __serializer,
+                            "SrmSafeInstruction",
+                            1u32,
+                            "Slash",
+                            0,
+                        ) {
+                            _serde::export::Ok(__val) => __val,
+                            _serde::export::Err(__err) => {
+                                return _serde::export::Err(__err);
+                            }
+                        };
+                        _serde::ser::SerializeStructVariant::end(__serde_state)
+                    }
+                    SrmSafeInstruction::DepositSrm {
+                        ref user_spl_wallet_owner,
+                        ref slot_number,
+                        ref amount,
+                        ref lsrm_amount,
+                    } => {
+                        let mut __serde_state = match _serde::Serializer::serialize_struct_variant(
+                            __serializer,
+                            "SrmSafeInstruction",
+                            2u32,
+                            "DepositSrm",
+                            0 + 1 + 1 + 1 + 1,
+                        ) {
+                            _serde::export::Ok(__val) => __val,
+                            _serde::export::Err(__err) => {
+                                return _serde::export::Err(__err);
+                            }
+                        };
+                        match _serde::ser::SerializeStructVariant::serialize_field(
+                            &mut __serde_state,
+                            "user_spl_wallet_owner",
+                            user_spl_wallet_owner,
+                        ) {
+                            _serde::export::Ok(__val) => __val,
+                            _serde::export::Err(__err) => {
+                                return _serde::export::Err(__err);
+                            }
+                        };
+                        match _serde::ser::SerializeStructVariant::serialize_field(
+                            &mut __serde_state,
+                            "slot_number",
+                            slot_number,
+                        ) {
+                            _serde::export::Ok(__val) => __val,
+                            _serde::export::Err(__err) => {
+                                return _serde::export::Err(__err);
+                            }
+                        };
+                        match _serde::ser::SerializeStructVariant::serialize_field(
+                            &mut __serde_state,
+                            "amount",
+                            amount,
+                        ) {
+                            _serde::export::Ok(__val) => __val,
+                            _serde::export::Err(__err) => {
+                                return _serde::export::Err(__err);
+                            }
+                        };
+                        match _serde::ser::SerializeStructVariant::serialize_field(
+                            &mut __serde_state,
+                            "lsrm_amount",
+                            lsrm_amount,
+                        ) {
+                            _serde::export::Ok(__val) => __val,
+                            _serde::export::Err(__err) => {
+                                return _serde::export::Err(__err);
+                            }
+                        };
+                        _serde::ser::SerializeStructVariant::end(__serde_state)
+                    }
+                    SrmSafeInstruction::WithdrawSrm { ref amount } => {
+                        let mut __serde_state = match _serde::Serializer::serialize_struct_variant(
+                            __serializer,
+                            "SrmSafeInstruction",
+                            3u32,
+                            "WithdrawSrm",
+                            0 + 1,
+                        ) {
+                            _serde::export::Ok(__val) => __val,
+                            _serde::export::Err(__err) => {
+                                return _serde::export::Err(__err);
+                            }
+                        };
+                        match _serde::ser::SerializeStructVariant::serialize_field(
+                            &mut __serde_state,
+                            "amount",
+                            amount,
+                        ) {
+                            _serde::export::Ok(__val) => __val,
+                            _serde::export::Err(__err) => {
+                                return _serde::export::Err(__err);
+                            }
+                        };
+                        _serde::ser::SerializeStructVariant::end(__serde_state)
+                    }
+                    SrmSafeInstruction::MintLockedSrm { ref amount } => {
+                        let mut __serde_state = match _serde::Serializer::serialize_struct_variant(
+                            __serializer,
+                            "SrmSafeInstruction",
+                            4u32,
+                            "MintLockedSrm",
+                            0 + 1,
+                        ) {
+                            _serde::export::Ok(__val) => __val,
+                            _serde::export::Err(__err) => {
+                                return _serde::export::Err(__err);
+                            }
+                        };
+                        match _serde::ser::SerializeStructVariant::serialize_field(
+                            &mut __serde_state,
+                            "amount",
+                            amount,
+                        ) {
+                            _serde::export::Ok(__val) => __val,
+                            _serde::export::Err(__err) => {
+                                return _serde::export::Err(__err);
+                            }
+                        };
+                        _serde::ser::SerializeStructVariant::end(__serde_state)
+                    }
+                    SrmSafeInstruction::BurnLockedSrm { ref amount } => {
+                        let mut __serde_state = match _serde::Serializer::serialize_struct_variant(
+                            __serializer,
+                            "SrmSafeInstruction",
+                            5u32,
+                            "BurnLockedSrm",
+                            0 + 1,
+                        ) {
+                            _serde::export::Ok(__val) => __val,
+                            _serde::export::Err(__err) => {
+                                return _serde::export::Err(__err);
+                            }
+                        };
+                        match _serde::ser::SerializeStructVariant::serialize_field(
+                            &mut __serde_state,
+                            "amount",
+                            amount,
+                        ) {
+                            _serde::export::Ok(__val) => __val,
+                            _serde::export::Err(__err) => {
+                                return _serde::export::Err(__err);
+                            }
+                        };
+                        _serde::ser::SerializeStructVariant::end(__serde_state)
+                    }
+                }
+            }
+        }
+    };
+    #[doc(hidden)]
+    #[allow(non_upper_case_globals, unused_attributes, unused_qualifications)]
+    const _: () = {
+        #[allow(rust_2018_idioms, clippy::useless_attribute)]
+        extern crate serde as _serde;
+        #[automatically_derived]
+        impl<'de> _serde::Deserialize<'de> for SrmSafeInstruction {
+            fn deserialize<__D>(__deserializer: __D) -> _serde::export::Result<Self, __D::Error>
+            where
+                __D: _serde::Deserializer<'de>,
+            {
+                #[allow(non_camel_case_types)]
+                enum __Field {
+                    __field0,
+                    __field1,
+                    __field2,
+                    __field3,
+                    __field4,
+                    __field5,
+                }
+                struct __FieldVisitor;
+                impl<'de> _serde::de::Visitor<'de> for __FieldVisitor {
+                    type Value = __Field;
+                    fn expecting(
+                        &self,
+                        __formatter: &mut _serde::export::Formatter,
+                    ) -> _serde::export::fmt::Result {
+                        _serde::export::Formatter::write_str(__formatter, "variant identifier")
+                    }
+                    fn visit_u64<__E>(
+                        self,
+                        __value: u64,
+                    ) -> _serde::export::Result<Self::Value, __E>
+                    where
+                        __E: _serde::de::Error,
+                    {
+                        match __value {
+                            0u64 => _serde::export::Ok(__Field::__field0),
+                            1u64 => _serde::export::Ok(__Field::__field1),
+                            2u64 => _serde::export::Ok(__Field::__field2),
+                            3u64 => _serde::export::Ok(__Field::__field3),
+                            4u64 => _serde::export::Ok(__Field::__field4),
+                            5u64 => _serde::export::Ok(__Field::__field5),
+                            _ => _serde::export::Err(_serde::de::Error::invalid_value(
+                                _serde::de::Unexpected::Unsigned(__value),
+                                &"variant index 0 <= i < 6",
+                            )),
+                        }
+                    }
+                    fn visit_str<__E>(
+                        self,
+                        __value: &str,
+                    ) -> _serde::export::Result<Self::Value, __E>
+                    where
+                        __E: _serde::de::Error,
+                    {
+                        match __value {
+                            "Initialize" => _serde::export::Ok(__Field::__field0),
+                            "Slash" => _serde::export::Ok(__Field::__field1),
+                            "DepositSrm" => _serde::export::Ok(__Field::__field2),
+                            "WithdrawSrm" => _serde::export::Ok(__Field::__field3),
+                            "MintLockedSrm" => _serde::export::Ok(__Field::__field4),
+                            "BurnLockedSrm" => _serde::export::Ok(__Field::__field5),
+                            _ => _serde::export::Err(_serde::de::Error::unknown_variant(
+                                __value, VARIANTS,
+                            )),
+                        }
+                    }
+                    fn visit_bytes<__E>(
+                        self,
+                        __value: &[u8],
+                    ) -> _serde::export::Result<Self::Value, __E>
+                    where
+                        __E: _serde::de::Error,
+                    {
+                        match __value {
+                            b"Initialize" => _serde::export::Ok(__Field::__field0),
+                            b"Slash" => _serde::export::Ok(__Field::__field1),
+                            b"DepositSrm" => _serde::export::Ok(__Field::__field2),
+                            b"WithdrawSrm" => _serde::export::Ok(__Field::__field3),
+                            b"MintLockedSrm" => _serde::export::Ok(__Field::__field4),
+                            b"BurnLockedSrm" => _serde::export::Ok(__Field::__field5),
+                            _ => {
+                                let __value = &_serde::export::from_utf8_lossy(__value);
+                                _serde::export::Err(_serde::de::Error::unknown_variant(
+                                    __value, VARIANTS,
+                                ))
+                            }
+                        }
+                    }
+                }
+                impl<'de> _serde::Deserialize<'de> for __Field {
+                    #[inline]
+                    fn deserialize<__D>(
+                        __deserializer: __D,
+                    ) -> _serde::export::Result<Self, __D::Error>
+                    where
+                        __D: _serde::Deserializer<'de>,
+                    {
+                        _serde::Deserializer::deserialize_identifier(__deserializer, __FieldVisitor)
+                    }
+                }
+                struct __Visitor<'de> {
+                    marker: _serde::export::PhantomData<SrmSafeInstruction>,
+                    lifetime: _serde::export::PhantomData<&'de ()>,
+                }
+                impl<'de> _serde::de::Visitor<'de> for __Visitor<'de> {
+                    type Value = SrmSafeInstruction;
+                    fn expecting(
+                        &self,
+                        __formatter: &mut _serde::export::Formatter,
+                    ) -> _serde::export::fmt::Result {
+                        _serde::export::Formatter::write_str(__formatter, "enum SrmSafeInstruction")
+                    }
+                    fn visit_enum<__A>(
+                        self,
+                        __data: __A,
+                    ) -> _serde::export::Result<Self::Value, __A::Error>
+                    where
+                        __A: _serde::de::EnumAccess<'de>,
+                    {
+                        match match _serde::de::EnumAccess::variant(__data) {
+                            _serde::export::Ok(__val) => __val,
+                            _serde::export::Err(__err) => {
+                                return _serde::export::Err(__err);
+                            }
+                        } {
+                            (__Field::__field0, __variant) => {
+                                #[allow(non_camel_case_types)]
+                                enum __Field {
+                                    __field0,
+                                    __ignore,
+                                }
+                                struct __FieldVisitor;
+                                impl<'de> _serde::de::Visitor<'de> for __FieldVisitor {
+                                    type Value = __Field;
+                                    fn expecting(
+                                        &self,
+                                        __formatter: &mut _serde::export::Formatter,
+                                    ) -> _serde::export::fmt::Result
+                                    {
+                                        _serde::export::Formatter::write_str(
+                                            __formatter,
+                                            "field identifier",
+                                        )
+                                    }
+                                    fn visit_u64<__E>(
+                                        self,
+                                        __value: u64,
+                                    ) -> _serde::export::Result<Self::Value, __E>
+                                    where
+                                        __E: _serde::de::Error,
+                                    {
+                                        match __value {
+                                            0u64 => _serde::export::Ok(__Field::__field0),
+                                            _ => _serde::export::Err(
+                                                _serde::de::Error::invalid_value(
+                                                    _serde::de::Unexpected::Unsigned(__value),
+                                                    &"field index 0 <= i < 1",
+                                                ),
+                                            ),
+                                        }
+                                    }
+                                    fn visit_str<__E>(
+                                        self,
+                                        __value: &str,
+                                    ) -> _serde::export::Result<Self::Value, __E>
+                                    where
+                                        __E: _serde::de::Error,
+                                    {
+                                        match __value {
+                                            "admin" => _serde::export::Ok(__Field::__field0),
+                                            _ => _serde::export::Ok(__Field::__ignore),
+                                        }
+                                    }
+                                    fn visit_bytes<__E>(
+                                        self,
+                                        __value: &[u8],
+                                    ) -> _serde::export::Result<Self::Value, __E>
+                                    where
+                                        __E: _serde::de::Error,
+                                    {
+                                        match __value {
+                                            b"admin" => _serde::export::Ok(__Field::__field0),
+                                            _ => _serde::export::Ok(__Field::__ignore),
+                                        }
+                                    }
+                                }
+                                impl<'de> _serde::Deserialize<'de> for __Field {
+                                    #[inline]
+                                    fn deserialize<__D>(
+                                        __deserializer: __D,
+                                    ) -> _serde::export::Result<Self, __D::Error>
+                                    where
+                                        __D: _serde::Deserializer<'de>,
+                                    {
+                                        _serde::Deserializer::deserialize_identifier(
+                                            __deserializer,
+                                            __FieldVisitor,
+                                        )
+                                    }
+                                }
+                                struct __Visitor<'de> {
+                                    marker: _serde::export::PhantomData<SrmSafeInstruction>,
+                                    lifetime: _serde::export::PhantomData<&'de ()>,
+                                }
+                                impl<'de> _serde::de::Visitor<'de> for __Visitor<'de> {
+                                    type Value = SrmSafeInstruction;
+                                    fn expecting(
+                                        &self,
+                                        __formatter: &mut _serde::export::Formatter,
+                                    ) -> _serde::export::fmt::Result
+                                    {
+                                        _serde::export::Formatter::write_str(
+                                            __formatter,
+                                            "struct variant SrmSafeInstruction::Initialize",
+                                        )
+                                    }
+                                    #[inline]
+                                    fn visit_seq<__A>(
+                                        self,
+                                        mut __seq: __A,
+                                    ) -> _serde::export::Result<Self::Value, __A::Error>
+                                    where
+                                        __A: _serde::de::SeqAccess<'de>,
+                                    {
+                                        let __field0 =
+                                            match match _serde::de::SeqAccess::next_element::<Pubkey>(
+                                                &mut __seq,
+                                            ) {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            } {
+                                                _serde::export::Some(__value) => __value,
+                                                _serde::export::None => {
+                                                    return _serde :: export :: Err ( _serde :: de :: Error :: invalid_length ( 0usize , & "struct variant SrmSafeInstruction::Initialize with 1 element" ) ) ;
+                                                }
+                                            };
+                                        _serde::export::Ok(SrmSafeInstruction::Initialize {
+                                            admin: __field0,
+                                        })
+                                    }
+                                    #[inline]
+                                    fn visit_map<__A>(
+                                        self,
+                                        mut __map: __A,
+                                    ) -> _serde::export::Result<Self::Value, __A::Error>
+                                    where
+                                        __A: _serde::de::MapAccess<'de>,
+                                    {
+                                        let mut __field0: _serde::export::Option<Pubkey> =
+                                            _serde::export::None;
+                                        while let _serde::export::Some(__key) =
+                                            match _serde::de::MapAccess::next_key::<__Field>(
+                                                &mut __map,
+                                            ) {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            }
+                                        {
+                                            match __key {
+                                                __Field::__field0 => {
+                                                    if _serde::export::Option::is_some(&__field0) {
+                                                        return _serde :: export :: Err ( < __A :: Error as _serde :: de :: Error > :: duplicate_field ( "admin" ) ) ;
+                                                    }
+                                                    __field0 = _serde::export::Some(
+                                                        match _serde::de::MapAccess::next_value::<
+                                                            Pubkey,
+                                                        >(
+                                                            &mut __map
+                                                        ) {
+                                                            _serde::export::Ok(__val) => __val,
+                                                            _serde::export::Err(__err) => {
+                                                                return _serde::export::Err(__err);
+                                                            }
+                                                        },
+                                                    );
+                                                }
+                                                _ => {
+                                                    let _ = match _serde::de::MapAccess::next_value::<
+                                                        _serde::de::IgnoredAny,
+                                                    >(
+                                                        &mut __map
+                                                    ) {
+                                                        _serde::export::Ok(__val) => __val,
+                                                        _serde::export::Err(__err) => {
+                                                            return _serde::export::Err(__err);
+                                                        }
+                                                    };
+                                                }
+                                            }
+                                        }
+                                        let __field0 = match __field0 {
+                                            _serde::export::Some(__field0) => __field0,
+                                            _serde::export::None => {
+                                                match _serde::private::de::missing_field("admin") {
+                                                    _serde::export::Ok(__val) => __val,
+                                                    _serde::export::Err(__err) => {
+                                                        return _serde::export::Err(__err);
+                                                    }
+                                                }
+                                            }
+                                        };
+                                        _serde::export::Ok(SrmSafeInstruction::Initialize {
+                                            admin: __field0,
+                                        })
+                                    }
+                                }
+                                const FIELDS: &'static [&'static str] = &["admin"];
+                                _serde::de::VariantAccess::struct_variant(
+                                    __variant,
+                                    FIELDS,
+                                    __Visitor {
+                                        marker: _serde::export::PhantomData::<SrmSafeInstruction>,
+                                        lifetime: _serde::export::PhantomData,
+                                    },
+                                )
+                            }
+                            (__Field::__field1, __variant) => {
+                                #[allow(non_camel_case_types)]
+                                enum __Field {
+                                    __ignore,
+                                }
+                                struct __FieldVisitor;
+                                impl<'de> _serde::de::Visitor<'de> for __FieldVisitor {
+                                    type Value = __Field;
+                                    fn expecting(
+                                        &self,
+                                        __formatter: &mut _serde::export::Formatter,
+                                    ) -> _serde::export::fmt::Result
+                                    {
+                                        _serde::export::Formatter::write_str(
+                                            __formatter,
+                                            "field identifier",
+                                        )
+                                    }
+                                    fn visit_u64<__E>(
+                                        self,
+                                        __value: u64,
+                                    ) -> _serde::export::Result<Self::Value, __E>
+                                    where
+                                        __E: _serde::de::Error,
+                                    {
+                                        match __value {
+                                            _ => _serde::export::Err(
+                                                _serde::de::Error::invalid_value(
+                                                    _serde::de::Unexpected::Unsigned(__value),
+                                                    &"field index 0 <= i < 0",
+                                                ),
+                                            ),
+                                        }
+                                    }
+                                    fn visit_str<__E>(
+                                        self,
+                                        __value: &str,
+                                    ) -> _serde::export::Result<Self::Value, __E>
+                                    where
+                                        __E: _serde::de::Error,
+                                    {
+                                        match __value {
+                                            _ => _serde::export::Ok(__Field::__ignore),
+                                        }
+                                    }
+                                    fn visit_bytes<__E>(
+                                        self,
+                                        __value: &[u8],
+                                    ) -> _serde::export::Result<Self::Value, __E>
+                                    where
+                                        __E: _serde::de::Error,
+                                    {
+                                        match __value {
+                                            _ => _serde::export::Ok(__Field::__ignore),
+                                        }
+                                    }
+                                }
+                                impl<'de> _serde::Deserialize<'de> for __Field {
+                                    #[inline]
+                                    fn deserialize<__D>(
+                                        __deserializer: __D,
+                                    ) -> _serde::export::Result<Self, __D::Error>
+                                    where
+                                        __D: _serde::Deserializer<'de>,
+                                    {
+                                        _serde::Deserializer::deserialize_identifier(
+                                            __deserializer,
+                                            __FieldVisitor,
+                                        )
+                                    }
+                                }
+                                struct __Visitor<'de> {
+                                    marker: _serde::export::PhantomData<SrmSafeInstruction>,
+                                    lifetime: _serde::export::PhantomData<&'de ()>,
+                                }
+                                impl<'de> _serde::de::Visitor<'de> for __Visitor<'de> {
+                                    type Value = SrmSafeInstruction;
+                                    fn expecting(
+                                        &self,
+                                        __formatter: &mut _serde::export::Formatter,
+                                    ) -> _serde::export::fmt::Result
+                                    {
+                                        _serde::export::Formatter::write_str(
+                                            __formatter,
+                                            "struct variant SrmSafeInstruction::Slash",
+                                        )
+                                    }
+                                    #[inline]
+                                    fn visit_seq<__A>(
+                                        self,
+                                        _: __A,
+                                    ) -> _serde::export::Result<Self::Value, __A::Error>
+                                    where
+                                        __A: _serde::de::SeqAccess<'de>,
+                                    {
+                                        _serde::export::Ok(SrmSafeInstruction::Slash {})
+                                    }
+                                    #[inline]
+                                    fn visit_map<__A>(
+                                        self,
+                                        mut __map: __A,
+                                    ) -> _serde::export::Result<Self::Value, __A::Error>
+                                    where
+                                        __A: _serde::de::MapAccess<'de>,
+                                    {
+                                        while let _serde::export::Some(__key) =
+                                            match _serde::de::MapAccess::next_key::<__Field>(
+                                                &mut __map,
+                                            ) {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            }
+                                        {
+                                            match __key {
+                                                _ => {
+                                                    let _ = match _serde::de::MapAccess::next_value::<
+                                                        _serde::de::IgnoredAny,
+                                                    >(
+                                                        &mut __map
+                                                    ) {
+                                                        _serde::export::Ok(__val) => __val,
+                                                        _serde::export::Err(__err) => {
+                                                            return _serde::export::Err(__err);
+                                                        }
+                                                    };
+                                                }
+                                            }
+                                        }
+                                        _serde::export::Ok(SrmSafeInstruction::Slash {})
+                                    }
+                                }
+                                const FIELDS: &'static [&'static str] = &[];
+                                _serde::de::VariantAccess::struct_variant(
+                                    __variant,
+                                    FIELDS,
+                                    __Visitor {
+                                        marker: _serde::export::PhantomData::<SrmSafeInstruction>,
+                                        lifetime: _serde::export::PhantomData,
+                                    },
+                                )
+                            }
+                            (__Field::__field2, __variant) => {
+                                #[allow(non_camel_case_types)]
+                                enum __Field {
+                                    __field0,
+                                    __field1,
+                                    __field2,
+                                    __field3,
+                                    __ignore,
+                                }
+                                struct __FieldVisitor;
+                                impl<'de> _serde::de::Visitor<'de> for __FieldVisitor {
+                                    type Value = __Field;
+                                    fn expecting(
+                                        &self,
+                                        __formatter: &mut _serde::export::Formatter,
+                                    ) -> _serde::export::fmt::Result
+                                    {
+                                        _serde::export::Formatter::write_str(
+                                            __formatter,
+                                            "field identifier",
+                                        )
+                                    }
+                                    fn visit_u64<__E>(
+                                        self,
+                                        __value: u64,
+                                    ) -> _serde::export::Result<Self::Value, __E>
+                                    where
+                                        __E: _serde::de::Error,
+                                    {
+                                        match __value {
+                                            0u64 => _serde::export::Ok(__Field::__field0),
+                                            1u64 => _serde::export::Ok(__Field::__field1),
+                                            2u64 => _serde::export::Ok(__Field::__field2),
+                                            3u64 => _serde::export::Ok(__Field::__field3),
+                                            _ => _serde::export::Err(
+                                                _serde::de::Error::invalid_value(
+                                                    _serde::de::Unexpected::Unsigned(__value),
+                                                    &"field index 0 <= i < 4",
+                                                ),
+                                            ),
+                                        }
+                                    }
+                                    fn visit_str<__E>(
+                                        self,
+                                        __value: &str,
+                                    ) -> _serde::export::Result<Self::Value, __E>
+                                    where
+                                        __E: _serde::de::Error,
+                                    {
+                                        match __value {
+                                            "user_spl_wallet_owner" => {
+                                                _serde::export::Ok(__Field::__field0)
+                                            }
+                                            "slot_number" => _serde::export::Ok(__Field::__field1),
+                                            "amount" => _serde::export::Ok(__Field::__field2),
+                                            "lsrm_amount" => _serde::export::Ok(__Field::__field3),
+                                            _ => _serde::export::Ok(__Field::__ignore),
+                                        }
+                                    }
+                                    fn visit_bytes<__E>(
+                                        self,
+                                        __value: &[u8],
+                                    ) -> _serde::export::Result<Self::Value, __E>
+                                    where
+                                        __E: _serde::de::Error,
+                                    {
+                                        match __value {
+                                            b"user_spl_wallet_owner" => {
+                                                _serde::export::Ok(__Field::__field0)
+                                            }
+                                            b"slot_number" => _serde::export::Ok(__Field::__field1),
+                                            b"amount" => _serde::export::Ok(__Field::__field2),
+                                            b"lsrm_amount" => _serde::export::Ok(__Field::__field3),
+                                            _ => _serde::export::Ok(__Field::__ignore),
+                                        }
+                                    }
+                                }
+                                impl<'de> _serde::Deserialize<'de> for __Field {
+                                    #[inline]
+                                    fn deserialize<__D>(
+                                        __deserializer: __D,
+                                    ) -> _serde::export::Result<Self, __D::Error>
+                                    where
+                                        __D: _serde::Deserializer<'de>,
+                                    {
+                                        _serde::Deserializer::deserialize_identifier(
+                                            __deserializer,
+                                            __FieldVisitor,
+                                        )
+                                    }
+                                }
+                                struct __Visitor<'de> {
+                                    marker: _serde::export::PhantomData<SrmSafeInstruction>,
+                                    lifetime: _serde::export::PhantomData<&'de ()>,
+                                }
+                                impl<'de> _serde::de::Visitor<'de> for __Visitor<'de> {
+                                    type Value = SrmSafeInstruction;
+                                    fn expecting(
+                                        &self,
+                                        __formatter: &mut _serde::export::Formatter,
+                                    ) -> _serde::export::fmt::Result
+                                    {
+                                        _serde::export::Formatter::write_str(
+                                            __formatter,
+                                            "struct variant SrmSafeInstruction::DepositSrm",
+                                        )
+                                    }
+                                    #[inline]
+                                    fn visit_seq<__A>(
+                                        self,
+                                        mut __seq: __A,
+                                    ) -> _serde::export::Result<Self::Value, __A::Error>
+                                    where
+                                        __A: _serde::de::SeqAccess<'de>,
+                                    {
+                                        let __field0 =
+                                            match match _serde::de::SeqAccess::next_element::<Pubkey>(
+                                                &mut __seq,
+                                            ) {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            } {
+                                                _serde::export::Some(__value) => __value,
+                                                _serde::export::None => {
+                                                    return _serde :: export :: Err ( _serde :: de :: Error :: invalid_length ( 0usize , & "struct variant SrmSafeInstruction::DepositSrm with 4 elements" ) ) ;
+                                                }
+                                            };
+                                        let __field1 =
+                                            match match _serde::de::SeqAccess::next_element::<u64>(
+                                                &mut __seq,
+                                            ) {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            } {
+                                                _serde::export::Some(__value) => __value,
+                                                _serde::export::None => {
+                                                    return _serde :: export :: Err ( _serde :: de :: Error :: invalid_length ( 1usize , & "struct variant SrmSafeInstruction::DepositSrm with 4 elements" ) ) ;
+                                                }
+                                            };
+                                        let __field2 =
+                                            match match _serde::de::SeqAccess::next_element::<u64>(
+                                                &mut __seq,
+                                            ) {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            } {
+                                                _serde::export::Some(__value) => __value,
+                                                _serde::export::None => {
+                                                    return _serde :: export :: Err ( _serde :: de :: Error :: invalid_length ( 2usize , & "struct variant SrmSafeInstruction::DepositSrm with 4 elements" ) ) ;
+                                                }
+                                            };
+                                        let __field3 =
+                                            match match _serde::de::SeqAccess::next_element::<u64>(
+                                                &mut __seq,
+                                            ) {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            } {
+                                                _serde::export::Some(__value) => __value,
+                                                _serde::export::None => {
+                                                    return _serde :: export :: Err ( _serde :: de :: Error :: invalid_length ( 3usize , & "struct variant SrmSafeInstruction::DepositSrm with 4 elements" ) ) ;
+                                                }
+                                            };
+                                        _serde::export::Ok(SrmSafeInstruction::DepositSrm {
+                                            user_spl_wallet_owner: __field0,
+                                            slot_number: __field1,
+                                            amount: __field2,
+                                            lsrm_amount: __field3,
+                                        })
+                                    }
+                                    #[inline]
+                                    fn visit_map<__A>(
+                                        self,
+                                        mut __map: __A,
+                                    ) -> _serde::export::Result<Self::Value, __A::Error>
+                                    where
+                                        __A: _serde::de::MapAccess<'de>,
+                                    {
+                                        let mut __field0: _serde::export::Option<Pubkey> =
+                                            _serde::export::None;
+                                        let mut __field1: _serde::export::Option<u64> =
+                                            _serde::export::None;
+                                        let mut __field2: _serde::export::Option<u64> =
+                                            _serde::export::None;
+                                        let mut __field3: _serde::export::Option<u64> =
+                                            _serde::export::None;
+                                        while let _serde::export::Some(__key) =
+                                            match _serde::de::MapAccess::next_key::<__Field>(
+                                                &mut __map,
+                                            ) {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            }
+                                        {
+                                            match __key {
+                                                __Field::__field0 => {
+                                                    if _serde::export::Option::is_some(&__field0) {
+                                                        return _serde :: export :: Err ( < __A :: Error as _serde :: de :: Error > :: duplicate_field ( "user_spl_wallet_owner" ) ) ;
+                                                    }
+                                                    __field0 = _serde::export::Some(
+                                                        match _serde::de::MapAccess::next_value::<
+                                                            Pubkey,
+                                                        >(
+                                                            &mut __map
+                                                        ) {
+                                                            _serde::export::Ok(__val) => __val,
+                                                            _serde::export::Err(__err) => {
+                                                                return _serde::export::Err(__err);
+                                                            }
+                                                        },
+                                                    );
+                                                }
+                                                __Field::__field1 => {
+                                                    if _serde::export::Option::is_some(&__field1) {
+                                                        return _serde :: export :: Err ( < __A :: Error as _serde :: de :: Error > :: duplicate_field ( "slot_number" ) ) ;
+                                                    }
+                                                    __field1 = _serde::export::Some(
+                                                        match _serde::de::MapAccess::next_value::<u64>(
+                                                            &mut __map,
+                                                        ) {
+                                                            _serde::export::Ok(__val) => __val,
+                                                            _serde::export::Err(__err) => {
+                                                                return _serde::export::Err(__err);
+                                                            }
+                                                        },
+                                                    );
+                                                }
+                                                __Field::__field2 => {
+                                                    if _serde::export::Option::is_some(&__field2) {
+                                                        return _serde :: export :: Err ( < __A :: Error as _serde :: de :: Error > :: duplicate_field ( "amount" ) ) ;
+                                                    }
+                                                    __field2 = _serde::export::Some(
+                                                        match _serde::de::MapAccess::next_value::<u64>(
+                                                            &mut __map,
+                                                        ) {
+                                                            _serde::export::Ok(__val) => __val,
+                                                            _serde::export::Err(__err) => {
+                                                                return _serde::export::Err(__err);
+                                                            }
+                                                        },
+                                                    );
+                                                }
+                                                __Field::__field3 => {
+                                                    if _serde::export::Option::is_some(&__field3) {
+                                                        return _serde :: export :: Err ( < __A :: Error as _serde :: de :: Error > :: duplicate_field ( "lsrm_amount" ) ) ;
+                                                    }
+                                                    __field3 = _serde::export::Some(
+                                                        match _serde::de::MapAccess::next_value::<u64>(
+                                                            &mut __map,
+                                                        ) {
+                                                            _serde::export::Ok(__val) => __val,
+                                                            _serde::export::Err(__err) => {
+                                                                return _serde::export::Err(__err);
+                                                            }
+                                                        },
+                                                    );
+                                                }
+                                                _ => {
+                                                    let _ = match _serde::de::MapAccess::next_value::<
+                                                        _serde::de::IgnoredAny,
+                                                    >(
+                                                        &mut __map
+                                                    ) {
+                                                        _serde::export::Ok(__val) => __val,
+                                                        _serde::export::Err(__err) => {
+                                                            return _serde::export::Err(__err);
+                                                        }
+                                                    };
+                                                }
+                                            }
+                                        }
+                                        let __field0 = match __field0 {
+                                            _serde::export::Some(__field0) => __field0,
+                                            _serde::export::None => {
+                                                match _serde::private::de::missing_field(
+                                                    "user_spl_wallet_owner",
+                                                ) {
+                                                    _serde::export::Ok(__val) => __val,
+                                                    _serde::export::Err(__err) => {
+                                                        return _serde::export::Err(__err);
+                                                    }
+                                                }
+                                            }
+                                        };
+                                        let __field1 = match __field1 {
+                                            _serde::export::Some(__field1) => __field1,
+                                            _serde::export::None => {
+                                                match _serde::private::de::missing_field(
+                                                    "slot_number",
+                                                ) {
+                                                    _serde::export::Ok(__val) => __val,
+                                                    _serde::export::Err(__err) => {
+                                                        return _serde::export::Err(__err);
+                                                    }
+                                                }
+                                            }
+                                        };
+                                        let __field2 = match __field2 {
+                                            _serde::export::Some(__field2) => __field2,
+                                            _serde::export::None => {
+                                                match _serde::private::de::missing_field("amount") {
+                                                    _serde::export::Ok(__val) => __val,
+                                                    _serde::export::Err(__err) => {
+                                                        return _serde::export::Err(__err);
+                                                    }
+                                                }
+                                            }
+                                        };
+                                        let __field3 = match __field3 {
+                                            _serde::export::Some(__field3) => __field3,
+                                            _serde::export::None => {
+                                                match _serde::private::de::missing_field(
+                                                    "lsrm_amount",
+                                                ) {
+                                                    _serde::export::Ok(__val) => __val,
+                                                    _serde::export::Err(__err) => {
+                                                        return _serde::export::Err(__err);
+                                                    }
+                                                }
+                                            }
+                                        };
+                                        _serde::export::Ok(SrmSafeInstruction::DepositSrm {
+                                            user_spl_wallet_owner: __field0,
+                                            slot_number: __field1,
+                                            amount: __field2,
+                                            lsrm_amount: __field3,
+                                        })
+                                    }
+                                }
+                                const FIELDS: &'static [&'static str] = &[
+                                    "user_spl_wallet_owner",
+                                    "slot_number",
+                                    "amount",
+                                    "lsrm_amount",
+                                ];
+                                _serde::de::VariantAccess::struct_variant(
+                                    __variant,
+                                    FIELDS,
+                                    __Visitor {
+                                        marker: _serde::export::PhantomData::<SrmSafeInstruction>,
+                                        lifetime: _serde::export::PhantomData,
+                                    },
+                                )
+                            }
+                            (__Field::__field3, __variant) => {
+                                #[allow(non_camel_case_types)]
+                                enum __Field {
+                                    __field0,
+                                    __ignore,
+                                }
+                                struct __FieldVisitor;
+                                impl<'de> _serde::de::Visitor<'de> for __FieldVisitor {
+                                    type Value = __Field;
+                                    fn expecting(
+                                        &self,
+                                        __formatter: &mut _serde::export::Formatter,
+                                    ) -> _serde::export::fmt::Result
+                                    {
+                                        _serde::export::Formatter::write_str(
+                                            __formatter,
+                                            "field identifier",
+                                        )
+                                    }
+                                    fn visit_u64<__E>(
+                                        self,
+                                        __value: u64,
+                                    ) -> _serde::export::Result<Self::Value, __E>
+                                    where
+                                        __E: _serde::de::Error,
+                                    {
+                                        match __value {
+                                            0u64 => _serde::export::Ok(__Field::__field0),
+                                            _ => _serde::export::Err(
+                                                _serde::de::Error::invalid_value(
+                                                    _serde::de::Unexpected::Unsigned(__value),
+                                                    &"field index 0 <= i < 1",
+                                                ),
+                                            ),
+                                        }
+                                    }
+                                    fn visit_str<__E>(
+                                        self,
+                                        __value: &str,
+                                    ) -> _serde::export::Result<Self::Value, __E>
+                                    where
+                                        __E: _serde::de::Error,
+                                    {
+                                        match __value {
+                                            "amount" => _serde::export::Ok(__Field::__field0),
+                                            _ => _serde::export::Ok(__Field::__ignore),
+                                        }
+                                    }
+                                    fn visit_bytes<__E>(
+                                        self,
+                                        __value: &[u8],
+                                    ) -> _serde::export::Result<Self::Value, __E>
+                                    where
+                                        __E: _serde::de::Error,
+                                    {
+                                        match __value {
+                                            b"amount" => _serde::export::Ok(__Field::__field0),
+                                            _ => _serde::export::Ok(__Field::__ignore),
+                                        }
+                                    }
+                                }
+                                impl<'de> _serde::Deserialize<'de> for __Field {
+                                    #[inline]
+                                    fn deserialize<__D>(
+                                        __deserializer: __D,
+                                    ) -> _serde::export::Result<Self, __D::Error>
+                                    where
+                                        __D: _serde::Deserializer<'de>,
+                                    {
+                                        _serde::Deserializer::deserialize_identifier(
+                                            __deserializer,
+                                            __FieldVisitor,
+                                        )
+                                    }
+                                }
+                                struct __Visitor<'de> {
+                                    marker: _serde::export::PhantomData<SrmSafeInstruction>,
+                                    lifetime: _serde::export::PhantomData<&'de ()>,
+                                }
+                                impl<'de> _serde::de::Visitor<'de> for __Visitor<'de> {
+                                    type Value = SrmSafeInstruction;
+                                    fn expecting(
+                                        &self,
+                                        __formatter: &mut _serde::export::Formatter,
+                                    ) -> _serde::export::fmt::Result
+                                    {
+                                        _serde::export::Formatter::write_str(
+                                            __formatter,
+                                            "struct variant SrmSafeInstruction::WithdrawSrm",
+                                        )
+                                    }
+                                    #[inline]
+                                    fn visit_seq<__A>(
+                                        self,
+                                        mut __seq: __A,
+                                    ) -> _serde::export::Result<Self::Value, __A::Error>
+                                    where
+                                        __A: _serde::de::SeqAccess<'de>,
+                                    {
+                                        let __field0 =
+                                            match match _serde::de::SeqAccess::next_element::<u64>(
+                                                &mut __seq,
+                                            ) {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            } {
+                                                _serde::export::Some(__value) => __value,
+                                                _serde::export::None => {
+                                                    return _serde :: export :: Err ( _serde :: de :: Error :: invalid_length ( 0usize , & "struct variant SrmSafeInstruction::WithdrawSrm with 1 element" ) ) ;
+                                                }
+                                            };
+                                        _serde::export::Ok(SrmSafeInstruction::WithdrawSrm {
+                                            amount: __field0,
+                                        })
+                                    }
+                                    #[inline]
+                                    fn visit_map<__A>(
+                                        self,
+                                        mut __map: __A,
+                                    ) -> _serde::export::Result<Self::Value, __A::Error>
+                                    where
+                                        __A: _serde::de::MapAccess<'de>,
+                                    {
+                                        let mut __field0: _serde::export::Option<u64> =
+                                            _serde::export::None;
+                                        while let _serde::export::Some(__key) =
+                                            match _serde::de::MapAccess::next_key::<__Field>(
+                                                &mut __map,
+                                            ) {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            }
+                                        {
+                                            match __key {
+                                                __Field::__field0 => {
+                                                    if _serde::export::Option::is_some(&__field0) {
+                                                        return _serde :: export :: Err ( < __A :: Error as _serde :: de :: Error > :: duplicate_field ( "amount" ) ) ;
+                                                    }
+                                                    __field0 = _serde::export::Some(
+                                                        match _serde::de::MapAccess::next_value::<u64>(
+                                                            &mut __map,
+                                                        ) {
+                                                            _serde::export::Ok(__val) => __val,
+                                                            _serde::export::Err(__err) => {
+                                                                return _serde::export::Err(__err);
+                                                            }
+                                                        },
+                                                    );
+                                                }
+                                                _ => {
+                                                    let _ = match _serde::de::MapAccess::next_value::<
+                                                        _serde::de::IgnoredAny,
+                                                    >(
+                                                        &mut __map
+                                                    ) {
+                                                        _serde::export::Ok(__val) => __val,
+                                                        _serde::export::Err(__err) => {
+                                                            return _serde::export::Err(__err);
+                                                        }
+                                                    };
+                                                }
+                                            }
+                                        }
+                                        let __field0 = match __field0 {
+                                            _serde::export::Some(__field0) => __field0,
+                                            _serde::export::None => {
+                                                match _serde::private::de::missing_field("amount") {
+                                                    _serde::export::Ok(__val) => __val,
+                                                    _serde::export::Err(__err) => {
+                                                        return _serde::export::Err(__err);
+                                                    }
+                                                }
+                                            }
+                                        };
+                                        _serde::export::Ok(SrmSafeInstruction::WithdrawSrm {
+                                            amount: __field0,
+                                        })
+                                    }
+                                }
+                                const FIELDS: &'static [&'static str] = &["amount"];
+                                _serde::de::VariantAccess::struct_variant(
+                                    __variant,
+                                    FIELDS,
+                                    __Visitor {
+                                        marker: _serde::export::PhantomData::<SrmSafeInstruction>,
+                                        lifetime: _serde::export::PhantomData,
+                                    },
+                                )
+                            }
+                            (__Field::__field4, __variant) => {
+                                #[allow(non_camel_case_types)]
+                                enum __Field {
+                                    __field0,
+                                    __ignore,
+                                }
+                                struct __FieldVisitor;
+                                impl<'de> _serde::de::Visitor<'de> for __FieldVisitor {
+                                    type Value = __Field;
+                                    fn expecting(
+                                        &self,
+                                        __formatter: &mut _serde::export::Formatter,
+                                    ) -> _serde::export::fmt::Result
+                                    {
+                                        _serde::export::Formatter::write_str(
+                                            __formatter,
+                                            "field identifier",
+                                        )
+                                    }
+                                    fn visit_u64<__E>(
+                                        self,
+                                        __value: u64,
+                                    ) -> _serde::export::Result<Self::Value, __E>
+                                    where
+                                        __E: _serde::de::Error,
+                                    {
+                                        match __value {
+                                            0u64 => _serde::export::Ok(__Field::__field0),
+                                            _ => _serde::export::Err(
+                                                _serde::de::Error::invalid_value(
+                                                    _serde::de::Unexpected::Unsigned(__value),
+                                                    &"field index 0 <= i < 1",
+                                                ),
+                                            ),
+                                        }
+                                    }
+                                    fn visit_str<__E>(
+                                        self,
+                                        __value: &str,
+                                    ) -> _serde::export::Result<Self::Value, __E>
+                                    where
+                                        __E: _serde::de::Error,
+                                    {
+                                        match __value {
+                                            "amount" => _serde::export::Ok(__Field::__field0),
+                                            _ => _serde::export::Ok(__Field::__ignore),
+                                        }
+                                    }
+                                    fn visit_bytes<__E>(
+                                        self,
+                                        __value: &[u8],
+                                    ) -> _serde::export::Result<Self::Value, __E>
+                                    where
+                                        __E: _serde::de::Error,
+                                    {
+                                        match __value {
+                                            b"amount" => _serde::export::Ok(__Field::__field0),
+                                            _ => _serde::export::Ok(__Field::__ignore),
+                                        }
+                                    }
+                                }
+                                impl<'de> _serde::Deserialize<'de> for __Field {
+                                    #[inline]
+                                    fn deserialize<__D>(
+                                        __deserializer: __D,
+                                    ) -> _serde::export::Result<Self, __D::Error>
+                                    where
+                                        __D: _serde::Deserializer<'de>,
+                                    {
+                                        _serde::Deserializer::deserialize_identifier(
+                                            __deserializer,
+                                            __FieldVisitor,
+                                        )
+                                    }
+                                }
+                                struct __Visitor<'de> {
+                                    marker: _serde::export::PhantomData<SrmSafeInstruction>,
+                                    lifetime: _serde::export::PhantomData<&'de ()>,
+                                }
+                                impl<'de> _serde::de::Visitor<'de> for __Visitor<'de> {
+                                    type Value = SrmSafeInstruction;
+                                    fn expecting(
+                                        &self,
+                                        __formatter: &mut _serde::export::Formatter,
+                                    ) -> _serde::export::fmt::Result
+                                    {
+                                        _serde::export::Formatter::write_str(
+                                            __formatter,
+                                            "struct variant SrmSafeInstruction::MintLockedSrm",
+                                        )
+                                    }
+                                    #[inline]
+                                    fn visit_seq<__A>(
+                                        self,
+                                        mut __seq: __A,
+                                    ) -> _serde::export::Result<Self::Value, __A::Error>
+                                    where
+                                        __A: _serde::de::SeqAccess<'de>,
+                                    {
+                                        let __field0 =
+                                            match match _serde::de::SeqAccess::next_element::<u64>(
+                                                &mut __seq,
+                                            ) {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            } {
+                                                _serde::export::Some(__value) => __value,
+                                                _serde::export::None => {
+                                                    return _serde :: export :: Err ( _serde :: de :: Error :: invalid_length ( 0usize , & "struct variant SrmSafeInstruction::MintLockedSrm with 1 element" ) ) ;
+                                                }
+                                            };
+                                        _serde::export::Ok(SrmSafeInstruction::MintLockedSrm {
+                                            amount: __field0,
+                                        })
+                                    }
+                                    #[inline]
+                                    fn visit_map<__A>(
+                                        self,
+                                        mut __map: __A,
+                                    ) -> _serde::export::Result<Self::Value, __A::Error>
+                                    where
+                                        __A: _serde::de::MapAccess<'de>,
+                                    {
+                                        let mut __field0: _serde::export::Option<u64> =
+                                            _serde::export::None;
+                                        while let _serde::export::Some(__key) =
+                                            match _serde::de::MapAccess::next_key::<__Field>(
+                                                &mut __map,
+                                            ) {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            }
+                                        {
+                                            match __key {
+                                                __Field::__field0 => {
+                                                    if _serde::export::Option::is_some(&__field0) {
+                                                        return _serde :: export :: Err ( < __A :: Error as _serde :: de :: Error > :: duplicate_field ( "amount" ) ) ;
+                                                    }
+                                                    __field0 = _serde::export::Some(
+                                                        match _serde::de::MapAccess::next_value::<u64>(
+                                                            &mut __map,
+                                                        ) {
+                                                            _serde::export::Ok(__val) => __val,
+                                                            _serde::export::Err(__err) => {
+                                                                return _serde::export::Err(__err);
+                                                            }
+                                                        },
+                                                    );
+                                                }
+                                                _ => {
+                                                    let _ = match _serde::de::MapAccess::next_value::<
+                                                        _serde::de::IgnoredAny,
+                                                    >(
+                                                        &mut __map
+                                                    ) {
+                                                        _serde::export::Ok(__val) => __val,
+                                                        _serde::export::Err(__err) => {
+                                                            return _serde::export::Err(__err);
+                                                        }
+                                                    };
+                                                }
+                                            }
+                                        }
+                                        let __field0 = match __field0 {
+                                            _serde::export::Some(__field0) => __field0,
+                                            _serde::export::None => {
+                                                match _serde::private::de::missing_field("amount") {
+                                                    _serde::export::Ok(__val) => __val,
+                                                    _serde::export::Err(__err) => {
+                                                        return _serde::export::Err(__err);
+                                                    }
+                                                }
+                                            }
+                                        };
+                                        _serde::export::Ok(SrmSafeInstruction::MintLockedSrm {
+                                            amount: __field0,
+                                        })
+                                    }
+                                }
+                                const FIELDS: &'static [&'static str] = &["amount"];
+                                _serde::de::VariantAccess::struct_variant(
+                                    __variant,
+                                    FIELDS,
+                                    __Visitor {
+                                        marker: _serde::export::PhantomData::<SrmSafeInstruction>,
+                                        lifetime: _serde::export::PhantomData,
+                                    },
+                                )
+                            }
+                            (__Field::__field5, __variant) => {
+                                #[allow(non_camel_case_types)]
+                                enum __Field {
+                                    __field0,
+                                    __ignore,
+                                }
+                                struct __FieldVisitor;
+                                impl<'de> _serde::de::Visitor<'de> for __FieldVisitor {
+                                    type Value = __Field;
+                                    fn expecting(
+                                        &self,
+                                        __formatter: &mut _serde::export::Formatter,
+                                    ) -> _serde::export::fmt::Result
+                                    {
+                                        _serde::export::Formatter::write_str(
+                                            __formatter,
+                                            "field identifier",
+                                        )
+                                    }
+                                    fn visit_u64<__E>(
+                                        self,
+                                        __value: u64,
+                                    ) -> _serde::export::Result<Self::Value, __E>
+                                    where
+                                        __E: _serde::de::Error,
+                                    {
+                                        match __value {
+                                            0u64 => _serde::export::Ok(__Field::__field0),
+                                            _ => _serde::export::Err(
+                                                _serde::de::Error::invalid_value(
+                                                    _serde::de::Unexpected::Unsigned(__value),
+                                                    &"field index 0 <= i < 1",
+                                                ),
+                                            ),
+                                        }
+                                    }
+                                    fn visit_str<__E>(
+                                        self,
+                                        __value: &str,
+                                    ) -> _serde::export::Result<Self::Value, __E>
+                                    where
+                                        __E: _serde::de::Error,
+                                    {
+                                        match __value {
+                                            "amount" => _serde::export::Ok(__Field::__field0),
+                                            _ => _serde::export::Ok(__Field::__ignore),
+                                        }
+                                    }
+                                    fn visit_bytes<__E>(
+                                        self,
+                                        __value: &[u8],
+                                    ) -> _serde::export::Result<Self::Value, __E>
+                                    where
+                                        __E: _serde::de::Error,
+                                    {
+                                        match __value {
+                                            b"amount" => _serde::export::Ok(__Field::__field0),
+                                            _ => _serde::export::Ok(__Field::__ignore),
+                                        }
+                                    }
+                                }
+                                impl<'de> _serde::Deserialize<'de> for __Field {
+                                    #[inline]
+                                    fn deserialize<__D>(
+                                        __deserializer: __D,
+                                    ) -> _serde::export::Result<Self, __D::Error>
+                                    where
+                                        __D: _serde::Deserializer<'de>,
+                                    {
+                                        _serde::Deserializer::deserialize_identifier(
+                                            __deserializer,
+                                            __FieldVisitor,
+                                        )
+                                    }
+                                }
+                                struct __Visitor<'de> {
+                                    marker: _serde::export::PhantomData<SrmSafeInstruction>,
+                                    lifetime: _serde::export::PhantomData<&'de ()>,
+                                }
+                                impl<'de> _serde::de::Visitor<'de> for __Visitor<'de> {
+                                    type Value = SrmSafeInstruction;
+                                    fn expecting(
+                                        &self,
+                                        __formatter: &mut _serde::export::Formatter,
+                                    ) -> _serde::export::fmt::Result
+                                    {
+                                        _serde::export::Formatter::write_str(
+                                            __formatter,
+                                            "struct variant SrmSafeInstruction::BurnLockedSrm",
+                                        )
+                                    }
+                                    #[inline]
+                                    fn visit_seq<__A>(
+                                        self,
+                                        mut __seq: __A,
+                                    ) -> _serde::export::Result<Self::Value, __A::Error>
+                                    where
+                                        __A: _serde::de::SeqAccess<'de>,
+                                    {
+                                        let __field0 =
+                                            match match _serde::de::SeqAccess::next_element::<u64>(
+                                                &mut __seq,
+                                            ) {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            } {
+                                                _serde::export::Some(__value) => __value,
+                                                _serde::export::None => {
+                                                    return _serde :: export :: Err ( _serde :: de :: Error :: invalid_length ( 0usize , & "struct variant SrmSafeInstruction::BurnLockedSrm with 1 element" ) ) ;
+                                                }
+                                            };
+                                        _serde::export::Ok(SrmSafeInstruction::BurnLockedSrm {
+                                            amount: __field0,
+                                        })
+                                    }
+                                    #[inline]
+                                    fn visit_map<__A>(
+                                        self,
+                                        mut __map: __A,
+                                    ) -> _serde::export::Result<Self::Value, __A::Error>
+                                    where
+                                        __A: _serde::de::MapAccess<'de>,
+                                    {
+                                        let mut __field0: _serde::export::Option<u64> =
+                                            _serde::export::None;
+                                        while let _serde::export::Some(__key) =
+                                            match _serde::de::MapAccess::next_key::<__Field>(
+                                                &mut __map,
+                                            ) {
+                                                _serde::export::Ok(__val) => __val,
+                                                _serde::export::Err(__err) => {
+                                                    return _serde::export::Err(__err);
+                                                }
+                                            }
+                                        {
+                                            match __key {
+                                                __Field::__field0 => {
+                                                    if _serde::export::Option::is_some(&__field0) {
+                                                        return _serde :: export :: Err ( < __A :: Error as _serde :: de :: Error > :: duplicate_field ( "amount" ) ) ;
+                                                    }
+                                                    __field0 = _serde::export::Some(
+                                                        match _serde::de::MapAccess::next_value::<u64>(
+                                                            &mut __map,
+                                                        ) {
+                                                            _serde::export::Ok(__val) => __val,
+                                                            _serde::export::Err(__err) => {
+                                                                return _serde::export::Err(__err);
+                                                            }
+                                                        },
+                                                    );
+                                                }
+                                                _ => {
+                                                    let _ = match _serde::de::MapAccess::next_value::<
+                                                        _serde::de::IgnoredAny,
+                                                    >(
+                                                        &mut __map
+                                                    ) {
+                                                        _serde::export::Ok(__val) => __val,
+                                                        _serde::export::Err(__err) => {
+                                                            return _serde::export::Err(__err);
+                                                        }
+                                                    };
+                                                }
+                                            }
+                                        }
+                                        let __field0 = match __field0 {
+                                            _serde::export::Some(__field0) => __field0,
+                                            _serde::export::None => {
+                                                match _serde::private::de::missing_field("amount") {
+                                                    _serde::export::Ok(__val) => __val,
+                                                    _serde::export::Err(__err) => {
+                                                        return _serde::export::Err(__err);
+                                                    }
+                                                }
+                                            }
+                                        };
+                                        _serde::export::Ok(SrmSafeInstruction::BurnLockedSrm {
+                                            amount: __field0,
+                                        })
+                                    }
+                                }
+                                const FIELDS: &'static [&'static str] = &["amount"];
+                                _serde::de::VariantAccess::struct_variant(
+                                    __variant,
+                                    FIELDS,
+                                    __Visitor {
+                                        marker: _serde::export::PhantomData::<SrmSafeInstruction>,
+                                        lifetime: _serde::export::PhantomData,
+                                    },
+                                )
+                            }
+                        }
+                    }
+                }
+                const VARIANTS: &'static [&'static str] = &[
+                    "Initialize",
+                    "Slash",
+                    "DepositSrm",
+                    "WithdrawSrm",
+                    "MintLockedSrm",
+                    "BurnLockedSrm",
+                ];
+                _serde::Deserializer::deserialize_enum(
+                    __deserializer,
+                    "SrmSafeInstruction",
+                    VARIANTS,
+                    __Visitor {
+                        marker: _serde::export::PhantomData::<SrmSafeInstruction>,
+                        lifetime: _serde::export::PhantomData,
+                    },
+                )
+            }
+        }
+    };
+}
+struct _DefaultCoder;
+impl _DefaultCoder {
+    pub fn to_bytes(i: instruction::SrmSafeInstruction) -> Vec<u8> {
+        bincode::serialize(&(0u8, i)).expect("instruction must be serializable")
+    }
+    pub fn from_bytes(data: &[u8]) -> Result<Vec<u8>, ()> {
+        match data.split_first() {
+            None => Err(()),
+            Some((&u08, rest)) => bincode::deserialize(rest).map_err(|_| ()),
+            Some((_, _rest)) => Err(()),
+        }
+    }
+}

@@ -1,8 +1,8 @@
 #![allow(unused)]
 use anyhow::{format_err, Result};
 use clap::Clap;
-use rand::prelude::*;
 use log::{error, info, warn};
+use rand::prelude::*;
 use rand::rngs::OsRng;
 use safe_transmute::{
     guard::{PermissiveGuard, SingleManyGuard, SingleValueGuard},
@@ -10,6 +10,8 @@ use safe_transmute::{
     transmute_many, transmute_many_pedantic, transmute_many_permissive, transmute_one,
     transmute_one_pedantic, try_copy,
 };
+use serum_common::rpc::{create_spl_account, send_txn};
+use serum_common::Cluster;
 use serum_dex::instruction::{MarketInstruction, NewOrderInstruction};
 use serum_dex::matching::{OrderType, Side};
 use serum_dex::state::gen_vault_signer_key;
@@ -37,53 +39,13 @@ use std::num::NonZeroU64;
 use std::str::FromStr;
 use std::{thread, time};
 
-use std::sync::mpsc::{Sender, Receiver};
 use sloggers::file::FileLoggerBuilder;
 use sloggers::types::Severity;
 use sloggers::Build;
+use std::sync::mpsc::{Receiver, Sender};
 
 pub fn with_logging<F: FnOnce()>(to: &str, fnc: F) {
     fnc();
-}
-
-#[derive(Debug)]
-enum Cluster {
-    Testnet,
-    Mainnet,
-    VipMainnet,
-    Devnet,
-    Localnet,
-    Debug,
-}
-
-impl FromStr for Cluster {
-    type Err = anyhow::Error;
-    fn from_str(s: &str) -> Result<Cluster> {
-        match s.to_lowercase().as_str() {
-            "t" | "testnet" => Ok(Cluster::Testnet),
-            "m" | "mainnet" => Ok(Cluster::Mainnet),
-            "v" | "vipmainnet" => Ok(Cluster::VipMainnet),
-            "d" | "devnet" => Ok(Cluster::Devnet),
-            "l" | "localnet" => Ok(Cluster::Localnet),
-            "g" | "debug" => Ok(Cluster::Debug),
-            _ => Err(anyhow::Error::msg(
-                "Cluster must be one of [testnet, mainnet, devnet]\n",
-            )),
-        }
-    }
-}
-
-impl Cluster {
-    fn url(&self) -> &'static str {
-        match self {
-            Cluster::Devnet => "https://devnet.solana.com",
-            Cluster::Testnet => "https://testnet.solana.com",
-            Cluster::Mainnet => "https://api.mainnet-beta.solana.com",
-            Cluster::VipMainnet => "https://vip-api.mainnet-beta.solana.com",
-            Cluster::Localnet => "http://127.0.0.1:8899",
-            Cluster::Debug => "http://34.90.18.145:8899",
-        }
-    }
 }
 
 fn read_keypair_file(s: &str) -> Result<Keypair> {
@@ -328,10 +290,9 @@ fn main() -> Result<()> {
             let client = opts.client();
             let _ = std::thread::spawn(move || accept_loop(port, send));
             let websockets = std::thread::spawn(move || websockets_loop(recv));
-            let _ = std::thread::spawn(move || read_queue_length_loop(client,
-            dex_program_id,
-            market,
-            queue_send));
+            let _ = std::thread::spawn(move || {
+                read_queue_length_loop(client, dex_program_id, market, queue_send)
+            });
             // Failures in the others will propagate to this loop via timeout
             websockets.join();
         }
@@ -407,16 +368,6 @@ fn main() -> Result<()> {
         }
     }
     Ok(())
-}
-
-fn send_txn(client: &RpcClient, txn: &Transaction, simulate: bool) -> Result<Signature> {
-    Ok(client.send_and_confirm_transaction_with_spinner_and_config(
-        txn,
-        CommitmentConfig::single(),
-        RpcSendTransactionConfig {
-            skip_preflight: true,
-        },
-    )?)
 }
 
 #[derive(Debug)]
@@ -1023,10 +974,10 @@ fn list_market(
     } = listing_keys;
 
     println!("Creating coin vault...");
-    let coin_vault = create_account(client, coin_mint, &vault_signer_pk, payer)?;
+    let coin_vault = create_spl_account(client, coin_mint, &vault_signer_pk, payer)?;
 
     println!("Creating pc vault...");
-    let pc_vault = create_account(client, pc_mint, &listing_keys.vault_signer_pk, payer)?;
+    let pc_vault = create_spl_account(client, pc_mint, &listing_keys.vault_signer_pk, payer)?;
 
     let init_market_instruction = serum_dex::instruction::initialize_market(
         &market_key.pubkey(),
@@ -1196,48 +1147,6 @@ fn match_orders(
         send_txn(client, &txn, false)?;
     }
     Ok(())
-}
-
-fn create_account(
-    client: &RpcClient,
-    mint_pubkey: &Pubkey,
-    owner_pubkey: &Pubkey,
-    payer: &Keypair,
-) -> Result<Keypair> {
-    let spl_account = Keypair::generate(&mut OsRng);
-    let signers = vec![payer, &spl_account];
-
-    let lamports = client.get_minimum_balance_for_rent_exemption(spl_token::state::Account::LEN)?;
-
-    let create_account_instr = solana_sdk::system_instruction::create_account(
-        &payer.pubkey(),
-        &spl_account.pubkey(),
-        lamports,
-        spl_token::state::Account::LEN as u64,
-        &spl_token::ID,
-    );
-
-    let init_account_instr = token_instruction::initialize_account(
-        &spl_token::ID,
-        &spl_account.pubkey(),
-        &mint_pubkey,
-        &owner_pubkey,
-    )?;
-
-    let instructions = vec![create_account_instr, init_account_instr];
-
-    let (recent_hash, _fee_calc) = client.get_recent_blockhash()?;
-
-    let txn = Transaction::new_signed_with_payer(
-        &instructions,
-        Some(&payer.pubkey()),
-        &signers,
-        recent_hash,
-    );
-
-    println!("Creating account: {} ...", spl_account.pubkey());
-    send_txn(client, &txn, false)?;
-    Ok(spl_account)
 }
 
 fn mint_to_existing_account(
@@ -1414,7 +1323,7 @@ fn websockets_loop(mut recv: Receiver<MonitorEvent>) {
                 for socket in &mut websockets {
                     socket.write_message(message.clone()).unwrap();
                 }
-            },
+            }
             MonitorEvent::NewConn(conn) => {
                 // Tungstenite errors don't implement debug so we can't unwrap?
                 // Generally we just die here anyways
@@ -1432,7 +1341,7 @@ fn read_queue_length_loop(
     client: RpcClient,
     program_id: Pubkey,
     market: Pubkey,
-    sender: std::sync::mpsc::Sender<MonitorEvent>
+    sender: std::sync::mpsc::Sender<MonitorEvent>,
 ) -> Result<()> {
     let market_keys = get_keys_for_market(&client, &program_id, &market)?;
     loop {

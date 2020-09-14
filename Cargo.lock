@@ -261,6 +261,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "codegen"
+version = "0.1.0"
+dependencies = [
+ "heck",
+ "proc-macro2 0.4.30",
+ "proc-quote",
+ "syn 0.15.44",
+]
+
+[[package]]
 name = "console"
 version = "0.11.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -694,6 +704,12 @@ dependencies = [
  "tokio-util",
  "tracing",
 ]
+
+[[package]]
+name = "half"
+version = "1.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d36fab90f82edc3c747f9d438e06cf0a491055896f2a279638bb5beed6c40177"
 
 [[package]]
 name = "hashbrown"
@@ -1794,6 +1810,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde_cbor"
+version = "0.11.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1e18acfa2f90e8b735b2836ab8d538de304cbb6729a7360729ea5a895d15a622"
+dependencies = [
+ "half",
+ "serde",
+]
+
+[[package]]
 name = "serde_derive"
 version = "1.0.116"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1849,15 +1875,9 @@ dependencies = [
 name = "serum-safe-interface"
 version = "0.1.0"
 dependencies = [
- "solana-client",
+ "serde",
  "solana-client-gen",
- "solana-sdk",
- "thiserror",
 ]
-
-[[package]]
-name = "serum_safe_client"
-version = "0.1.0"
 
 [[package]]
 name = "sha-1"
@@ -1991,10 +2011,14 @@ dependencies = [
 name = "solana-client-gen"
 version = "0.1.0"
 dependencies = [
- "heck",
- "proc-macro2 0.4.30",
- "proc-quote",
- "syn 0.15.44",
+ "codegen",
+ "lazy_static",
+ "parking_lot 0.11.0",
+ "serde",
+ "serde_cbor",
+ "solana-client",
+ "solana-sdk",
+ "thiserror",
 ]
 
 [[package]]
