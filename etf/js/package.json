@@ -1,0 +1,60 @@
+{
+  "name": "serum-etf",
+  "version": "0.0.1",
+  "description": "",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/solana-labs/solana-program-library"
+  },
+  "testnetDefaultChannel": "v1.3.9",
+  "scripts": {
+    "start": "babel-node --ignore node_modules cli/main.js",
+    "lint": "npm run pretty && eslint .",
+    "lint:fix": "npm run lint -- --fix",
+    "flow": "flow",
+    "flow:watch": "watch 'flow' . --wait=1 --ignoreDirectoryPattern=/doc/",
+    "lint:watch": "watch 'npm run lint:fix' . --wait=1",
+    "cluster:localnet": "rm -f .env",
+    "cluster:devnet": "cp cluster-devnet.env .env",
+    "cluster:testnet": "cp cluster-testnet.env .env",
+    "cluster:mainnet-beta": "cp cluster-mainnet-beta.env .env",
+    "localnet:update": "solana-localnet update",
+    "localnet:up": "rm client/util/store/config.json; set -x; solana-localnet down; set -e; solana-localnet up",
+    "localnet:down": "solana-localnet down",
+    "localnet:logs": "solana-localnet logs -f",
+    "pretty": "prettier --write '{,src/**/}*.js'"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@babel/runtime": "^7.11.2",
+    "@solana/web3.js": "^0.75.0",
+    "bn.js": "^5.1.3",
+    "buffer-layout": "^1.2.0",
+    "dotenv": "8.2.0",
+    "json-to-pretty-yaml": "^1.2.2",
+    "mkdirp-promise": "^5.0.1"
+  },
+  "devDependencies": {
+    "@babel/cli": "^7.11.5",
+    "@babel/core": "^7.11.6",
+    "@babel/node": "^7.10.5",
+    "@babel/plugin-proposal-class-properties": "^7.10.4",
+    "@babel/plugin-transform-runtime": "^7.11.5",
+    "@babel/preset-env": "^7.11.0",
+    "@babel/preset-flow": "^7.10.4",
+    "babel-eslint": "^10.1.0",
+    "eslint": "^7.8.1",
+    "eslint-plugin-import": "^2.22.0",
+    "flow-bin": "0.131.0",
+    "flow-typed": "^3.2.0",
+    "mz": "^2.7.0",
+    "prettier": "^2.1.1",
+    "semver": "^7.0.0",
+    "watch": "^1.0.2"
+  },
+  "engines": {
+    "node": ">= 10"
+  }
+}
