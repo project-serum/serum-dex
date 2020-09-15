@@ -67,6 +67,8 @@ NDEBUG=1 ./run.sh
 
 # Deploy the dex to our cluster (in the old shell)
 solana config set -u http://127.0.0.1:8899
+solana-keygen new
+solana airdrop 100
 DEX_PROGRAM_ID="$(solana deploy dex/target/bpfel-unknown-unknown/release/serum_dex.so --use-deprecated-loader | jq .programId -r)"
 CLUSTER=localnet
 KEYPAIR=~/.config/solana/id.json
