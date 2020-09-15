@@ -190,6 +190,7 @@ fn run_actions(actions: Vec<Action>) {
             }
         }
     }
+
     actions.push(Action::MatchOrders(100));
     actions.push(Action::ConsumeEvents(100));
     for (owner_id, owner) in owners.iter().sorted_by_key(|(order_id, _)| *order_id) {
@@ -201,6 +202,27 @@ fn run_actions(actions: Vec<Action>) {
     actions.push(Action::SweepFees);
     for action in actions {
         run_action(action, &market_accounts, &mut owners, &mut referrers, &bump);
+    }
+
+    for owner in owners.values() {
+        let market_state =
+            MarketState::load(&market_accounts.market, market_accounts.market.owner).unwrap();
+        let load_orders_result = market_state.load_orders_mut(
+            &owner.orders_account,
+            Some(&owner.signer_account),
+            market_accounts.market.owner,
+            None,
+        );
+        let open_orders = match load_orders_result {
+            Err(e) if e == DexErrorCode::RentNotProvided.into() => {
+                continue;
+            }
+            _ => load_orders_result.unwrap(),
+        };
+        assert_eq!(open_orders.native_coin_free, 0);
+        assert_eq!(open_orders.native_coin_total, 0);
+        assert_eq!(open_orders.native_pc_free, 0);
+        assert_eq!(open_orders.native_pc_total, 0);
     }
 
     let market_state =

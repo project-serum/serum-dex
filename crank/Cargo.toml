@@ -20,3 +20,4 @@ slog-scope = "4.3"
 slog-stdlog = "4"
 log = "0.4"
 tungstenite = {version="0.1", default-features=false}
+debug_print = "1.0.0"

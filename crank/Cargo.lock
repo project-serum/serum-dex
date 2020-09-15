@@ -422,6 +422,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap 3.0.0-beta.1",
+ "debug_print",
  "log 0.4.11",
  "rand 0.7.3",
  "safe-transmute",
@@ -539,6 +540,12 @@ dependencies = [
  "subtle 2.2.3",
  "zeroize",
 ]
+
+[[package]]
+name = "debug_print"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8f215f9b7224f49fb73256115331f677d868b34d18b65dbe4db392e6021eea90"
 
 [[package]]
 name = "derivative"

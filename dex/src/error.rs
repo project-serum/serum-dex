@@ -23,7 +23,7 @@ impl From<AssertionError> for DexError {
     }
 }
 
-#[derive(Error, Debug)]
+#[derive(Error, Debug, PartialEq, Eq)]
 pub enum DexError {
     #[error(transparent)]
     ProgramError(#[from] ProgramError),
@@ -31,7 +31,7 @@ pub enum DexError {
     ErrorCode(#[from] DexErrorCode),
 }
 
-#[derive(Debug, IntoPrimitive, FromPrimitive, Clone, Copy)]
+#[derive(Debug, IntoPrimitive, FromPrimitive, Clone, Copy, PartialEq, Eq)]
 #[repr(u32)]
 pub enum DexErrorCode {
     InvalidMarketFlags = 0,

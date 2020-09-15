@@ -314,6 +314,29 @@ impl<'ob> OrderBookState<'ob> {
                 .as_leaf_mut()
                 .unwrap();
 
+            let order_would_self_trade = owner == best_bid_ref.owner();
+            if order_would_self_trade {
+                let best_bid_id = *best_bid_ref.order_id();
+                event_q
+                    .push_back(Event::new(EventView::Out {
+                        side: Side::Bid,
+                        native_qty_unlocked: best_bid_ref.quantity()
+                            * best_bid_ref.price().get()
+                            * pc_lot_size,
+                        native_qty_still_locked: 0,
+                        order_id: &best_bid_id,
+                        owner: best_bid_ref.owner(),
+                        owner_slot: best_bid_ref.owner_slot(),
+                        client_order_id: NonZeroU64::new(best_bid_ref.client_order_id()),
+                    }))
+                    .map_err(|_| DexErrorCode::EventQueueFull)?;
+                self.orders_mut(Side::Bid)
+                    .remove_by_key(&best_bid_id)
+                    .unwrap();
+                crossed = true;
+                break false;
+            }
+
             let trade_price = best_bid_ref.price();
             crossed = limit_price <= trade_price;
 
@@ -523,6 +546,27 @@ impl<'ob> OrderBookState<'ob> {
                 .as_leaf_mut()
                 .unwrap();
 
+            let order_would_self_trade = owner == best_offer_ref.owner();
+            if order_would_self_trade {
+                let best_offer_id = *best_offer_ref.order_id();
+                event_q
+                    .push_back(Event::new(EventView::Out {
+                        side: Side::Ask,
+                        native_qty_unlocked: best_offer_ref.quantity() * coin_lot_size,
+                        native_qty_still_locked: 0,
+                        order_id: &best_offer_id,
+                        owner: best_offer_ref.owner(),
+                        owner_slot: best_offer_ref.owner_slot(),
+                        client_order_id: NonZeroU64::new(best_offer_ref.client_order_id()),
+                    }))
+                    .map_err(|_| DexErrorCode::EventQueueFull)?;
+                self.orders_mut(Side::Ask)
+                    .remove_by_key(&best_offer_id)
+                    .unwrap();
+                crossed = true;
+                break false;
+            }
+
             let trade_price = best_offer_ref.price();
             crossed = limit_price
                 .map(|limit_price| limit_price >= trade_price)
@@ -539,7 +583,6 @@ impl<'ob> OrderBookState<'ob> {
             if trade_qty == 0 {
                 break true;
             }
-
             let maker_fee_tier = best_offer_ref.fee_tier();
             let native_maker_pc_qty = trade_qty * trade_price.get() * pc_lot_size;
             let native_maker_rebate = maker_fee_tier.maker_rebate(native_maker_pc_qty);

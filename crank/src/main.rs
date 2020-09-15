@@ -42,6 +42,8 @@ use sloggers::file::FileLoggerBuilder;
 use sloggers::types::Severity;
 use sloggers::Build;
 
+use debug_print::debug_println;
+
 pub fn with_logging<F: FnOnce()>(to: &str, fnc: F) {
     fnc();
 }
@@ -282,9 +284,9 @@ fn main() -> Result<()> {
         } => {
             let payer = read_keypair_file(&payer)?;
 
-            println!("Getting market keys ...");
+            debug_println!("Getting market keys ...");
             let market_keys = get_keys_for_market(&client, dex_program_id, &market)?;
-            println!("{:#?}", market_keys);
+            debug_println!("{:#?}", market_keys);
             match_orders(
                 &client,
                 dex_program_id,
@@ -343,9 +345,9 @@ fn main() -> Result<()> {
             let event_q_data = client.get_account_data(&market_keys.event_q)?;
             let inner: Cow<[u64]> = remove_dex_account_padding(&event_q_data)?;
             let (header, events_seg0, events_seg1) = parse_event_queue(&inner)?;
-            println!("Header:\n{:#x?}", header);
-            println!("Seg0:\n{:#x?}", events_seg0);
-            println!("Seg1:\n{:#x?}", events_seg1);
+            debug_println!("Header:\n{:#x?}", header);
+            debug_println!("Seg0:\n{:#x?}", events_seg0);
+            debug_println!("Seg1:\n{:#x?}", events_seg1);
         }
         Command::WholeShebang {
             ref dex_program_id,
@@ -403,13 +405,14 @@ fn main() -> Result<()> {
         } => {
             let owner = read_keypair_file(owner_account)?;
             let initialized_account = initialize_token_account(&client, mint, &owner)?;
-            println!("Initialized account: {}", initialized_account.pubkey());
+            debug_println!("Initialized account: {}", initialized_account.pubkey());
         }
     }
     Ok(())
 }
 
 fn send_txn(client: &RpcClient, txn: &Transaction, simulate: bool) -> Result<Signature> {
+    use solana_sdk::commitment_config::CommitmentLevel;
     Ok(client.send_and_confirm_transaction_with_spinner_and_config(
         txn,
         CommitmentConfig::single(),
@@ -569,7 +572,7 @@ fn consume_events_loop(
         info!("Size of request queue is {}", req_q_len);
 
         if event_q_len == 0 {
-            println!("Total event queue length: 0, returning early");
+            debug_println!("Total event queue length: 0, returning early");
             let one_hundred_millis = time::Duration::from_millis(300);
             thread::sleep(one_hundred_millis);
         } else {
@@ -608,7 +611,7 @@ fn consume_events_loop(
             {
                 account_metas.push(AccountMeta::new(**pubkey, false));
             }
-            println!("Number of workers: {}", num_workers);
+            debug_println!("Number of workers: {}", num_workers);
             let end_time = std::time::Instant::now();
             info!(
                 "Fetching {} events from the queue took {}",
@@ -777,11 +780,11 @@ fn consume_events(
 
 fn whole_shebang(client: &RpcClient, program_id: &Pubkey, payer: &Keypair) -> Result<()> {
     let coin_mint = Keypair::generate(&mut OsRng);
-    println!("Coin mint: {}", coin_mint.pubkey());
+    debug_println!("Coin mint: {}", coin_mint.pubkey());
     genesis(client, payer, &coin_mint, &payer.pubkey(), 3)?;
 
     let pc_mint = Keypair::generate(&mut OsRng);
-    println!("Pc mint: {}", pc_mint.pubkey());
+    debug_println!("Pc mint: {}", pc_mint.pubkey());
     genesis(client, payer, &pc_mint, &payer.pubkey(), 3)?;
 
     let market_keys = list_market(
@@ -793,9 +796,9 @@ fn whole_shebang(client: &RpcClient, program_id: &Pubkey, payer: &Keypair) -> Re
         1_000_000,
         10_000,
     )?;
-    println!("Market keys: {:#?}", market_keys);
+    debug_println!("Market keys: {:#?}", market_keys);
 
-    println!("Minting coin...");
+    debug_println!("Minting coin...");
     let coin_wallet = mint_to_new_account(
         client,
         payer,
@@ -803,9 +806,9 @@ fn whole_shebang(client: &RpcClient, program_id: &Pubkey, payer: &Keypair) -> Re
         &coin_mint.pubkey(),
         1_000_000_000_000_000,
     )?;
-    println!("Minted {}", coin_wallet.pubkey());
+    debug_println!("Minted {}", coin_wallet.pubkey());
 
-    println!("Minting price currency...");
+    debug_println!("Minting price currency...");
     let pc_wallet = mint_to_new_account(
         client,
         payer,
@@ -813,9 +816,9 @@ fn whole_shebang(client: &RpcClient, program_id: &Pubkey, payer: &Keypair) -> Re
         &pc_mint.pubkey(),
         1_000_000_000_000_000,
     )?;
-    println!("Minted {}", pc_wallet.pubkey());
+    debug_println!("Minted {}", pc_wallet.pubkey());
 
-    println!("Placing bid...");
+    debug_println!("Placing bid...");
     let mut orders = None;
     place_order(
         client,
@@ -833,9 +836,9 @@ fn whole_shebang(client: &RpcClient, program_id: &Pubkey, payer: &Keypair) -> Re
         },
     )?;
 
-    println!("Bid account: {}", orders.unwrap());
+    debug_println!("Bid account: {}", orders.unwrap());
 
-    println!("Placing offer...");
+    debug_println!("Placing offer...");
     let mut orders = None;
     place_order(
         client,
@@ -853,9 +856,9 @@ fn whole_shebang(client: &RpcClient, program_id: &Pubkey, payer: &Keypair) -> Re
         },
     )?;
 
-    println!("Ask account: {}", orders.unwrap());
+    debug_println!("Ask account: {}", orders.unwrap());
 
-    println!("Matching orders in 15s ...");
+    debug_println!("Matching orders in 15s ...");
     std::thread::sleep(std::time::Duration::new(15, 0));
     match_orders(
         client,
@@ -865,7 +868,7 @@ fn whole_shebang(client: &RpcClient, program_id: &Pubkey, payer: &Keypair) -> Re
         &coin_wallet.pubkey(),
         &pc_wallet.pubkey(),
     )?;
-    println!("Consuming events in 15s ...");
+    debug_println!("Consuming events in 15s ...");
     std::thread::sleep(std::time::Duration::new(15, 0));
     consume_events(
         client,
@@ -989,14 +992,14 @@ fn settle_funds(
     loop {
         i += 1;
         assert!(i < 10);
-        println!("Simulating SettleFunds instruction ...");
+        debug_println!("Simulating SettleFunds instruction ...");
         let result = client.simulate_transaction(&txn, true)?;
-        println!("{:#?}", result.value);
+        debug_println!("{:#?}", result.value);
         if result.value.err.is_none() {
             break;
         }
     }
-    println!("Settling ...");
+    debug_println!("Settling ...");
     send_txn(client, &txn, false)?;
     Ok(())
 }
@@ -1022,10 +1025,10 @@ fn list_market(
         vault_signer_nonce,
     } = listing_keys;
 
-    println!("Creating coin vault...");
+    debug_println!("Creating coin vault...");
     let coin_vault = create_account(client, coin_mint, &vault_signer_pk, payer)?;
 
-    println!("Creating pc vault...");
+    debug_println!("Creating pc vault...");
     let pc_vault = create_account(client, pc_mint, &listing_keys.vault_signer_pk, payer)?;
 
     let init_market_instruction = serum_dex::instruction::initialize_market(
@@ -1044,7 +1047,7 @@ fn list_market(
         vault_signer_nonce,
         100,
     )?;
-    println!(
+    debug_println!(
         "initialize_market_instruction: {:#?}",
         &init_market_instruction
     );
@@ -1069,10 +1072,10 @@ fn list_market(
         recent_hash,
     );
 
-    println!("txn:\n{:#x?}", txn);
+    debug_println!("txn:\n{:#x?}", txn);
     let result = client.simulate_transaction(&txn, true)?;
-    println!("{:#?}", result.value);
-    println!("Listing {} ...", market_key.pubkey());
+    debug_println!("{:#?}", result.value);
+    debug_println!("Listing {} ...", market_key.pubkey());
     send_txn(client, &txn, false)?;
 
     Ok(MarketPubkeys {
@@ -1104,7 +1107,7 @@ fn gen_listing_params(
     coin_mint: &Pubkey,
     pc_mint: &Pubkey,
 ) -> Result<(ListingKeys, Vec<Instruction>)> {
-    let (market_key, create_market) = create_dex_account(client, program_id, payer, 368)?;
+    let (market_key, create_market) = create_dex_account(client, program_id, payer, 376)?;
     let (req_q_key, create_req_q) = create_dex_account(client, program_id, payer, 640)?;
     let (event_q_key, create_event_q) = create_dex_account(client, program_id, payer, 1 << 20)?;
     let (bids_key, create_bids) = create_dex_account(client, program_id, payer, 1 << 16)?;
@@ -1188,11 +1191,11 @@ fn match_orders(
         recent_hash,
     );
 
-    println!("Simulating order matching ...");
+    debug_println!("Simulating order matching ...");
     let result = client.simulate_transaction(&txn, true)?;
-    println!("{:#?}", result.value);
+    debug_println!("{:#?}", result.value);
     if result.value.err.is_none() {
-        println!("Matching orders ...");
+        debug_println!("Matching orders ...");
         send_txn(client, &txn, false)?;
     }
     Ok(())
@@ -1235,7 +1238,7 @@ fn create_account(
         recent_hash,
     );
 
-    println!("Creating account: {} ...", spl_account.pubkey());
+    debug_println!("Creating account: {} ...", spl_account.pubkey());
     send_txn(client, &txn, false)?;
     Ok(spl_account)
 }
