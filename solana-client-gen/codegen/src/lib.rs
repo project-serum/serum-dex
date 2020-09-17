@@ -99,9 +99,37 @@ pub fn solana_client_gen(
                 #[error("Invalid keypair filename")]
                 InvalidKeyPairFile(String),
                 #[error("Error invoking rpc")]
-                RpcError(solana_client::client_error::ClientError),
+                RpcError(#[from] solana_client::client_error::ClientError),
                 #[error("Raw error")]
                 RawError(String),
+            }
+
+            use solana_client_gen::solana_sdk::instruction::InstructionError;
+            use solana_client_gen::solana_sdk::transaction::TransactionError;
+            use solana_client_gen::solana_client::client_error::ClientErrorKind as RpcClientErrorKind;
+
+            impl ClientError {
+                // error_code returns Some(error_code) returned by the on chain program
+                // and none if the error resulted from somewhere else.
+                //
+                // TODO: there's gotta be a cleaner way of unpacking this.
+                pub fn error_code(&self) -> Option<u32> {
+                    match self {
+                        ClientError::RpcError(e) => match e.kind() {
+                            RpcClientErrorKind::TransactionError(e) => match e {
+                                TransactionError::InstructionError(_, instr_error) => match instr_error {
+                                    InstructionError::Custom(error_code) => {
+                                        Some(*error_code)
+                                    }
+                                    _ => None,
+                                },
+                                _ => None,
+                            },
+                            _ => None,
+                        },
+                        _ => None,
+                    }
+                }
             }
 
             #[derive(Debug)]

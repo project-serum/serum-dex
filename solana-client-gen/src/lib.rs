@@ -8,6 +8,7 @@
 //! one can have their interface in `my-crate/src/lib.rs`, while the program
 //! lives in `my-crate/program/src/lib.rs`.
 //!
+//!```
 //! // my-crate/src/lib.rs
 //!
 //! use solana_client_gen::prelude::*;
@@ -24,6 +25,7 @@
 //!      b: u64,
 //!    },
 //! }
+//! ```
 //!
 //! # Using a generated client.
 //!
@@ -66,7 +68,7 @@
 //! methods to create `solana_sdk::instruction::Instruction` types. For example,
 //!
 //! ```
-//! let instruction = program_interface::instruction::add(1, 2);
+//! let instruction = program_interface::instruction::add(2, 3);
 //! ```
 //!
 //! This can be used to generate instructions to be invoked with other Solana
@@ -180,4 +182,6 @@ pub mod prelude {
 }
 
 // Re-export.
+#[cfg(feature = "client")]
+pub use solana_client;
 pub use solana_sdk;
