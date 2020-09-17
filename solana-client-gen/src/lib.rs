@@ -5,8 +5,10 @@
 //!
 //! To start, one should make an "interface" crate, separate from one's Solana
 //! program, where instructions for the program are defined. For example,
+//! one can have their interface in `my-crate/src/lib.rs`, while the program
+//! lives in `my-crate/program/src/lib.rs`.
 //!
-//! // program/interface/lib.rs
+//! // my-crate/src/lib.rs
 //!
 //! use solana_client_gen::prelude::*;
 //!
@@ -25,9 +27,9 @@
 //!
 //! # Using a generated client.
 //!
-//! With this definition, one can include the program/interface, and use a
-//! generated RPC client. Continuing the example above, one can invoke the
-//! `Add` instruction on the Solana cluster:
+//! With this definition, one can include the crate, and use a generated RPC
+//! client. Continuing the example above, one can invoke the `Add` instruction
+//! on the Solana cluster:
 //!
 //! ```
 //! use program_interface::client::{Client, ClientError};
@@ -69,6 +71,32 @@
 //!
 //! This can be used to generate instructions to be invoked with other Solana
 //! programs or to generate transactions manually,
+//!
+//! # Atomic account creation.
+//!
+//! It's not uncommon to want to atomically create an account and execute an
+//! instruction. For example, in the SPL token standard, one must include
+//! two instructions in the same transaction: one to create the mint account
+//! and another to initialize the mint. To do this, add the #[create_account]
+//! attribute to your instruction. For example
+//!
+//! ```
+//! #[cfg_attr(feature = "client", solana_client_gen)]
+//! pub mod instruction {
+//!   #[cfg_attr(feature = "client", create_account)]
+//!   Initialize {
+//!     some_data: u64,
+//!   }
+//! }
+//! ```
+//! This will generate a `create_account_and_initialize` method. The api
+//! works just like the others, except with one additional convention:
+//! the *first* account in the `AccountInfo` array passed to the program
+//! will always be the created account. Note: you don't have to pass the
+//! account yourself, since it will be done for you.
+//!
+//! Furthermore, continuing the above example the simpler `initialize`
+//! will also be generated.
 //!
 //! # Using a custom coder.
 //!
@@ -128,6 +156,8 @@ pub mod prelude {
     #[cfg(feature = "client")]
     pub use codegen::solana_client_gen;
     #[cfg(feature = "client")]
+    pub use rand::rngs::OsRng;
+    #[cfg(feature = "client")]
     pub use solana_client;
     #[cfg(feature = "client")]
     pub use solana_client::rpc_client::RpcClient;
@@ -141,6 +171,8 @@ pub mod prelude {
     pub use solana_sdk::signature::{Signature, Signer};
     #[cfg(feature = "client")]
     pub use solana_sdk::signers::Signers;
+    #[cfg(feature = "client")]
+    pub use solana_sdk::system_instruction;
     #[cfg(feature = "client")]
     pub use solana_sdk::transaction::Transaction;
     #[cfg(feature = "client")]

@@ -3,8 +3,18 @@
 
 use heck::SnakeCase;
 use proc_quote::quote;
+use std::str::FromStr;
+use syn::parse::Parser;
 use syn::parse_macro_input;
 
+// At a high level, the macro works in three passes over the
+// instruction enum (inside the mod).
+//
+// Pass 1: remove all cfg_attr from macros (but leave the macro being configured).
+// Pass 2: generate code from enum variants.
+// Pass 3: remove all marker attributes, e.g., #[create_account], since they are
+//         not full macros by themselves.
+//
 #[proc_macro_attribute]
 pub fn solana_client_gen(
     args: proc_macro::TokenStream,
@@ -19,45 +29,9 @@ pub fn solana_client_gen(
     // Interpet token stream as the instruction `mod`.
     let instruction_mod = parse_macro_input!(input as syn::ItemMod);
 
-    // Parse the instruction enum inside the mod and translate to client methods.
-    let (client_methods, instruction_methods, decode_and_dispatch_tree, coder_definition) =
-        mod_to_methods(&instruction_mod, coder_struct);
-
-    // The api_macro is a meta-macro emmited from this attribute macro.
-    //
-    // It is used to declare a Solana program, for example, in lib.rs
-    // where `solana_sdk::entrypoint!` normally is, you would instead
-    // write `solana_program_api!();`
-    //
-    // And in the same file, implement all your api methods, which
-    // correspond to the instruction enum variants defined in the
-    // interface.
-    //
-    // Note: this isn't enabled yet because Solana's bpf toolchain
-    //       is on a version of rust that doesn't support proc-macros.
-    //       Enable this once they upgrade.
-    let _api_meta_macro = quote! {
-        #[cfg(feature = "program")]
-        #[macro_export]
-        macro_rules! solana_program_api {
-            () => {
-                solana_sdk::entrypoint!(process_instruction);
-                fn process_instruction(
-                    program_id: &Pubkey,
-                    accounts: &[AccountInfo],
-                    instruction_data: &[u8],
-                ) -> ProgramResult {
-                    #decode_and_dispatch_tree
-                }
-            }
-        }
-    };
-
-    // Now recreate the highest level instruction mod, but with our new
-    // instruction_methods inside.
-    let new_instruction_mod = {
-        let mod_ident = instruction_mod.clone().ident;
-        let enum_items = instruction_mod
+    // Pull out the enum within the instruction mod.
+    let mut instruction_enum_item: syn::ItemEnum = {
+        let all_enums = instruction_mod
             .content
             .as_ref()
             .expect("content is None")
@@ -68,7 +42,40 @@ pub fn solana_client_gen(
                 _ => None,
             })
             .collect::<Vec<syn::Item>>();
-        let instruction_enum = enum_items.first().clone().unwrap();
+        match all_enums.first().unwrap().clone() {
+            syn::Item::Enum(e) => e,
+            _ => panic!("must have an instruction enum"),
+        }
+    };
+
+    // First pass:
+    //
+    // Strip out all cfg_attr's on the inner enum variants.
+    // These are only used to avoid invoking a macro when compiling to bpf.
+    // And can be removed once solana udpates its rust version.
+    instruction_enum_item = strip_cfg_attrs(instruction_enum_item);
+
+    // Second pass:
+    //
+    // Parse the instruction enum and generate code from each enum variant.
+    let (client_methods, instruction_methods, decode_and_dispatch_tree, coder_definition) =
+        enum_to_methods(
+            instruction_mod.ident.clone(),
+            &instruction_enum_item,
+            coder_struct,
+        );
+
+    // Now recreate the highest level instruction `mod`, but with our new
+    // instruction_methods inside.
+    let new_instruction_mod = {
+        let mod_ident = instruction_mod.clone().ident;
+
+        // Third (and final) pass:
+        //
+        // Cleanse the instruction_enum of all marker attributes that are
+        // used for the macro only. E.g., remove all #[create_account]
+        // attributes.
+        instruction_enum_item = strip_enum_markers(instruction_enum_item);
 
         quote! {
             pub mod #mod_ident {
@@ -76,11 +83,12 @@ pub fn solana_client_gen(
 
                 #instruction_methods
 
-                #instruction_enum
+                #instruction_enum_item
             }
         }
     };
 
+    // Generate the entire client module.
     let client = quote! {
         #[cfg(feature = "client")]
         pub mod client {
@@ -158,11 +166,49 @@ pub fn solana_client_gen(
                     &self.payer
                 }
 
+                pub fn program(&self) -> &Pubkey {
+                    &self.program_id
+                }
+
                 #client_methods
             }
         }
     };
 
+    // Lastly, generate the api macro.
+    //
+    // The api_macro is a meta-macro emmited from this attribute macro.
+    //
+    // It is used to declare a Solana program, for example, in lib.rs
+    // where `solana_sdk::entrypoint!` normally is, you would instead
+    // write `solana_program_api!();`
+    //
+    // And in the same file, implement all your api methods, which
+    // correspond to the instruction enum variants defined in the
+    // interface.
+    //
+    // Note: this isn't enabled yet because Solana's bpf toolchain
+    //       is on a version of rust that doesn't support proc-macros.
+    //       Enable this once they upgrade.
+    let _api_meta_macro = quote! {
+        #[cfg(feature = "program")]
+        #[macro_export]
+        macro_rules! solana_program_api {
+            () => {
+                solana_sdk::entrypoint!(process_instruction);
+                fn process_instruction(
+                    program_id: &Pubkey,
+                    accounts: &[AccountInfo],
+                    instruction_data: &[u8],
+                ) -> ProgramResult {
+                    #decode_and_dispatch_tree
+                }
+            }
+        }
+    };
+
+    // Now put it all together.
+    //
     // Output the transormed AST with the new client, new instruction mod,
     // and new coder definition.
     proc_macro::TokenStream::from(quote! {
@@ -182,8 +228,9 @@ pub fn solana_client_gen(
 // * Decode and dispatch tree, i.e., the code to execute on entry to the program.
 // * Coder struct for serialization.
 //
-fn mod_to_methods(
-    instruction_mod: &syn::ItemMod,
+fn enum_to_methods(
+    instruction_mod_ident: syn::Ident,
+    instruction_enum: &syn::ItemEnum,
     coder_struct_opt: Option<syn::Ident>,
 ) -> (
     proc_macro2::TokenStream,
@@ -207,166 +254,249 @@ fn mod_to_methods(
     let mut dispatch_arms = vec![];
 
     // The name of the enum defining the program instruction.
-    //
-    // Dummy initialization, here, so that we can do the actual initialization
-    // inside the map below.
-    let mut instruction_enum_ident =
-        &proc_macro2::Ident::new("_dummy", proc_macro2::Span::call_site());
+    let instruction_enum_ident = instruction_enum.ident.clone();
 
     // Parse the enum and create methods.
-    let (client_methods, instruction_methods): (
-        proc_macro2::TokenStream,
-        proc_macro2::TokenStream,
-    ) = instruction_mod
-        .content
-        .as_ref()
-        .unwrap()
-        .1
+    let (variant_client_methods, variant_instruction_methods): (
+        Vec<proc_macro2::TokenStream>,
+        Vec<proc_macro2::TokenStream>,
+    ) = instruction_enum
+        .variants
         .iter()
-        .filter_map(|item| match item {
-            syn::Item::Enum(instruction_enum) => {
-                instruction_enum_ident = &instruction_enum.ident;
-                let (variant_client_methods, variant_instruction_methods): (
-                    Vec<proc_macro2::TokenStream>,
-                    Vec<proc_macro2::TokenStream>,
-                ) = instruction_enum
-                    .variants
+        .map(|variant| {
+            // needs_account_creation is true for any enum variant
+            // with a #[create_account] attribute.
+            //
+            // This signals that we need to generate a method that
+            // inserts an *additional* instruction *before* the
+            // variant's instruction to create an account.
+            //
+            // This would be used, for example, over the InitializeMint
+            // instruction for the SPL token contract.
+            let (needs_account_creation, account_data_size) = {
+                let mut r = false;
+                let mut account_data_size = proc_macro2::TokenStream::new();
+                for attr in &variant.attrs {
+                    if attr.path.is_ident("create_account") {
+                        account_data_size = parse_create_account_attribute(attr.clone());
+                        r = true;
+                        break;
+                    }
+                }
+                (r, account_data_size)
+            };
+            // The name of the enum variant (i.e., the instruction name).
+            let variant_name = &variant.ident;
+
+            // Translate the name into snake_case for creating methods.
+            let method_name = proc_macro2::Ident::new(
+                &variant_name.to_string().to_snake_case(),
+                proc_macro2::Span::call_site(),
+            );
+
+            // For each enum variant, parse both the method_args, i.e.,
+            // the `arg-name: type`, and the arg idents--i.e., the `arg-name`.
+            let (method_args_vec, method_arg_idents_vec): (
+                Vec<proc_macro2::TokenStream>,
+                Vec<proc_macro2::TokenStream>,
+            ) = match &variant.fields {
+                syn::Fields::Named(fields) => fields
+                    .named
                     .iter()
-                    .map(|variant| {
-                        // The name of the enum variant (i.e., the instruction name).
-                        let variant_name = &variant.ident;
-
-                        // Translate the name into snake_case for creating methods.
-                        let method_name = proc_macro2::Ident::new(
-                            &variant_name.to_string().to_snake_case(),
-                            proc_macro2::Span::call_site(),
-                        );
-
-                        // For each enum variant, parse both the method_args, i.e.,
-                        // the `arg-name: type`, and the arg idents--i.e., the `arg-name`.
-                        let (method_args_vec, method_arg_idents_vec): (
-                            Vec<proc_macro2::TokenStream>,
-                            Vec<proc_macro2::TokenStream>,
-                        ) = match &variant.fields {
-                            syn::Fields::Named(fields) => fields
-                                .named
-                                .iter()
-                                .filter_map(|field| {
-                                    let field_ident =
-                                        field.ident.clone().expect("field identifier not found");
-                                    let field_ty = field.ty.clone();
-                                    let method_arg = quote! {
-                                            #field_ident: #field_ty
-                                    };
-                                    let method_arg_ident = quote! {
-                                        #field_ident
-                                    };
-                                    Some((method_arg, method_arg_ident))
-                                })
-                                .unzip(),
-                            syn::Fields::Unit =>  (vec![], vec![]),
-                            syn::Fields::Unnamed(_fields) => panic!("Unamed variants not supported, yet"),
+                    .filter_map(|field| {
+                        let field_ident =
+                            field.ident.clone().expect("field identifier not found");
+                        let field_ty = field.ty.clone();
+                        let method_arg = quote! {
+                            #field_ident: #field_ty
                         };
-
-                        // All method args with identifiers and types, e.g., my_arg: u64.
-                        let method_args = quote! {
-                            #(#method_args_vec),*
+                        let method_arg_ident = quote! {
+                            #field_ident
                         };
-
-                        // All method args, without types, e.g., my_arg.
-                        let method_arg_idents = quote! {
-                            #(#method_arg_idents_vec),*
-                        };
-
-                        // Generate the method to create a Solana `Instruction` representing this
-                        // enum variant.
-                        let instruction_method = quote! {
-                            pub fn #method_name(program_id: Pubkey, accounts: &[AccountMeta], #method_args) -> Instruction {
-                                // Create the instruction enum.
-                                let instruction = #instruction_enum_ident::#variant_name {
-                                    #method_arg_idents,
-                                };
-                                // Serialize.
-                                let data = #coder_struct::to_bytes(instruction);
-                                Instruction {
-                                    program_id: program_id,
-                                    data,
-                                    accounts: accounts.to_vec(),
-                                }
-                            }
-                        };
-
-                        let method_name_with_signers = proc_macro2::Ident::new(
-                            format!("{}_with_signers", variant_name.to_string().to_snake_case()).as_str(),
-                            proc_macro2::Span::call_site(),
-                        );
-
-                        // Generate the high level client method to make an RPC with this
-                        // instruction.
-                        let client_method = quote! {
-                            // Invokes the rpc with the client's payer as the only signer.
-                            pub fn #method_name(&self, accounts: &[AccountMeta], #method_args) -> Result<Signature, ClientError> {
-                                self.#method_name_with_signers(&[&self.payer], accounts, #method_arg_idents)
-                            }
-                            // Invokes the rpc with the given signers.
-                            pub fn #method_name_with_signers<T: Signers>(&self, signers: &T, accounts: &[AccountMeta], #method_args) -> Result<Signature, ClientError> {
-                                let instructions = vec![
-                                    super::instruction::#method_name(
-                                        self.program_id,
-                                        accounts,
-                                        #method_arg_idents
-                                    ),
-                                ];
-                                let (recent_hash, _fee_calc) = self
-                                    .rpc
-                                    .get_recent_blockhash()
-                                    .map_err(|e| ClientError::RpcError(e))?;
-                                let txn = Transaction::new_signed_with_payer(
-                                    &instructions,
-                                    Some(&self.payer.pubkey()),
-                                    signers,
-                                    recent_hash,
-                                );
-                                self
-                                    .rpc
-                                    .send_and_confirm_transaction_with_spinner_and_config(
-                                        &txn,
-                                        self.opts.commitment,
-                                        self.opts.tx,
-                                    )
-                                    .map_err(|e| ClientError::RpcError(e))
-                            }
-                        };
-
-                        // Save the single dispatch arm representing this enum variant.
-                        dispatch_arms.push(quote! {
-                            #instruction_enum_ident::#variant_name {
-                                #method_args
-                            } => #method_name(accounts, #method_args)
-                        });
-
-                        (client_method, instruction_method)
+                        Some((method_arg, method_arg_ident))
                     })
-                    .unzip();
+                    .unzip(),
+                syn::Fields::Unit =>  (vec![], vec![]),
+                syn::Fields::Unnamed(_fields) => panic!("Unamed variants not supported, yet"),
+            };
 
-                // The token stream of all generated rpc client methods.
-                let client_methods = quote! {
-                        #(#variant_client_methods)*
-                };
-                // The token stream of all generated `solana_sdk::instruction::Instruction`
-                // generation method.
-                let instruction_methods = quote! {
-                        #(#variant_instruction_methods)*
-                };
+            // All method args with identifiers and types, e.g., `my_arg: u64`.
+            let method_args = quote! {
+                #(#method_args_vec),*
+            };
 
-                Some((client_methods, instruction_methods))
-            }
-            _ => None,
+            // All method args, without types, e.g., `my_arg`.
+            let method_arg_idents = quote! {
+                #(#method_arg_idents_vec),*
+            };
+
+            // Generate the method to create a Solana `Instruction` representing this
+            // enum variant.
+            let instruction_method = quote! {
+                pub fn #method_name(program_id: Pubkey, accounts: &[AccountMeta], #method_args) -> Instruction {
+                    // Create the instruction enum.
+                    let instruction = #instruction_enum_ident::#variant_name {
+                        #method_arg_idents,
+                    };
+                    // Serialize.
+                    let data = #coder_struct::to_bytes(instruction);
+                    Instruction {
+                        program_id: program_id,
+                        data,
+                        accounts: accounts.to_vec(),
+                    }
+                }
+            };
+
+            let method_name_with_signers = proc_macro2::Ident::new(
+                format!("{}_with_signers", variant_name.to_string().to_snake_case()).as_str(),
+                proc_macro2::Span::call_site(),
+            );
+
+
+            // Create the optional method *if* the variant contains the
+            // #[create_account] attribute.
+            let create_account_client_method_name = proc_macro2::Ident::new(
+                format!("create_account_and_{}", variant_name.to_string().to_snake_case()).as_str(),
+                proc_macro2::Span::call_site(),
+            );
+            let create_account_client_method = match needs_account_creation {
+                false => quote!{},
+                true => quote!{
+                    // Inserts a create account instruction immediately before this
+                    // instruction variant, so that a transaction executes twice.
+                    //
+                    // Note the following convention that is enforced:
+                    //
+                    // In the second, instruction, the new account executed will be
+                    // passed into the first account slot as `writable`.
+                    //
+                    // The rest of the instructions for the second instruction
+                    // should be passed, as usual, via the first `accounts` arg.
+                    //
+                    // The account created will always be rent exempt and owned by
+                    // *this* program.
+                    pub fn #create_account_client_method_name(&self, accounts: &[AccountMeta], #method_args) -> Result<(Signature, Keypair), ClientError> {
+                        // The new account to create.
+                        let new_account = Keypair::generate(&mut OsRng);
+
+                        // Instruction: create the new account system instruction.
+                        let create_account_instr = {
+                            let lamports = self
+                                .rpc()
+                                .get_minimum_balance_for_rent_exemption(#account_data_size)
+                                .map_err(|e| ClientError::RpcError(e))?;
+                            system_instruction::create_account(
+                                &self.payer().pubkey(),    // The from account on the tx.
+                                &new_account.pubkey(),     // Account to create.
+                                lamports,                  // Rent exempt balance to send to the new account.
+                                #account_data_size as u64, // Data init for the new acccount.
+                                self.program(),            // Owner of the new account.
+                            )
+                        };
+
+                        let mut new_accounts = accounts.to_vec();
+                        new_accounts.insert(0, AccountMeta::new(new_account.pubkey(), false));
+
+                        // Instruction: create the enum's instruction.
+                        let variant_instr = super::instruction::#method_name(
+                            self.program_id,
+                            &new_accounts,
+                            #method_arg_idents,
+                        );
+
+                        // Transaction: create the transaction with the combined instructions.
+                        let tx = {
+                            let instructions = vec![create_account_instr, variant_instr];
+
+                            let (recent_hash, _fee_calc) = self
+                                .rpc()
+                                .get_recent_blockhash()
+                                .map_err(|e| ClientError::RawError(e.to_string()))?;
+
+                            let signers = vec![self.payer(), &new_account];
+
+                            Transaction::new_signed_with_payer(
+                                &instructions,
+                                Some(&self.payer().pubkey()),
+                                &signers,
+                                recent_hash,
+                            )
+                        };
+
+                        // Execute the transaction.
+                        self
+                            .rpc
+                            .send_and_confirm_transaction_with_spinner_and_config(
+                                &tx,
+                                self.opts.commitment,
+                                self.opts.tx,
+                            )
+                            .map_err(|e| ClientError::RpcError(e))
+                            .map(|sig| (sig, new_account))
+                    }
+                }
+            };
+
+            // Generate the high level client method to make an RPC with this
+            // instruction.
+            let client_method = quote! {
+                // Invokes the rpc with the client's payer as the only signer.
+                pub fn #method_name(&self, accounts: &[AccountMeta], #method_args) -> Result<Signature, ClientError> {
+                    self.#method_name_with_signers(&[&self.payer], accounts, #method_arg_idents)
+                }
+                // Invokes the rpc with the given signers.
+                pub fn #method_name_with_signers<T: Signers>(&self, signers: &T, accounts: &[AccountMeta], #method_args) -> Result<Signature, ClientError> {
+                    let instructions = vec![
+                        super::instruction::#method_name(
+                            self.program_id,
+                            accounts,
+                            #method_arg_idents
+                        ),
+                    ];
+                    let (recent_hash, _fee_calc) = self
+                        .rpc
+                        .get_recent_blockhash()
+                        .map_err(|e| ClientError::RpcError(e))?;
+                    let txn = Transaction::new_signed_with_payer(
+                        &instructions,
+                        Some(&self.payer.pubkey()),
+                        signers,
+                        recent_hash,
+                    );
+                    self
+                        .rpc
+                        .send_and_confirm_transaction_with_spinner_and_config(
+                            &txn,
+                            self.opts.commitment,
+                            self.opts.tx,
+                        )
+                        .map_err(|e| ClientError::RpcError(e))
+                }
+
+                #create_account_client_method
+            };
+
+            // Save the single dispatch arm representing this enum variant.
+            dispatch_arms.push(quote! {
+                #instruction_enum_ident::#variant_name {
+                    #method_args
+                } => #method_name(accounts, #method_args)
+            });
+
+            (client_method, instruction_method)
         })
-        .collect::<Vec<(proc_macro2::TokenStream, proc_macro2::TokenStream)>>()
-        .first()
-        .expect("enum parsing failed")
-        .clone();
+        .unzip();
+
+    // The token stream of all generated rpc client methods.
+    let client_methods = quote! {
+        #(#variant_client_methods)*
+    };
+    // The token stream of all generated `solana_sdk::instruction::Instruction`
+    // generation method.
+    let instruction_methods = quote! {
+        #(#variant_instruction_methods)*
+    };
 
     let decode_and_dispatch_tree = quote! {
         // Decode.
@@ -377,9 +507,6 @@ fn mod_to_methods(
             #(#dispatch_arms),*
         }
     };
-
-    // Name of the module the macro is over.
-    let instruction_mod_ident = instruction_mod.ident.clone();
 
     // Define the instruction coder to use for serialization.
     let coder_definition = match coder_struct_opt {
@@ -410,4 +537,82 @@ fn mod_to_methods(
         decode_and_dispatch_tree,
         coder_definition,
     )
+}
+
+// Parses the `SIZE`  out of the `#[create_account(SIZE)]` attribute.
+//
+// SIZE is used to determine the size of the account's data field,
+// which is needed upon account creation.
+fn parse_create_account_attribute(attr: syn::Attribute) -> proc_macro2::TokenStream {
+    let group: proc_macro2::Group = match attr.tts.clone().into_iter().next() {
+        None => panic!("must be group deliminated"),
+        Some(group) => match group {
+            proc_macro2::TokenTree::Group(group) => group,
+            _ => panic!("must be group delimited"),
+        },
+    };
+    assert_eq!(group.delimiter(), proc_macro2::Delimiter::Parenthesis);
+    group.stream()
+}
+
+// Remove all attributes in the enum variants that are used for the macro only.
+// Namely, the `create_account` attribute.
+fn strip_enum_markers(mut instruction_enum: syn::ItemEnum) -> syn::ItemEnum {
+    for variant in instruction_enum.variants.iter_mut() {
+        variant.attrs = variant
+            .attrs
+            .iter_mut()
+            .filter_map(|attr| match attr.path.is_ident("create_account") {
+                true => None,
+                false => Some(attr.clone()),
+            })
+            .collect();
+    }
+    instruction_enum
+}
+
+// Remove all cfg_attr attributes, leaving the attribute being configured.
+// E.g., #[cfg_attr(feature = "client", create_account(10))] becomes
+// #[create_account(10)].
+//
+// This is needed until solana updates their version of rust.
+fn strip_cfg_attrs(mut instruction_enum: syn::ItemEnum) -> syn::ItemEnum {
+    for variant in instruction_enum.variants.iter_mut() {
+        variant.attrs = variant
+            .attrs
+            .iter_mut()
+            .filter_map(|attr| match attr.path.is_ident("cfg_attr") {
+                true => {
+                    // Assert the format is of the form:
+                    // #[cfg_attr(<feature>, create_account(<input>))].
+                    let mut tokens = attr.tts.to_string();
+                    tokens.retain(|c| !c.is_whitespace());
+                    assert!(tokens.starts_with("("));
+                    assert!(tokens.ends_with(")"));
+                    tokens.remove(0);
+                    tokens.remove(tokens.len() - 1);
+                    let parts = tokens
+                        .split(",")
+                        .map(|s| s.to_string())
+                        .collect::<Vec<String>>();
+                    assert_eq!(parts.len(), 2);
+                    let create_account = &parts[1];
+                    assert!(create_account.starts_with("create_account("));
+                    assert!(create_account.ends_with(")"));
+
+                    // Now create the new attribute #[create_account(<input>)].
+                    let create_account_attr = format!("#[{}]", create_account);
+                    let stream: proc_macro::TokenStream =
+                        create_account_attr.as_str().parse().unwrap();
+
+                    let parser = syn::Attribute::parse_outer;
+
+                    let new_attr = &parser.parse(stream).unwrap()[0];
+                    Some(new_attr.clone())
+                }
+                false => Some(attr.clone()),
+            })
+            .collect();
+    }
+    instruction_enum
 }
