@@ -706,12 +706,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "half"
-version = "1.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d36fab90f82edc3c747f9d438e06cf0a491055896f2a279638bb5beed6c40177"
-
-[[package]]
 name = "hashbrown"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1810,16 +1804,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "serde_cbor"
-version = "0.11.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1e18acfa2f90e8b735b2836ab8d538de304cbb6729a7360729ea5a895d15a622"
-dependencies = [
- "half",
- "serde",
-]
-
-[[package]]
 name = "serde_derive"
 version = "1.0.116"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1858,25 +1842,48 @@ name = "serum-common"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "rand",
+ "solana-client",
+ "solana-sdk",
+ "spl-token",
 ]
 
 [[package]]
 name = "serum-safe"
 version = "0.1.0"
 dependencies = [
+ "rand",
+ "serde",
  "serum-common",
- "serum-safe-interface",
+ "solana-client",
+ "solana-client-gen",
+ "solana-sdk",
+ "solana-transaction-status",
+]
+
+[[package]]
+name = "serum-safe-cli"
+version = "0.1.0"
+dependencies = [
+ "rand",
+ "serum-common",
+ "serum-safe",
  "solana-client",
  "solana-sdk",
  "structopt",
 ]
 
 [[package]]
-name = "serum-safe-interface"
+name = "serum-safe-program"
 version = "0.1.0"
 dependencies = [
- "serde",
- "solana-client-gen",
+ "arrayref",
+ "bincode",
+ "num_enum",
+ "serum-safe",
+ "solana-sdk",
+ "spl-token",
+ "thiserror",
 ]
 
 [[package]]
@@ -2011,11 +2018,10 @@ dependencies = [
 name = "solana-client-gen"
 version = "0.1.0"
 dependencies = [
+ "bincode",
  "codegen",
- "lazy_static",
- "parking_lot 0.11.0",
+ "rand",
  "serde",
- "serde_cbor",
  "solana-client",
  "solana-sdk",
  "thiserror",
@@ -2289,9 +2295,9 @@ dependencies = [
 
 [[package]]
 name = "spl-token"
-version = "2.0.4"
+version = "2.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2e7bbe6e08acb7d51deb361a7ef5951b024a5469f8565d118275da0e2579cd1b"
+checksum = "813ab51fcfeabfc60157e6556b96cf005bab55321508053ade8c9f9bcfe5ce0b"
 dependencies = [
  "arrayref",
  "num-derive",

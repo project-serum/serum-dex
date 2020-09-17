@@ -1,12 +1,14 @@
 //! Program entrypoint
 
+mod accounts;
 mod api;
 mod error;
 
 use crate::error::{SafeError, SafeErrorCode};
-use serum_safe_interface::instruction::SrmSafeInstruction;
+use serum_safe::instruction::SrmSafeInstruction;
 use solana_sdk::account_info::AccountInfo;
 use solana_sdk::entrypoint::ProgramResult;
+use solana_sdk::info;
 use solana_sdk::program_error::ProgramError;
 use solana_sdk::pubkey::Pubkey;
 
@@ -20,6 +22,7 @@ fn process_instruction(
     accounts: &[AccountInfo],
     instruction_data: &[u8],
 ) -> ProgramResult {
+    info!("INSTRUCTION ENTER");
     // Decode.
     let instruction: Result<SrmSafeInstruction, SafeError> = Coder::from_bytes(instruction_data)
         .map_err(|_| SafeError::ErrorCode(SafeErrorCode::WrongSerialization));
@@ -28,16 +31,16 @@ fn process_instruction(
     match instruction? {
         SrmSafeInstruction::Initialize {
             admin_account_owner,
-        } => api::initialize(accounts, admin_account_owner),
+        } => api::initialize(program_id, accounts, admin_account_owner),
         SrmSafeInstruction::Slash { test } => api::slash(accounts),
         SrmSafeInstruction::DepositSrm {
-            user_spl_wallet_owner,
+            vesting_account_owner,
             slot_number,
             amount,
             lsrm_amount,
         } => api::deposit_srm(
             accounts,
-            user_spl_wallet_owner,
+            vesting_account_owner,
             slot_number,
             amount,
             lsrm_amount,
@@ -46,6 +49,8 @@ fn process_instruction(
         SrmSafeInstruction::MintLockedSrm { amount } => api::mint_locked_srm(accounts, amount),
         SrmSafeInstruction::BurnLockedSrm { amount } => api::burn_locked_srm(accounts, amount),
     };
+
+    info!("INSTRUCTION COMPLETE");
 
     Ok(())
 }

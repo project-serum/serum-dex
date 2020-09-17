@@ -14,6 +14,9 @@ pub enum SafeError {
 #[repr(u32)]
 pub enum SafeErrorCode {
     WrongSerialization = 0,
+    NotRentExempt,
+    AlreadyInitialized,
+    NotOwnedByProgram,
     Unknown = 1000,
 }
 
