@@ -1,5 +1,5 @@
 use num_enum::IntoPrimitive;
-use solana_sdk::program_error::ProgramError;
+use solana_client_gen::solana_sdk::program_error::ProgramError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]

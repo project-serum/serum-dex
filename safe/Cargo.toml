@@ -5,14 +5,18 @@ authors = ["armaniferrante <armaniferrante@gmail.com>"]
 edition = "2018"
 
 [features]
-program = ["solana-client-gen/program"]
-client = ["solana-client-gen/client"]
-test = ["rand", "solana-sdk", "solana-sdk/default", "solana-transaction-status", "solana-client-gen/client", "solana-client", "serum-common"]
+program = ["solana-client-gen/program", "spl-token/program"]
+client = ["solana-client-gen/client", "spl-token/default"]
+test = ["rand", "solana-transaction-status", "solana-client-gen/client", "solana-client", "serum-common", "spl-token/default"]
 default = []
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 solana-client-gen = { path = "../solana-client-gen" }
+spl-token = { version = "=2.0.3", default-features = false }
+arrayref = "0.3.6"
+num_enum = "0.5.0"
+thiserror = "1.0.20"
 
 # Used for testing.
 rand = { version = "0.7.3", optional = true }

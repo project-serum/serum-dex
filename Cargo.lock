@@ -1852,6 +1852,8 @@ dependencies = [
 name = "serum-safe"
 version = "0.1.0"
 dependencies = [
+ "arrayref",
+ "num_enum",
  "rand",
  "serde",
  "serum-common",
@@ -1859,6 +1861,8 @@ dependencies = [
  "solana-client-gen",
  "solana-sdk",
  "solana-transaction-status",
+ "spl-token",
+ "thiserror",
 ]
 
 [[package]]
@@ -1877,13 +1881,10 @@ dependencies = [
 name = "serum-safe-program"
 version = "0.1.0"
 dependencies = [
- "arrayref",
  "bincode",
- "num_enum",
  "serum-safe",
  "solana-sdk",
  "spl-token",
- "thiserror",
 ]
 
 [[package]]

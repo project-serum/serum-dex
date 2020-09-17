@@ -1,7 +1,7 @@
 //! api.rs defines all instruction handlers for the program.
 
-use crate::accounts::SafeAccount;
-use crate::error::{SafeError, SafeErrorCode};
+use serum_safe::accounts::{SafeAccount, VestingAccount};
+use serum_safe::error::{SafeError, SafeErrorCode};
 use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::info;
 use solana_sdk::pubkey::Pubkey;

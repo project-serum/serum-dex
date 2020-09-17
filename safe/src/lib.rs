@@ -1,7 +1,13 @@
+//! serum-safe defines the interface for the serum safe program.
+
+use accounts::SafeAccount;
 use serde::{Deserialize, Serialize};
 use solana_client_gen::prelude::*;
 use solana_client_gen::solana_sdk;
 use solana_client_gen::solana_sdk::pubkey::Pubkey;
+
+pub mod accounts;
+pub mod error;
 
 #[cfg_attr(feature = "client", solana_client_gen)]
 pub mod instruction {
@@ -24,11 +30,11 @@ pub mod instruction {
         ///
         /// Access control assertions:
         ///  * Accounts[0].owner == SrmSafe.program_id
-        #[cfg_attr(feature = "client", create_account(crate::accounts::size::safe))]
+        #[cfg_attr(feature = "client", create_account(SafeAccount::SIZE))]
         Initialize {
             /// The owner of the admin account to set into the SafeAccount.
             /// This account has the power to slash deposits.
-            admin_account_owner: Pubkey,
+            authority: Pubkey,
         },
         /// Slash punishes a vesting account who misbehaved, punititvely
         /// revoking funds.
@@ -137,16 +143,5 @@ pub mod instruction {
             // Amount of lSRM to burn.
             amount: u64,
         },
-    }
-}
-
-/// The accounts mod defines the metadata needed by clients to interact with program
-/// accounts.
-///
-/// `size` is needed because Solana requires the storage size when creating an account.
-pub mod accounts {
-    pub mod size {
-        pub const safe: usize = 41;
-        pub const vesting: usize = 0;
     }
 }
