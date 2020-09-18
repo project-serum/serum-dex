@@ -303,7 +303,7 @@ fn enum_to_methods(
             // instruction for the SPL token contract.
             let (needs_account_creation, account_data_size) = {
                 let mut r = false;
-                let mut account_data_size = proc_macro2::TokenStream::new();
+                let mut account_data_size = CreateAccountDataSize::Dynamic;
                 for attr in &variant.attrs {
                     if attr.path.is_ident("create_account") {
                         account_data_size = parse_create_account_attribute(attr.clone());
@@ -384,84 +384,173 @@ fn enum_to_methods(
 
             // Create the optional method *if* the variant contains the
             // #[create_account] attribute.
-            let create_account_client_method_name = proc_macro2::Ident::new(
-                format!("create_account_and_{}", variant_name.to_string().to_snake_case()).as_str(),
-                proc_macro2::Span::call_site(),
-            );
-            let create_account_client_method = match needs_account_creation {
-                false => quote!{},
-                true => quote!{
-                    // Inserts a create account instruction immediately before this
-                    // instruction variant, so that a transaction executes twice.
-                    //
-                    // Note the following convention that is enforced:
-                    //
-                    // In the second, instruction, the new account executed will be
-                    // passed into the first account slot as `writable`.
-                    //
-                    // The rest of the instructions for the second instruction
-                    // should be passed, as usual, via the first `accounts` arg.
-                    //
-                    // The account created will always be rent exempt and owned by
-                    // *this* program.
-                    pub fn #create_account_client_method_name(&self, accounts: &[AccountMeta], #method_args) -> Result<(Signature, Keypair), ClientError> {
-                        // The new account to create.
-                        let new_account = Keypair::generate(&mut OsRng);
-
-                        // Instruction: create the new account system instruction.
-                        let create_account_instr = {
-                            let lamports = self
-                                .rpc()
-                                .get_minimum_balance_for_rent_exemption(#account_data_size)
-                                .map_err(|e| ClientError::RpcError(e))?;
-                            system_instruction::create_account(
-                                &self.payer().pubkey(),    // The from account on the tx.
-                                &new_account.pubkey(),     // Account to create.
-                                lamports,                  // Rent exempt balance to send to the new account.
-                                #account_data_size as u64, // Data init for the new acccount.
-                                self.program(),            // Owner of the new account.
+            //
+            // One of two types of methods can can be created here. One
+            // for accounts of fixed size and one for accounts of non-fixed
+            // size.
+            //
+            // 1. create_account_and_<instruction-name>(...args)
+            // 2. create_account_with_size_and_<instruction-name>(size: usize, ...args)
+            //
+            // The first will be created when #[create_account(SIZE)] is used with a
+            // fixed size. The second will be used when #[create_account(..)] is used
+            // with a `..`.
+            let create_account_client_method = {
+                let create_account_client_method_name = {
+                    match account_data_size {
+                        CreateAccountDataSize::Fixed(_) => {
+                            proc_macro2::Ident::new(
+                                format!("create_account_and_{}", variant_name.to_string().to_snake_case()).as_str(),
+                                proc_macro2::Span::call_site(),
                             )
-                        };
-
-                        let mut new_accounts = accounts.to_vec();
-                        new_accounts.insert(0, AccountMeta::new(new_account.pubkey(), false));
-
-                        // Instruction: create the enum's instruction.
-                        let variant_instr = super::instruction::#method_name(
-                            self.program_id,
-                            &new_accounts,
-                            #method_arg_idents,
-                        );
-
-                        // Transaction: create the transaction with the combined instructions.
-                        let tx = {
-                            let instructions = vec![create_account_instr, variant_instr];
-
-                            let (recent_hash, _fee_calc) = self
-                                .rpc()
-                                .get_recent_blockhash()
-                                .map_err(|e| ClientError::RawError(e.to_string()))?;
-
-                            let signers = vec![self.payer(), &new_account];
-
-                            Transaction::new_signed_with_payer(
-                                &instructions,
-                                Some(&self.payer().pubkey()),
-                                &signers,
-                                recent_hash,
+                        },
+                        CreateAccountDataSize::Dynamic => {
+                            proc_macro2::Ident::new(
+                                format!("create_account_with_size_and_{}", variant_name.to_string().to_snake_case()).as_str(),
+                                proc_macro2::Span::call_site(),
                             )
-                        };
+                        },
+                    }
+                };
+                match needs_account_creation {
+                    false => quote!{},
+                    true => match account_data_size {
+                        CreateAccountDataSize::Fixed(account_data_size) => quote!{
+                            // Inserts a create account instruction immediately before this
+                            // instruction variant, so that a transaction executes twice.
+                            //
+                            // Note the following convention that is enforced:
+                            //
+                            // In the second, instruction, the new account executed will be
+                            // passed into the first account slot as `writable`.
+                            //
+                            // The rest of the instructions for the second instruction
+                            // should be passed, as usual, via the first `accounts` arg.
+                            //
+                            // The account created will always be rent exempt and owned by
+                            // *this* program.
+                            pub fn #create_account_client_method_name(&self, accounts: &[AccountMeta], #method_args) -> Result<(Signature, Keypair), ClientError> {
+                                // The new account to create.
+                                let new_account = Keypair::generate(&mut OsRng);
 
-                        // Execute the transaction.
-                        self
-                            .rpc
-                            .send_and_confirm_transaction_with_spinner_and_config(
-                                &tx,
-                                self.opts.commitment,
-                                self.opts.tx,
-                            )
-                            .map_err(|e| ClientError::RpcError(e))
-                            .map(|sig| (sig, new_account))
+                                // Instruction: create the new account system instruction.
+                                let create_account_instr = {
+                                    let lamports = self
+                                        .rpc()
+                                        .get_minimum_balance_for_rent_exemption(#account_data_size)
+                                        .map_err(|e| ClientError::RpcError(e))?;
+                                    system_instruction::create_account(
+                                        &self.payer().pubkey(),    // The from account on the tx.
+                                        &new_account.pubkey(),     // Account to create.
+                                        lamports,                  // Rent exempt balance to send to the new account.
+                                        #account_data_size as u64, // Data init for the new acccount.
+                                        self.program(),            // Owner of the new account.
+                                    )
+                                };
+
+                                let mut new_accounts = accounts.to_vec();
+                                new_accounts.insert(0, AccountMeta::new(new_account.pubkey(), false));
+
+                                // Instruction: create the enum's instruction.
+                                let variant_instr = super::instruction::#method_name(
+                                    self.program_id,
+                                    &new_accounts,
+                                    #method_arg_idents,
+                                );
+
+                                // Transaction: create the transaction with the combined instructions.
+                                let tx = {
+                                    let instructions = vec![create_account_instr, variant_instr];
+
+                                    let (recent_hash, _fee_calc) = self
+                                        .rpc()
+                                        .get_recent_blockhash()
+                                        .map_err(|e| ClientError::RawError(e.to_string()))?;
+
+                                    let signers = vec![self.payer(), &new_account];
+
+                                    Transaction::new_signed_with_payer(
+                                        &instructions,
+                                        Some(&self.payer().pubkey()),
+                                        &signers,
+                                        recent_hash,
+                                    )
+                                };
+
+                                // Execute the transaction.
+                                self
+                                    .rpc
+                                    .send_and_confirm_transaction_with_spinner_and_config(
+                                        &tx,
+                                        self.opts.commitment,
+                                        self.opts.tx,
+                                    )
+                                    .map_err(|e| ClientError::RpcError(e))
+                                    .map(|sig| (sig, new_account))
+                            }
+                        },
+                        CreateAccountDataSize::Dynamic => quote! {
+                            // Same as the fixed size version, except the first argument is size.
+                            pub fn #create_account_client_method_name(&self, account_data_size: usize, accounts: &[AccountMeta], #method_args) -> Result<(Signature, Keypair), ClientError> {
+                                // The new account to create.
+                                let new_account = Keypair::generate(&mut OsRng);
+
+                                // Instruction: create the new account system instruction.
+                                let create_account_instr = {
+                                    let lamports = self
+                                        .rpc()
+                                        .get_minimum_balance_for_rent_exemption(account_data_size)
+                                        .map_err(|e| ClientError::RpcError(e))?;
+                                    system_instruction::create_account(
+                                        &self.payer().pubkey(),    // The from account on the tx.
+                                        &new_account.pubkey(),     // Account to create.
+                                        lamports,                  // Rent exempt balance to send to the new account.
+                                        account_data_size as u64, // Data init for the new acccount.
+                                        self.program(),            // Owner of the new account.
+                                    )
+                                };
+
+                                let mut new_accounts = accounts.to_vec();
+                                new_accounts.insert(0, AccountMeta::new(new_account.pubkey(), false));
+
+                                // Instruction: create the enum's instruction.
+                                let variant_instr = super::instruction::#method_name(
+                                    self.program_id,
+                                    &new_accounts,
+                                    #method_arg_idents,
+                                );
+
+                                // Transaction: create the transaction with the combined instructions.
+                                let tx = {
+                                    let instructions = vec![create_account_instr, variant_instr];
+
+                                    let (recent_hash, _fee_calc) = self
+                                        .rpc()
+                                        .get_recent_blockhash()
+                                        .map_err(|e| ClientError::RawError(e.to_string()))?;
+
+                                    let signers = vec![self.payer(), &new_account];
+
+                                    Transaction::new_signed_with_payer(
+                                        &instructions,
+                                        Some(&self.payer().pubkey()),
+                                        &signers,
+                                        recent_hash,
+                                    )
+                                };
+
+                                // Execute the transaction.
+                                self
+                                    .rpc
+                                    .send_and_confirm_transaction_with_spinner_and_config(
+                                        &tx,
+                                        self.opts.commitment,
+                                        self.opts.tx,
+                                    )
+                                    .map_err(|e| ClientError::RpcError(e))
+                                    .map(|sig| (sig, new_account))
+                            }
+                        }
                     }
                 }
             };
@@ -474,6 +563,9 @@ fn enum_to_methods(
                     self.#method_name_with_signers(&[&self.payer], accounts, #method_arg_idents)
                 }
                 // Invokes the rpc with the given signers.
+                //
+                // Make sure to add the payer configured on the client to the list
+                // of signers if you're to use this method.
                 pub fn #method_name_with_signers<T: Signers>(&self, signers: &T, accounts: &[AccountMeta], #method_args) -> Result<Signature, ClientError> {
                     let instructions = vec![
                         super::instruction::#method_name(
@@ -571,7 +663,7 @@ fn enum_to_methods(
 //
 // SIZE is used to determine the size of the account's data field,
 // which is needed upon account creation.
-fn parse_create_account_attribute(attr: syn::Attribute) -> proc_macro2::TokenStream {
+fn parse_create_account_attribute(attr: syn::Attribute) -> CreateAccountDataSize {
     let group: proc_macro2::Group = match attr.tts.clone().into_iter().next() {
         None => panic!("must be group deliminated"),
         Some(group) => match group {
@@ -580,7 +672,11 @@ fn parse_create_account_attribute(attr: syn::Attribute) -> proc_macro2::TokenStr
         },
     };
     assert_eq!(group.delimiter(), proc_macro2::Delimiter::Parenthesis);
-    group.stream()
+    let size_tts = group.stream();
+    if size_tts.to_string() == ".." {
+        return CreateAccountDataSize::Dynamic;
+    }
+    CreateAccountDataSize::Fixed(size_tts)
 }
 
 // Remove all attributes in the enum variants that are used for the macro only.
@@ -643,4 +739,9 @@ fn strip_cfg_attrs(mut instruction_enum: syn::ItemEnum) -> syn::ItemEnum {
             .collect();
     }
     instruction_enum
+}
+
+enum CreateAccountDataSize {
+    Fixed(proc_macro2::TokenStream),
+    Dynamic,
 }
