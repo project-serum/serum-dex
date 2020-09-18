@@ -17,6 +17,10 @@ pub enum SafeErrorCode {
     NotRentExempt,
     AlreadyInitialized,
     NotOwnedByProgram,
+    VestingAccountDataInvalid,
+    WrongCoinMint,
+    WrongVaultAddress,
+    SafeAccountDataInvalid,
     Unknown = 1000,
 }
 

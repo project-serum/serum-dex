@@ -27,21 +27,20 @@ fn process_instruction(
 
     // Dispatch.
     let result = match instruction {
-        SrmSafeInstruction::Initialize { authority } => {
-            api::initialize(program_id, accounts, authority)
+        SrmSafeInstruction::Initialize { mint, authority } => {
+            api::initialize(program_id, accounts, mint, authority)
         }
-        SrmSafeInstruction::Slash { test } => api::slash(accounts),
+        SrmSafeInstruction::Slash { amount } => api::slash(accounts, amount),
         SrmSafeInstruction::DepositSrm {
-            vesting_account_owner,
-            slot_number,
-            amount,
-            lsrm_amount,
+            vesting_account_beneficiary,
+            vesting_slots,
+            vesting_amounts,
         } => api::deposit_srm(
+            program_id,
             accounts,
-            vesting_account_owner,
-            slot_number,
-            amount,
-            lsrm_amount,
+            vesting_account_beneficiary,
+            vesting_slots,
+            vesting_amounts,
         ),
         SrmSafeInstruction::WithdrawSrm { amount } => api::withdraw_srm(accounts, amount),
         SrmSafeInstruction::MintLockedSrm { amount } => api::mint_locked_srm(accounts, amount),

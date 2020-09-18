@@ -10,15 +10,17 @@ crate-type = ["cdylib", "lib"]
 name = "serum_safe_program"
 
 [features]
-program = ["serum-safe/program", "solana-sdk/program", "spl-token/program"]
+program = ["serum-safe/program", "solana-sdk/program", "spl-token/program", "spl-token/no-entrypoint"]
 test = ["solana-sdk/default"]
 default = []
 
 [dependencies]
-solana-sdk = { version = "=1.3.9", default-features = false, features = ["program"] }
+solana-sdk = { version = "=1.3.9", default-features = false }
+spl-token = { version = "=2.0.3", default-features = false }
 bincode = "1.3.1"
 serum-safe = { path = "../" }
-spl-token = { version = "=2.0.3", default-features = false }
+arrayref = "0.3.6"
+safe-transmute = "0.11.0"
 
 [profile.release]
 lto = true

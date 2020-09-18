@@ -90,6 +90,96 @@ pub fn create_and_init_mint(
     send_txn(client, &txn, false)
 }
 
+pub fn genesis(
+    client: &RpcClient,
+    payer_keypair: &Keypair,
+    mint_keypair: &Keypair,
+    mint_authority: &Pubkey,
+    decimals: u8,
+) -> Result<()> {
+    let signers = vec![payer_keypair, mint_keypair];
+
+    let lamports = client.get_minimum_balance_for_rent_exemption(spl_token::state::Mint::LEN)?;
+
+    let create_mint_account_instruction = solana_sdk::system_instruction::create_account(
+        &payer_keypair.pubkey(),
+        &mint_keypair.pubkey(),
+        lamports,
+        spl_token::state::Mint::LEN as u64,
+        &spl_token::ID,
+    );
+    let initialize_mint_instruction = token_instruction::initialize_mint(
+        &spl_token::ID,
+        &mint_keypair.pubkey(),
+        mint_authority,
+        None,
+        decimals,
+    )?;
+    let instructions = vec![create_mint_account_instruction, initialize_mint_instruction];
+
+    let (recent_hash, _fee_calc) = client.get_recent_blockhash()?;
+    let txn = Transaction::new_signed_with_payer(
+        &instructions,
+        Some(&payer_keypair.pubkey()),
+        &signers,
+        recent_hash,
+    );
+
+    send_txn(client, &txn, false)?;
+    Ok(())
+}
+
+pub fn mint_to_new_account(
+    client: &RpcClient,
+    payer: &Keypair,
+    minting_key: &Keypair,
+    mint: &Pubkey,
+    quantity: u64,
+) -> Result<Keypair> {
+    let recip_keypair = Keypair::generate(&mut OsRng);
+
+    let lamports = client.get_minimum_balance_for_rent_exemption(spl_token::state::Account::LEN)?;
+
+    let signers = vec![payer, minting_key, &recip_keypair];
+
+    let create_recip_instr = solana_sdk::system_instruction::create_account(
+        &payer.pubkey(),
+        &recip_keypair.pubkey(),
+        lamports,
+        spl_token::state::Account::LEN as u64,
+        &spl_token::ID,
+    );
+
+    let init_recip_instr = token_instruction::initialize_account(
+        &spl_token::ID,
+        &recip_keypair.pubkey(),
+        mint,
+        &payer.pubkey(),
+    )?;
+
+    let mint_tokens_instr = token_instruction::mint_to(
+        &spl_token::ID,
+        mint,
+        &recip_keypair.pubkey(),
+        &minting_key.pubkey(),
+        &[],
+        quantity,
+    )?;
+
+    let instructions = vec![create_recip_instr, init_recip_instr, mint_tokens_instr];
+
+    let (recent_hash, _fee_calc) = client.get_recent_blockhash()?;
+    let txn = Transaction::new_signed_with_payer(
+        &instructions,
+        Some(&payer.pubkey()),
+        &signers,
+        recent_hash,
+    );
+
+    send_txn(client, &txn, false)?;
+    Ok(recip_keypair)
+}
+
 pub fn send_txn(client: &RpcClient, txn: &Transaction, _simulate: bool) -> Result<Signature> {
     Ok(client.send_and_confirm_transaction_with_spinner_and_config(
         txn,

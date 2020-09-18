@@ -1,6 +1,6 @@
 //! serum-safe defines the interface for the serum safe program.
 
-use accounts::SafeAccount;
+use accounts::{SafeAccount, VestingAccount};
 use serde::{Deserialize, Serialize};
 use solana_client_gen::prelude::*;
 use solana_client_gen::solana_sdk;
@@ -8,6 +8,7 @@ use solana_client_gen::solana_sdk::pubkey::Pubkey;
 
 pub mod accounts;
 pub mod error;
+pub mod pack;
 
 #[cfg_attr(feature = "client", solana_client_gen)]
 pub mod instruction {
@@ -32,6 +33,9 @@ pub mod instruction {
         ///  * Accounts[0].owner == SrmSafe.program_id
         #[cfg_attr(feature = "client", create_account(SafeAccount::SIZE))]
         Initialize {
+            /// The mint of the SPL token to store in the safe, i.e., the
+            /// SRM mint.
+            mint: Pubkey,
             /// The owner of the admin account to set into the SafeAccount.
             /// This account has the power to slash deposits.
             authority: Pubkey,
@@ -39,40 +43,47 @@ pub mod instruction {
         /// Slash punishes a vesting account who misbehaved, punititvely
         /// revoking funds.
         ///
-        /// 0. `[signer]`   the admin account configured with initialize.
+        /// 0. `[signer]`   the authority of the SafeAccount.
         /// 1. `[writable]` the vesting account to slash.
         ///
         /// Access control assertions:
         ///   * Accounts[0]
-        Slash { test: u64 },
+        Slash {
+            /// The amount of SRM to slash.
+            amount: u64,
+        },
         /// DepositSrm initializes the deposit, transferring tokens from the controlling SPL token
         /// account to one owned by the SrmSafe program.
         ///
         /// Accounts:
         ///
-        /// 0. `[signer]`   the payer SRM SPL token account, transferring ownership *from*.
-        ///                 The owner of this account is expected to be Alameda.
-        /// 1. `[writable]` the SrmSafe SPL account vault, transferring ownership *to*.
-        ///                 The owner of this account is the SrmSafe program.
-        /// 2. `[writable]  the vesting account representing the user's deposit. It is
+        /// 0. `[writable]  the VestingAccount representing this deposit. It is
         ///                 initialized with the data provided by the instruction.
         ///                 The owner of this account is the SrmSafe program.
+        ///                 Note that it's data size is dynamic.
+        /// 1. `[writable]` the depositor SRM SPL token account, transferring ownership *from*,
+        ///                 itself to this program.
+        /// 2. `[signer]`   the authority/owner/delegate of Accounts[1].
+        /// 3. `[writable]` the SrmSafe SPL SRM vault, transferring ownership *to*.
+        ///                 The owner of this account is the SrmSafe program.
+        /// 4. `[]`         the SafeAccount instance.
+        /// 5. `[]`         SPL token program.
+        /// 6. `[]`         the rent sysvar.
         ///
         /// Access control assertions:
         ///
         ///  * Accounts[0].owner == SrmSafe.program_id
         ///  * Accounts[1].owner == SrmSafe.program_id
         ///
-        //
-        // TODO: For simplicity we're starting with single deposit. Then we'll extend
-        //       to multi-deposit once some  basic tests work.
-        //
+        #[cfg_attr(feature = "client", create_account(..))]
         DepositSrm {
-            vesting_account_owner: Pubkey,
-            //            vesting_schedule: VestingSchedule,
-            slot_number: u64,
-            amount: u64,
-            lsrm_amount: u64,
+            /// The beneficiary of the vesting account, i.e.,
+            /// the user who will own the SRM upon vesting.
+            vesting_account_beneficiary: Pubkey,
+            /// The Solana slot number at which point a vesting amount unlocks.
+            vesting_slots: Vec<u64>,
+            /// The amount of SRM to release for each vesting_slot.
+            vesting_amounts: Vec<u64>,
         },
         /// WithdrawSrm withdraws the given amount from the SrmSafe SPL account vault,
         /// updating the user's vesting account.
