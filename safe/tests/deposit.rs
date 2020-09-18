@@ -21,81 +21,21 @@ mod common;
 
 #[test]
 fn deposit_srm() {
-    let client = common::client();
-
-    // Setup.
+    // Given.
     //
-    // Initialize the SPL token representing SRM.
-    let mint_authority = client.payer().clone();
-    let coin_mint = Keypair::generate(&mut OsRng);
-    let _ = serum_common::rpc::genesis(
-        client.rpc(),
-        client.payer(),
-        &coin_mint,
-        &mint_authority.pubkey(),
-        3,
-    )
-    .unwrap();
-
-    // Setup.
-    //
-    // Initialize the Safe.
-    let safe_authority = Keypair::generate(&mut OsRng);
-    let rent_account = AccountMeta::new_readonly(solana_sdk::sysvar::rent::id(), false);
-    let init_accounts = vec![rent_account];
-    let (_signature, safe_account) = client
-        .create_account_and_initialize(&init_accounts, coin_mint.pubkey(), safe_authority.pubkey())
-        .unwrap();
-
-    // Setup.
-    //
-    // Create a funded SRM SPL account representing the depositor allocating
-    // vesting accounts.
-    let depositor_balance_before = 1_000_000;
-    let depositor = serum_common::rpc::mint_to_new_account(
-        client.rpc(),
-        client.payer(),
-        &mint_authority,
-        &coin_mint.pubkey(),
+    // An initialized safe.
+    let common::lifecycle::Initialized {
+        client,
+        safe_account,
+        safe_authority,
+        safe_srm_vault,
+        depositor,
         depositor_balance_before,
-    )
-    .unwrap();
+    } = common::lifecycle::initialize();
 
-    // Setup.
+    // When.
     //
-    // Create an SPL account representing the Safe program's vault.
-    let safe_srm_vault = {
-        let safe_srm_vault_program_derived_address =
-            SrmVault::program_derived_address(client.program(), &safe_account.pubkey());
-        let safe_srm_vault = serum_common::rpc::create_spl_account(
-            client.rpc(),
-            &coin_mint.pubkey(),
-            &safe_srm_vault_program_derived_address,
-            client.payer(),
-        )
-        .unwrap();
-
-        // Ensure the safe_srm_vault has 0 SRM before the deposit.
-        let safe_srm_vault_account = {
-            let account = client
-                .rpc()
-                .get_account_with_commitment(&safe_srm_vault.pubkey(), CommitmentConfig::recent())
-                .unwrap()
-                .value
-                .unwrap();
-            spl_token::state::Account::unpack_from_slice(&account.data).unwrap()
-        };
-        assert_eq!(safe_srm_vault_account.mint, coin_mint.pubkey());
-        assert_eq!(
-            safe_srm_vault_account.owner,
-            safe_srm_vault_program_derived_address
-        );
-        assert_eq!(safe_srm_vault_account.amount, 0);
-
-        safe_srm_vault
-    };
-
-    // Finally, perform the vesting account deposit.
+    // A depositor performs the vesting account deposit.
     let (vesting_account_kp, expected_beneficiary, expected_slots, expected_amounts) = {
         let deposit_accounts = vec![
             AccountMeta::new(depositor.pubkey(), false),
@@ -126,6 +66,8 @@ fn deposit_srm() {
         )
     };
 
+    // Then.
+    //
     // Read the state of the program and ensure it's correct.
     //
     // Check.

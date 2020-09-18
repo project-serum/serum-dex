@@ -26,7 +26,7 @@ pub mod instruction {
         ///
         /// Accounts:
         ///
-        /// 0. `[writable]` the SafeAccount to initialize.
+        /// 0. `[writable]` The SafeAccount to initialize.
         /// 1. `[]`         Rent sysvar
         ///
         /// Access control assertions:
@@ -40,11 +40,28 @@ pub mod instruction {
             /// This account has the power to slash deposits.
             authority: Pubkey,
         },
+        /// WhitelistAdd adds the given program id to the safe account's
+        /// whitelist, allowing locked srm to be sent to/from the program.
+        ///
+        /// Accounts:
+        ///
+        /// 0.  `[signer]`   The authority of the Safe.
+        /// 1.  `[writable]` The SafeAccount representing the instance.
+        WhitelistAdd {
+            /// The program id to add to the whitelist.
+            program_id_to_add: Pubkey,
+        },
+        /// Whitelist delete removes the given program id from the whitelist.
+        ///
+        /// Accounts:
+        /// 0. `[signer]`   The authority of the Safe.
+        /// 1. `[writable]` The SafeAccount representing the instance.
+        WhitelistDelete { program_id_to_delete: Pubkey },
         /// Slash punishes a vesting account who misbehaved, punititvely
         /// revoking funds.
         ///
-        /// 0. `[signer]`   the authority of the SafeAccount.
-        /// 1. `[writable]` the vesting account to slash.
+        /// 0. `[signer]`   The authority of the SafeAccount.
+        /// 1. `[writable]` The vesting account to slash.
         ///
         /// Access control assertions:
         ///   * Accounts[0]
@@ -57,18 +74,18 @@ pub mod instruction {
         ///
         /// Accounts:
         ///
-        /// 0. `[writable]  the VestingAccount representing this deposit. It is
+        /// 0. `[writable]  The VestingAccount representing this deposit. It is
         ///                 initialized with the data provided by the instruction.
         ///                 The owner of this account is the SrmSafe program.
         ///                 Note that it's data size is dynamic.
-        /// 1. `[writable]` the depositor SRM SPL token account, transferring ownership *from*,
+        /// 1. `[writable]` The depositor SRM SPL token account, transferring ownership *from*,
         ///                 itself to this program.
-        /// 2. `[signer]`   the authority/owner/delegate of Accounts[1].
-        /// 3. `[writable]` the SrmSafe SPL SRM vault, transferring ownership *to*.
+        /// 2. `[signer]`   The authority/owner/delegate of Accounts[1].
+        /// 3. `[writable]` The SrmSafe SPL SRM vault, transferring ownership *to*.
         ///                 The owner of this account is the SrmSafe program.
-        /// 4. `[]`         the SafeAccount instance.
+        /// 4. `[]`         The SafeAccount instance.
         /// 5. `[]`         SPL token program.
-        /// 6. `[]`         the rent sysvar.
+        /// 6. `[]`         The rent sysvar.
         ///
         /// Access control assertions:
         ///

@@ -2,11 +2,12 @@
 
 use arrayref::array_mut_ref;
 use safe_transmute::to_bytes::transmute_to_bytes;
-use serum_safe::accounts::{SafeAccount, SrmVault, VestingAccount};
+use serum_safe::accounts::{SafeAccount, SrmVault, VestingAccount, Whitelist};
 use serum_safe::error::{SafeError, SafeErrorCode};
 use serum_safe::pack::DynPack;
 use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::info;
+use solana_sdk::program_error::ProgramError;
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::sysvar::rent::Rent;
 use solana_sdk::sysvar::Sysvar;
@@ -45,6 +46,7 @@ pub fn initialize(
             safe_account.is_initialized = true;
             safe_account.supply = 0;
             safe_account.authority = authority;
+            safe_account.whitelist = Whitelist::zeroed();
 
             info!("safe initialization complete");
 
@@ -90,6 +92,7 @@ pub fn deposit_srm(
     if vesting_account_data.len() != expected_size {
         return Err(SafeError::ErrorCode(SafeErrorCode::VestingAccountDataInvalid).into());
     }
+
     // Inject the size into the first 8 bytes, since the dynamic unpacker will
     // check that.
     {
@@ -104,29 +107,17 @@ pub fn deposit_srm(
     VestingAccount::unpack_unchecked_mut(
         &mut vesting_account_data,
         &mut |vesting_account: &mut VestingAccount| {
-            // Access control.
-            if vesting_account.initialized {
-                return Err(SafeError::ErrorCode(SafeErrorCode::AlreadyInitialized).into());
-            } else if !rent.is_exempt(vesting_account_info.lamports(), vesting_account_data_len) {
-                return Err(SafeError::ErrorCode(SafeErrorCode::NotRentExempt).into());
-            } else if vesting_account_info.owner != program_id {
-                return Err(SafeError::ErrorCode(SafeErrorCode::NotOwnedByProgram).into());
-            }
-            // Look at the deposit's SPL account data and check for the mint.
-            else if safe_account.mint != Pubkey::new(&depositor_from.try_borrow_data()?[..32]) {
-                return Err(SafeError::ErrorCode(SafeErrorCode::WrongCoinMint).into());
-            }
-            // Look into the safe vault's SPL account data and check for the owner (it should
-            // be this program).
-            //
-            // TODO: why does the progra_derived_address error out?
-            //
-            /*            else if Pubkey::new(&safe_srm_vault_to.try_borrow_data()?[32..64])
-                != SrmVault::program_derived_address(program_id)
-            {
-                return Err(SafeError::ErrorCode(SafeErrorCode::WrongVaultAddress).into());
-            }*/
-
+            deposit_srm_access_control(
+                program_id,
+                vesting_account,
+                vesting_account_info,
+                vesting_account_data_len,
+                &safe_account,
+                safe_account_info,
+                depositor_from,
+                safe_srm_vault_to,
+                rent,
+            )?;
             // Update account.
             vesting_account.safe = safe_account_info.key.clone();
             vesting_account.beneficiary = vesting_account_beneficiary;
@@ -169,6 +160,151 @@ pub fn deposit_srm(
 
     info!("deposit_srm complete");
     Ok(())
+}
+
+fn deposit_srm_access_control(
+    program_id: &Pubkey,
+    vesting_account: &VestingAccount,
+    vesting_account_info: &AccountInfo,
+    vesting_account_data_len: usize,
+    safe_account: &SafeAccount,
+    safe_account_info: &AccountInfo,
+    depositor_from: &AccountInfo,
+    safe_srm_vault_to: &AccountInfo,
+    rent: &Rent,
+) -> Result<(), ProgramError> {
+    if vesting_account.initialized {
+        return Err(SafeError::ErrorCode(SafeErrorCode::AlreadyInitialized).into());
+    }
+    if !rent.is_exempt(vesting_account_info.lamports(), vesting_account_data_len) {
+        return Err(SafeError::ErrorCode(SafeErrorCode::NotRentExempt).into());
+    }
+    if vesting_account_info.owner != program_id {
+        return Err(SafeError::ErrorCode(SafeErrorCode::NotOwnedByProgram).into());
+    }
+    // Look at the deposit's SPL account data and check for the mint.
+    if safe_account.mint != Pubkey::new(&depositor_from.try_borrow_data()?[..32]) {
+        return Err(SafeError::ErrorCode(SafeErrorCode::WrongCoinMint).into());
+    }
+    // Look into the safe vault's SPL account data and check for the owner (it should
+    // be this program).
+    if Pubkey::new(&safe_srm_vault_to.try_borrow_data()?[32..64])
+        != SrmVault::program_derived_address(program_id, safe_account_info.key)
+    {
+        return Err(SafeError::ErrorCode(SafeErrorCode::WrongVaultAddress).into());
+    }
+    Ok(())
+}
+
+pub fn whitelist_add(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    program_id_to_add: Pubkey,
+) -> Result<(), SafeError> {
+    info!("HANDLER: whitelist_add");
+
+    let account_info_iter = &mut accounts.iter();
+
+    let safe_authority_info = next_account_info(account_info_iter)?;
+    let safe_account_info = next_account_info(account_info_iter)?;
+
+    let mut safe_account_data = safe_account_info.data.borrow_mut();
+    SafeAccount::unpack_unchecked_mut(
+        &mut safe_account_data,
+        &mut |safe_account: &mut SafeAccount| {
+            whitelist_add_access_control(
+                program_id,
+                safe_authority_info,
+                safe_account,
+                safe_account_info,
+            )?;
+
+            if safe_account.whitelist.push(program_id_to_add).is_none() {
+                return Err(SafeError::ErrorCode(SafeErrorCode::WhitelistFull).into());
+            }
+
+            info!("whitelist_add complete");
+
+            Ok(())
+        },
+    )
+    .map_err(|e| SafeError::ProgramError(e))
+}
+
+fn whitelist_add_access_control(
+    program_id: &Pubkey,
+    safe_authority_info: &AccountInfo,
+    safe_account: &SafeAccount,
+    safe_account_info: &AccountInfo,
+) -> Result<(), ProgramError> {
+    if !safe_account.is_initialized {
+        return Err(SafeError::ErrorCode(SafeErrorCode::NotInitialized).into());
+    }
+    if safe_account_info.owner != program_id {
+        return Err(SafeError::ErrorCode(SafeErrorCode::NotOwnedByProgram).into());
+    }
+    if *safe_authority_info.key != safe_account.authority {
+        return Err(SafeError::ErrorCode(SafeErrorCode::NotSignedByAuthority).into());
+    }
+    if !safe_authority_info.is_signer {
+        return Err(SafeError::ErrorCode(SafeErrorCode::NotSignedByAuthority).into());
+    }
+    // TODO.
+    Ok(())
+}
+
+pub fn whitelist_delete(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    program_id_to_delete: Pubkey,
+) -> Result<(), SafeError> {
+    info!("HANDLER: whitelist_delete");
+
+    let account_info_iter = &mut accounts.iter();
+
+    let safe_authority_info = next_account_info(account_info_iter)?;
+    let safe_account_info = next_account_info(account_info_iter)?;
+
+    let mut safe_account_data = safe_account_info.data.borrow_mut();
+
+    SafeAccount::unpack_unchecked_mut(
+        &mut safe_account_data,
+        &mut |safe_account: &mut SafeAccount| {
+            whitelist_delete_access_control(
+                program_id,
+                safe_authority_info,
+                safe_account,
+                safe_account_info,
+            )?;
+
+            if safe_account
+                .whitelist
+                .delete(program_id_to_delete)
+                .is_none()
+            {
+                return Err(SafeError::ErrorCode(SafeErrorCode::WhitelistEntryNotFound).into());
+            }
+
+            info!("whitelist_delete complete");
+
+            Ok(())
+        },
+    )
+    .map_err(|e| SafeError::ProgramError(e))
+}
+
+fn whitelist_delete_access_control(
+    program_id: &Pubkey,
+    safe_authority_info: &AccountInfo,
+    safe_account: &SafeAccount,
+    safe_account_info: &AccountInfo,
+) -> Result<(), ProgramError> {
+    whitelist_add_access_control(
+        program_id,
+        safe_authority_info,
+        safe_account,
+        safe_account_info,
+    )
 }
 
 pub fn withdraw_srm(accounts: &[AccountInfo], amount: u64) -> Result<(), SafeError> {

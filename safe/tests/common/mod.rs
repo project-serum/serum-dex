@@ -4,6 +4,8 @@ use solana_client::rpc_config::RpcSendTransactionConfig;
 use solana_client_gen::solana_sdk::commitment_config::CommitmentConfig;
 use std::str::FromStr;
 
+pub mod lifecycle;
+
 // The test client assumes:
 //
 // * The payer with the client is already funded.

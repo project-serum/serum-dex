@@ -14,13 +14,17 @@ pub enum SafeError {
 #[repr(u32)]
 pub enum SafeErrorCode {
     WrongSerialization = 0,
-    NotRentExempt,
-    AlreadyInitialized,
-    NotOwnedByProgram,
-    VestingAccountDataInvalid,
-    WrongCoinMint,
-    WrongVaultAddress,
-    SafeAccountDataInvalid,
+    NotRentExempt = 1,
+    AlreadyInitialized = 2,
+    NotInitialized = 3,
+    NotOwnedByProgram = 4,
+    VestingAccountDataInvalid = 5,
+    WrongCoinMint = 6,
+    WrongVaultAddress = 7,
+    SafeAccountDataInvalid = 8,
+    WhitelistFull = 9,
+    WhitelistEntryNotFound = 10,
+    NotSignedByAuthority = 11,
     Unknown = 1000,
 }
 

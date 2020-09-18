@@ -4,7 +4,7 @@ extern crate serum_safe;
 extern crate solana_transaction_status;
 
 use rand::rngs::OsRng;
-use serum_safe::accounts::{SafeAccount, SrmVault, VestingAccount};
+use serum_safe::accounts::{SafeAccount, SrmVault, VestingAccount, Whitelist};
 use serum_safe::client::{Client, ClientError, RequestOptions};
 use serum_safe::error::{SafeError, SafeErrorCode};
 use solana_client_gen::solana_sdk;
@@ -21,31 +21,39 @@ mod common;
 
 #[test]
 fn initialized() {
-    let client = common::client();
-    let safe_authority = Keypair::generate(&mut OsRng);
+    // Given.
+    let common::lifecycle::Genesis {
+        client,
+        mint_authority,
+        srm_mint,
+        god,
+        god_balance_before,
+    } = common::lifecycle::genesis();
 
-    // Create the safe account and initialize it.
-    let srm_mint = Keypair::generate(&mut OsRng);
+    // When.
+    //
+    // I create the safe account and initialize it.
+    let safe_authority = Keypair::generate(&mut OsRng);
     let rent_account = AccountMeta::new_readonly(solana_sdk::sysvar::rent::id(), false);
     let accounts = vec![rent_account];
     let (_signature, safe_account) = client
         .create_account_and_initialize(&accounts, srm_mint.pubkey(), safe_authority.pubkey())
         .unwrap();
 
+    // Then.
     let account = client
         .rpc()
         .get_account_with_commitment(&safe_account.pubkey(), CommitmentConfig::recent())
         .unwrap()
         .value
         .unwrap();
-
     let safe_account = SafeAccount::unpack_from_slice(&account.data).unwrap();
-
     assert_eq!(&account.owner, client.program());
     assert_eq!(account.data.len(), SafeAccount::SIZE);
     assert_eq!(safe_account.authority, safe_authority.pubkey());
     assert_eq!(safe_account.supply, 0);
     assert_eq!(safe_account.is_initialized, true);
+    assert_eq!(safe_account.whitelist, Whitelist::zeroed());
 }
 
 #[test]

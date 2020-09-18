@@ -1,5 +1,3 @@
-//! mod accounts defines the storage layout for the accounts used by this program.
-
 use crate::pack::DynPack;
 use arrayref::{array_mut_ref, array_ref, array_refs, mut_array_refs};
 use byteorder::{ReadBytesExt, WriteBytesExt};
@@ -7,76 +5,6 @@ use solana_client_gen::solana_sdk::program_error::ProgramError;
 use solana_client_gen::solana_sdk::pubkey::Pubkey;
 // TODO: this is in the solana_sdk. Use that version instead.
 use spl_token::pack::{IsInitialized, Pack, Sealed};
-
-#[cfg(feature = "program")]
-use solana_client_gen::solana_sdk::info;
-
-#[cfg(not(feature = "program"))]
-macro_rules! info {
-    ($($i:expr),*) => { { ($($i),*) } };
-}
-
-/// SafeAccount is the account representing an instance of the SrmSafe,
-/// akin to SPL's "mint".
-#[repr(C)]
-#[derive(Debug)]
-pub struct SafeAccount {
-    /// The mint of the SPL token the safe is storing, i.e., the SRM mint.
-    pub mint: Pubkey,
-    /// Optional authority used to mint new tokens.
-    pub authority: Pubkey,
-    /// Total SRM deposited.
-    pub supply: u64,
-    /// Is `true` if this structure has been initialized
-    pub is_initialized: bool,
-}
-
-impl SafeAccount {
-    pub const SIZE: usize = 73;
-}
-
-impl IsInitialized for SafeAccount {
-    fn is_initialized(&self) -> bool {
-        self.is_initialized
-    }
-}
-
-impl Sealed for SafeAccount {}
-
-impl Pack for SafeAccount {
-    const LEN: usize = SafeAccount::SIZE;
-
-    fn unpack_from_slice(src: &[u8]) -> Result<Self, ProgramError> {
-        let src = array_ref![src, 0, SafeAccount::LEN];
-        let (mint, authority, supply, is_initialized) = array_refs![src, 32, 32, 8, 1];
-
-        Ok(SafeAccount {
-            mint: Pubkey::new(mint),
-            authority: Pubkey::new(authority),
-            supply: u64::from_le_bytes(*supply),
-            is_initialized: match is_initialized {
-                [0] => false,
-                [1] => true,
-                _ => return Err(ProgramError::InvalidAccountData),
-            },
-        })
-    }
-    fn pack_into_slice(&self, dst: &mut [u8]) {
-        let dst = array_mut_ref![dst, 0, SafeAccount::LEN];
-        let (mint_dst, authority_dst, supply_dst, is_initialized_dst) =
-            mut_array_refs![dst, 32, 32, 8, 1];
-        let &SafeAccount {
-            mint,
-            authority,
-            supply,
-            is_initialized,
-        } = self;
-        mint_dst.copy_from_slice(mint.as_ref());
-        authority_dst.copy_from_slice(authority.as_ref());
-        *supply_dst = supply.to_le_bytes();
-        is_initialized_dst[0] = is_initialized as u8;
-    }
-}
 
 #[repr(C)]
 #[derive(Debug)]
@@ -215,19 +143,6 @@ impl DynPack for VestingAccount {
                 .write_u64::<byteorder::LittleEndian>(amounts[k])
                 .unwrap();
         }
-    }
-}
-
-pub struct SrmVault;
-impl SrmVault {
-    /// address returns the program-derived-address for the SrmVault account
-    /// holding SRM SPL tokens on behalf of the contract.
-    ///
-    /// For more information on program,
-    /// see https://docs.solana.com/implemented-proposals/program-derived-addresses.
-    pub fn program_derived_address(program_id: &Pubkey, safe_account_key: &Pubkey) -> Pubkey {
-        Pubkey::create_program_address(&[safe_account_key.as_ref()], program_id)
-            .expect("SrmVault must always have an address")
     }
 }
 
