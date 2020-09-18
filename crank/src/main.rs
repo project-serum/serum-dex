@@ -414,6 +414,7 @@ fn send_txn(client: &RpcClient, txn: &Transaction, simulate: bool) -> Result<Sig
         CommitmentConfig::single(),
         RpcSendTransactionConfig {
             skip_preflight: true,
+            preflight_commitment: None,
         },
     )?)
 }
