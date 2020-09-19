@@ -25,6 +25,7 @@ pub enum SafeErrorCode {
     WhitelistFull = 9,
     WhitelistEntryNotFound = 10,
     NotSignedByAuthority = 11,
+    WrongNumberOfAccounts = 12,
     Unknown = 1000,
 }
 

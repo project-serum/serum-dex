@@ -9,6 +9,41 @@ use solana_sdk::transaction::Transaction;
 use spl_token::instruction as token_instruction;
 use spl_token::pack::Pack;
 
+pub fn create_account_rent_exempt(
+    client: &RpcClient,
+    payer: &Keypair,
+    data_size: usize,
+    owner: &Pubkey,
+) -> Result<Keypair> {
+    let account = Keypair::generate(&mut OsRng);
+    // TODO: check if the new account needs to sign (probably not).
+    let signers = [payer, &account];
+
+    let lamports = client.get_minimum_balance_for_rent_exemption(data_size)?;
+
+    let create_account_instr = solana_sdk::system_instruction::create_account(
+        &payer.pubkey(),
+        &account.pubkey(),
+        lamports,
+        data_size as u64,
+        owner,
+    );
+
+    let instructions = vec![create_account_instr];
+
+    let (recent_hash, _fee_calc) = client.get_recent_blockhash()?;
+
+    let txn = Transaction::new_signed_with_payer(
+        &instructions,
+        Some(&payer.pubkey()),
+        &signers,
+        recent_hash,
+    );
+
+    send_txn(client, &txn, false)?;
+    Ok(account)
+}
+
 pub fn create_spl_account(
     client: &RpcClient,
     mint_pubkey: &Pubkey,
@@ -88,45 +123,6 @@ pub fn create_and_init_mint(
     );
 
     send_txn(client, &txn, false)
-}
-
-pub fn genesis(
-    client: &RpcClient,
-    payer_keypair: &Keypair,
-    mint_keypair: &Keypair,
-    mint_authority: &Pubkey,
-    decimals: u8,
-) -> Result<()> {
-    let signers = vec![payer_keypair, mint_keypair];
-
-    let lamports = client.get_minimum_balance_for_rent_exemption(spl_token::state::Mint::LEN)?;
-
-    let create_mint_account_instruction = solana_sdk::system_instruction::create_account(
-        &payer_keypair.pubkey(),
-        &mint_keypair.pubkey(),
-        lamports,
-        spl_token::state::Mint::LEN as u64,
-        &spl_token::ID,
-    );
-    let initialize_mint_instruction = token_instruction::initialize_mint(
-        &spl_token::ID,
-        &mint_keypair.pubkey(),
-        mint_authority,
-        None,
-        decimals,
-    )?;
-    let instructions = vec![create_mint_account_instruction, initialize_mint_instruction];
-
-    let (recent_hash, _fee_calc) = client.get_recent_blockhash()?;
-    let txn = Transaction::new_signed_with_payer(
-        &instructions,
-        Some(&payer_keypair.pubkey()),
-        &signers,
-        recent_hash,
-    );
-
-    send_txn(client, &txn, false)?;
-    Ok(())
 }
 
 pub fn mint_to_new_account(

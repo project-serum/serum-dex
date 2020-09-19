@@ -1,19 +1,22 @@
 //! serum-safe defines the interface for the serum safe program.
 
-use accounts::{SafeAccount, VestingAccount};
+use accounts::{LsrmReceipt, SafeAccount, VestingAccount};
 use serde::{Deserialize, Serialize};
 use solana_client_gen::prelude::*;
 use solana_client_gen::solana_sdk;
+use solana_client_gen::solana_sdk::instruction::AccountMeta;
 use solana_client_gen::solana_sdk::pubkey::Pubkey;
+use spl_token::pack::Pack;
 
 pub mod accounts;
 pub mod error;
 pub mod pack;
 
+pub use client_ext::client;
+
 #[cfg_attr(feature = "client", solana_client_gen)]
 pub mod instruction {
     use super::*;
-
     #[derive(Serialize, Deserialize)]
     pub enum SrmSafeInstruction {
         /// Initialize instruction configures the safe with an admin that is
@@ -22,15 +25,12 @@ pub mod instruction {
         ///
         /// Similar to a mint, this must be included in the same instruction
         /// that creates the account to initialize. Otherwise someone
-        /// can take control of the account by calling. Initialize on it.
+        /// can take control of the account by calling initialize on it.
         ///
         /// Accounts:
         ///
         /// 0. `[writable]` The SafeAccount to initialize.
         /// 1. `[]`         Rent sysvar
-        ///
-        /// Access control assertions:
-        ///  * Accounts[0].owner == SrmSafe.program_id
         #[cfg_attr(feature = "client", create_account(SafeAccount::SIZE))]
         Initialize {
             /// The mint of the SPL token to store in the safe, i.e., the
@@ -62,9 +62,6 @@ pub mod instruction {
         ///
         /// 0. `[signer]`   The authority of the SafeAccount.
         /// 1. `[writable]` The vesting account to slash.
-        ///
-        /// Access control assertions:
-        ///   * Accounts[0]
         Slash {
             /// The amount of SRM to slash.
             amount: u64,
@@ -86,12 +83,6 @@ pub mod instruction {
         /// 4. `[]`         The SafeAccount instance.
         /// 5. `[]`         SPL token program.
         /// 6. `[]`         The rent sysvar.
-        ///
-        /// Access control assertions:
-        ///
-        ///  * Accounts[0].owner == SrmSafe.program_id
-        ///  * Accounts[1].owner == SrmSafe.program_id
-        ///
         #[cfg_attr(feature = "client", create_account(..))]
         DepositSrm {
             /// The beneficiary of the vesting account, i.e.,
@@ -102,6 +93,38 @@ pub mod instruction {
             /// The amount of SRM to release for each vesting_slot.
             vesting_amounts: Vec<u64>,
         },
+        /// MintLockedSrm mints an lSRM token and sends it to the depositor's lSRM SPL account,
+        /// adjusting the vesting account's metadata as needed--increasing the amount of
+        /// lSRM minted so that subsequent withdrawals will be affected by any outstanding
+        /// locked srm associated with a vesting account.
+        ///
+        /// Accounts:
+        ///
+        /// 0.  `[signer]`   The vesting account beneficiary.
+        /// 1.  `[writable]` The vesting account to mint lSRM from.
+        /// 2.  `[]          The safe account instance.
+        /// 3.  `[]`         The rent sysvar.
+        /// ... `[writable]` A variable number of lSRM SPL mints one for each NFT
+        ///                  instance of lSRM. The mint must be uninitialized.
+        /// ... `[writable]` A variable number of lSRM receipts, one for each lSRM
+        ///                  NFT, each owned by this program and given uninitialized.
+        MintLockedSrm,
+        /// BurnLockedSrm destroys the lSRM associated with the vesting account, updating
+        /// the vesting account's metadata so that subsequent withdrawals are not affected
+        /// by the burned lSRM.
+        ///
+        /// Accounts:
+        ///
+        /// 0. `[signer]`   the owner of the lSRM SPL token account to burn from.
+        /// 1. `[writable]` the lSRM SPL token account to burn from.
+        /// 2. `[writable]` the vesting account.
+        ///
+        /// Note that the signer, i.e., the owner of the lSRM SPL token account must be
+        /// equal to the vesting' account's spl wallet owner, i.e. `user_spl_wallet_owner`.
+        /// This means the same address must be the owner of *both* the lSRM account and
+        /// the final SRM wallet account to withdraw from.
+        ///
+        BurnLockedSrm,
         /// WithdrawSrm withdraws the given amount from the SrmSafe SPL account vault,
         /// updating the user's vesting account.
         ///
@@ -113,63 +136,13 @@ pub mod instruction {
         /// 2. `[writable]` the SRM SPL token account to withdraw to.
         /// 3. `[writable]` the SrmSafe SPL account vault from which we are transferring
         ///                 ownership of the SRM out of.
-        ///
-        /// Access control assertions:
-        ///
-        ///  * VestingAccount.owner == SrmSafe.program_id
-        ///  * VestingAccountInner.user_spl_wallet_owner == Accounts[0]
-        ///  * Solana::current_slot() >= VestingAccountInner.slot_number
-        ///
         WithdrawSrm {
             // Amount of SRM to withdraw.
             amount: u64,
         },
-        /// MintLockedSrm mints an lSRM token and sends it to the depositor's lSRM SPL account,
-        /// adjusting the vesting account's metadata as needed--increasing the amount of
-        /// lSRM minted so that subsequent withdrawals will be affected by any outstanding
-        /// locked srm associated with a vesting account.
-        ///
-        /// Accounts:
-        ///
-        /// 0. `[signer]`   the vesting account's `user_spl_wallet_owner`. I.e., the
-        ///                 owner of the spl wallet assigned to the vesting account.
-        /// 1. `[writable]` the lSRM SPL token account to send the newly minted lSRM to.
-        /// 2. `[writable]` the vesting account.
-        ///
-        /// Access control assertions:
-        ///
-        ///  * VestingAccount.owner == SrmSafe.program_id
-        ///  * VestingAccountInner.user_spl_wallet_owner == Accounts[0]
-        ///  * VestingAccountInner.amount - VestingAccountInner.lsrm_amount >= amount
-        ///
-        MintLockedSrm {
-            // Amount of lSRM to mint.
-            amount: u64,
-        },
-        /// BurnLockedSrm destroys the lSRM associated with the vesting account, updating
-        /// the vesting account's metadata so that subsequent withdrawals are not affected
-        /// by the burned lSRM.
-        ///
-        /// Accounts:
-        ///
-        /// 0. `[signer]`   the owner of the lSRM SPL token account to burn from.
-        /// 1. `[writable]` the lSRM SPL token account to burn from.
-        /// 2. `[writable]` the vesting account.
-        ///
-        /// Access control assertions:
-        ///
-        ///  * VestingAccount.owner == SrmSafe.program_id
-        ///  * VestingAccountInner.user_spl_wallet_owner == Accounts[0]
-        ///  * VestingAccountInner.lsrm_amount >= amount
-        ///
-        /// Note that the signer, i.e., the owner of the lSRM SPL token account must be
-        /// equal to the vesting' account's spl wallet owner, i.e. `user_spl_wallet_owner`.
-        /// This means the same address must be the owner of *both* the lSRM account and
-        /// the final SRM wallet account to withdraw from.
-        ///
-        BurnLockedSrm {
-            // Amount of lSRM to burn.
-            amount: u64,
-        },
     }
 }
+
+// Define below so the meta-macro is in scope to teh client_ext module.
+#[cfg(feature = "client")]
+mod client_ext;

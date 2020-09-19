@@ -2,7 +2,7 @@
 
 use arrayref::array_mut_ref;
 use safe_transmute::to_bytes::transmute_to_bytes;
-use serum_safe::accounts::{SafeAccount, SrmVault, VestingAccount, Whitelist};
+use serum_safe::accounts::{LsrmReceipt, SafeAccount, SrmVault, VestingAccount, Whitelist};
 use serum_safe::error::{SafeError, SafeErrorCode};
 use serum_safe::pack::DynPack;
 use solana_sdk::account_info::{next_account_info, AccountInfo};
@@ -188,11 +188,68 @@ fn deposit_srm_access_control(
     }
     // Look into the safe vault's SPL account data and check for the owner (it should
     // be this program).
-    if Pubkey::new(&safe_srm_vault_to.try_borrow_data()?[32..64])
+    //
+    // TODO: enable this.
+    /*if Pubkey::new(&safe_srm_vault_to.try_borrow_data()?[32..64])
         != SrmVault::program_derived_address(program_id, safe_account_info.key)
     {
         return Err(SafeError::ErrorCode(SafeErrorCode::WrongVaultAddress).into());
+    }*/
+    Ok(())
+}
+
+pub fn mint_locked_srm(accounts: &[AccountInfo]) -> Result<(), SafeError> {
+    info!("HANDLER: mint_locked_srm");
+
+    let accounts_len = accounts.len();
+    if (accounts_len - 4) % 3 != 0 {
+        return Err(SafeError::ErrorCode(SafeErrorCode::WrongNumberOfAccounts));
     }
+    let lsrm_nft_count = (accounts_len - 4) / 3;
+
+    let account_info_iter = &mut accounts.iter();
+
+    let vesting_account_beneficiary_info = next_account_info(account_info_iter)?;
+    let vesting_account_info = next_account_info(account_info_iter)?;
+    let safe_account_info = next_account_info(account_info_iter)?;
+    let rent = &Rent::from_account_info(next_account_info(account_info_iter)?)?;
+
+    let mut lsrm_nfts = vec![];
+
+    let mut idx = 0;
+    for _ in 0..lsrm_nft_count {
+        let lsrm_spl_mint_info = next_account_info(account_info_iter)?;
+        let lsrm_spl_account_info = next_account_info(account_info_iter)?;
+        let lsrm_receipt_info = next_account_info(account_info_iter)?;
+        lsrm_nfts.push((lsrm_spl_mint_info, lsrm_spl_account_info, lsrm_receipt_info));
+    }
+
+    VestingAccount::unpack_mut(
+        &mut vesting_account_info.try_borrow_mut_data()?,
+        &mut |vesting_account: &mut VestingAccount| {
+            mint_locked_srm_access_control(vesting_account, lsrm_nft_count)?;
+
+            Ok(())
+        },
+    )
+    .map_err(|e| SafeError::ProgramError(e))
+}
+
+fn mint_locked_srm_access_control(
+    vesting_account: &VestingAccount,
+    lsrm_mint_amount: usize,
+) -> Result<(), SafeError> {
+    // todo
+    Ok(())
+}
+
+pub fn burn_locked_srm(accounts: &[AccountInfo]) -> Result<(), SafeError> {
+    info!("**********burn SRM!");
+    Ok(())
+}
+
+pub fn withdraw_srm(accounts: &[AccountInfo], amount: u64) -> Result<(), SafeError> {
+    info!("**********withdraw SRM!");
     Ok(())
 }
 
@@ -305,19 +362,4 @@ fn whitelist_delete_access_control(
         safe_account,
         safe_account_info,
     )
-}
-
-pub fn withdraw_srm(accounts: &[AccountInfo], amount: u64) -> Result<(), SafeError> {
-    info!("**********withdraw SRM!");
-    Ok(())
-}
-
-pub fn mint_locked_srm(accounts: &[AccountInfo], amount: u64) -> Result<(), SafeError> {
-    info!("**********mint SRM!");
-    Ok(())
-}
-
-pub fn burn_locked_srm(accounts: &[AccountInfo], amount: u64) -> Result<(), SafeError> {
-    info!("**********burn SRM!");
-    Ok(())
 }

@@ -5,12 +5,12 @@ TEST_PAYER_FILEPATH="$(HOME)/.config/solana/id.json"
 #
 # The solana cluster to test against. Defaults to local.
 #
-TEST_CLUSTER_URL=l
+TEST_CLUSTER_URL=localnet
 #
 # One can optionally set this along with the test-program command
 # to avoid redeploying everytime tests are run.
 #
-TEST_PROGRAM_ID=""
+TEST_PROGRAM_ID="6QW8JCyq3L7xQVjRzSK71yV7GSRqD3rHo5UU8j4h3UQm"
 #
 # Path to the BPF sdk to build solana programs.
 #
@@ -36,6 +36,6 @@ deploy: build
 	@echo "Deployed program at address $(TEST_PROGRAM_ID)"
 
 test-program:
-	 RUST_BACKTRACE=1 TEST_PROGRAM_ID=$(TEST_PROGRAM_ID) TEST_PAYER_FILEPATH=$(TEST_PAYER_FILEPATH) TEST_CLUSTER_URL=$(TEST_CLUSTER_URL) cargo test --features test,client -- --nocapture $(args)
+	 RUST_BACKTRACE=1 TEST_PROGRAM_ID=$(TEST_PROGRAM_ID) TEST_PAYER_FILEPATH=$(TEST_PAYER_FILEPATH) TEST_CLUSTER_URL=$(TEST_CLUSTER_URL) cargo test --features test,client,client-ext -- --nocapture $(args)
 
 test: deploy test-program

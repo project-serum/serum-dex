@@ -37,7 +37,7 @@ fn deposit_srm() {
     //
     // A depositor performs the vesting account deposit.
     let (vesting_account_kp, expected_beneficiary, expected_slots, expected_amounts) = {
-        let deposit_accounts = vec![
+        let deposit_accounts = [
             AccountMeta::new(depositor.pubkey(), false),
             AccountMeta::new(client.payer().pubkey(), true), // Owner of the depositor SPL account.
             AccountMeta::new(safe_srm_vault.pubkey(), false),
@@ -52,7 +52,7 @@ fn deposit_srm() {
         let (signature, keypair) = client
             .create_account_with_size_and_deposit_srm(
                 vesting_account_size,
-                deposit_accounts.as_slice(),
+                &deposit_accounts,
                 vesting_account_beneficiary.pubkey(),
                 vesting_slots.clone(),
                 vesting_amounts.clone(),

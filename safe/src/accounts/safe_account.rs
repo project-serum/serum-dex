@@ -13,9 +13,11 @@ use spl_token::pack::{IsInitialized, Pack, Sealed};
 pub struct SafeAccount {
     /// The mint of the SPL token the safe is storing, i.e., the SRM mint.
     pub mint: Pubkey,
-    /// Optional authority used to mint new tokens.
+    ///
     pub authority: Pubkey,
     /// Total SRM deposited.
+    // TODO: we don't actually use this field right now, but it might
+    //       be nice to have for quick queries.
     pub supply: u64,
     /// Is `true` if this structure has been initialized
     pub is_initialized: bool,

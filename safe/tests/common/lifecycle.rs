@@ -17,6 +17,8 @@ use solana_transaction_status::UiTransactionEncoding;
 use spl_token::pack::Pack;
 use std::error::Error;
 
+pub const SPL_MINT_DECIMALS: u8 = 3;
+
 pub fn genesis() -> Genesis {
     let client = common::client();
 
@@ -25,7 +27,7 @@ pub fn genesis() -> Genesis {
     // Initialize the SPL token representing SRM.
     let mint_authority = Keypair::from_bytes(&Keypair::to_bytes(client.payer().clone())).unwrap();
     let srm_mint = Keypair::generate(&mut OsRng);
-    let _ = serum_common::rpc::genesis(
+    let _ = serum_common::rpc::create_and_init_mint(
         client.rpc(),
         client.payer(),
         &srm_mint,
@@ -192,4 +194,59 @@ pub struct InitializedWithWhitelist {
     pub depositor: Keypair,
     pub depositor_balance_before: u64,
     pub whitelist: Whitelist,
+}
+
+pub fn deposit() -> Deposited {
+    let Initialized {
+        client,
+        safe_account,
+        safe_authority,
+        safe_srm_vault,
+        depositor,
+        depositor_balance_before,
+    } = initialize();
+
+    let (vesting_account, vesting_account_beneficiary, expected_slots, expected_amounts) = {
+        let deposit_accounts = [
+            AccountMeta::new(depositor.pubkey(), false),
+            AccountMeta::new(client.payer().pubkey(), true), // Owner of the depositor SPL account.
+            AccountMeta::new(safe_srm_vault.pubkey(), false),
+            AccountMeta::new(safe_account.pubkey(), false),
+            AccountMeta::new(spl_token::ID, false),
+            AccountMeta::new_readonly(solana_sdk::sysvar::rent::ID, false),
+        ];
+        let vesting_account_beneficiary = Keypair::generate(&mut OsRng);
+        let vesting_slots = vec![11, 12, 13, 14, 15];
+        let vesting_amounts = vec![1, 2, 3, 4, 5];
+        let vesting_account_size = VestingAccount::data_size(vesting_slots.len());
+        let (signature, keypair) = client
+            .create_account_with_size_and_deposit_srm(
+                vesting_account_size,
+                &deposit_accounts,
+                vesting_account_beneficiary.pubkey(),
+                vesting_slots.clone(),
+                vesting_amounts.clone(),
+            )
+            .unwrap();
+        (
+            keypair,
+            vesting_account_beneficiary,
+            vesting_slots,
+            vesting_amounts,
+        )
+    };
+
+    Deposited {
+        client,
+        vesting_account_beneficiary,
+        vesting_account: vesting_account.pubkey(),
+        safe_account: safe_account.pubkey(),
+    }
+}
+
+pub struct Deposited {
+    pub client: Client,
+    pub vesting_account_beneficiary: Keypair,
+    pub vesting_account: Pubkey,
+    pub safe_account: Pubkey,
 }
