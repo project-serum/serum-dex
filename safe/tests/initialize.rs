@@ -1,8 +1,3 @@
-extern crate rand;
-extern crate serum_common;
-extern crate serum_safe;
-extern crate solana_transaction_status;
-
 use rand::rngs::OsRng;
 use serum_safe::accounts::{SafeAccount, SrmVault, VestingAccount, Whitelist};
 use serum_safe::client::{Client, ClientError, RequestOptions};

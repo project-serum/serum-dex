@@ -41,7 +41,7 @@ fn process_instruction(
             vesting_slots,
             vesting_amounts,
         ),
-        SrmSafeInstruction::MintLockedSrm => api::mint_locked_srm(accounts),
+        SrmSafeInstruction::MintLockedSrm => api::mint_locked_srm(program_id, accounts),
         SrmSafeInstruction::WithdrawSrm { amount } => api::withdraw_srm(accounts, amount),
         SrmSafeInstruction::BurnLockedSrm => api::burn_locked_srm(accounts),
         SrmSafeInstruction::Slash { amount } => api::slash(accounts, amount),

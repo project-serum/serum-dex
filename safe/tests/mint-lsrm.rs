@@ -37,6 +37,7 @@ fn mint_lsrm() {
             AccountMeta::new(vesting_account_beneficiary.pubkey(), true),
             AccountMeta::new(vesting_account, false),
             AccountMeta::new(safe_account, false),
+            AccountMeta::new(spl_token::ID, false),
             AccountMeta::new_readonly(sysvar::rent::ID, false),
         ];
         let mut signers = vec![&vesting_account_beneficiary, client.payer()];
@@ -62,7 +63,7 @@ fn mint_lsrm() {
 
         for mint in lsrm_nft_mints {
             assert!(mint.is_initialized);
-            assert_eq!(mint.mint_authority, COption::None);
+            assert_eq!(mint.mint_authority, COption::Some(*client.program()));
             assert_eq!(mint.supply, 0);
             assert_eq!(mint.decimals, 0);
             assert_eq!(mint.freeze_authority, COption::None);
@@ -113,7 +114,7 @@ fn mint_lsrm() {
         assert_eq!(updated_vesting_account.initialized, true);
         // Check slots.
         let matching = updated_vesting_account
-            .amounts
+            .slots
             .iter()
             .zip(&vesting_account_slots)
             .filter(|&(a, b)| a == b)

@@ -27,7 +27,7 @@ pub fn genesis() -> Genesis {
     // Initialize the SPL token representing SRM.
     let mint_authority = Keypair::from_bytes(&Keypair::to_bytes(client.payer().clone())).unwrap();
     let srm_mint = Keypair::generate(&mut OsRng);
-    let _ = serum_common::rpc::create_and_init_mint(
+    let _ = serum_common_client::rpc::create_and_init_mint(
         client.rpc(),
         client.payer(),
         &srm_mint,
@@ -41,7 +41,7 @@ pub fn genesis() -> Genesis {
     // Create a funded SRM SPL account representing the depositor allocating
     // vesting accounts.
     let god_balance_before = 1_000_000;
-    let god = serum_common::rpc::mint_to_new_account(
+    let god = serum_common_client::rpc::mint_to_new_account(
         client.rpc(),
         client.payer(),
         &mint_authority,
@@ -100,7 +100,7 @@ pub fn initialize() -> Initialized {
     let safe_srm_vault = {
         let safe_srm_vault_program_derived_address =
             SrmVault::program_derived_address(client.program(), &safe_account.pubkey());
-        let safe_srm_vault = serum_common::rpc::create_spl_account(
+        let safe_srm_vault = serum_common_client::rpc::create_spl_account(
             client.rpc(),
             &srm_mint.pubkey(),
             &safe_srm_vault_program_derived_address,
@@ -214,7 +214,8 @@ pub fn deposit() -> Deposited {
     ) = {
         let deposit_accounts = [
             AccountMeta::new(depositor.pubkey(), false),
-            AccountMeta::new(client.payer().pubkey(), true), // Owner of the depositor SPL account.
+            // Authority of the depositing SPL account.
+            AccountMeta::new(client.payer().pubkey(), true),
             AccountMeta::new(safe_srm_vault.pubkey(), false),
             AccountMeta::new(safe_account.pubkey(), false),
             AccountMeta::new(spl_token::ID, false),

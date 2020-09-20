@@ -112,8 +112,11 @@ solana_client_gen_extension! {
             let mut lsrm_receipt_keys = vec![];
             let mut instructions = vec![];
 
-            let lamports = self.rpc().get_minimum_balance_for_rent_exemption(
+            let lamports_mint = self.rpc().get_minimum_balance_for_rent_exemption(
                 spl_token::state::Mint::LEN,
+            )?;
+            let lamports_receipt = self.rpc().get_minimum_balance_for_rent_exemption(
+                LsrmReceipt::SIZE,
             )?;
 
             for _ in 0..lsrm_count {
@@ -123,20 +126,17 @@ solana_client_gen_extension! {
                 let create_mint_account_instr = solana_sdk::system_instruction::create_account(
                     &self.payer().pubkey(),
                     &lsrm_nft_mint.pubkey(),
-                    lamports,
+                    lamports_mint,
                     spl_token::state::Mint::LEN as u64,
                     &spl_token::ID,
                 );
 
                 // The receipt for the mint								.
                 let lsrm_receipt = Keypair::generate(&mut OsRng);
-                let lamports = self.rpc().get_minimum_balance_for_rent_exemption(
-                    LsrmReceipt::SIZE,
-                )?;
                 let lsrm_receipt_instr = solana_sdk::system_instruction::create_account(
                     &self.payer().pubkey(),
                     &lsrm_receipt.pubkey(),
-                    lamports,
+                    lamports_receipt,
                     LsrmReceipt::SIZE as u64,
                     self.program(),
                 );

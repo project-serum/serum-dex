@@ -49,6 +49,11 @@ impl VestingAccount {
         // 8 + 32 + 32
         return 72;
     }
+
+    /// Returns the total deposit in this vesting account.
+    pub fn total(&self) -> u64 {
+        self.amounts.iter().sum()
+    }
 }
 
 impl IsInitialized for VestingAccount {

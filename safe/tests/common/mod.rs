@@ -1,4 +1,4 @@
-use serum_common::Cluster;
+use serum_common_client::Cluster;
 use serum_safe::client::{Client, ClientError, RequestOptions};
 use solana_client::rpc_config::RpcSendTransactionConfig;
 use solana_client_gen::solana_sdk::commitment_config::CommitmentConfig;

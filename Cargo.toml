@@ -1,7 +1,7 @@
 [workspace]
 members = [
     "solana-client-gen",
-    "common",
+    "common/client",
     "safe",
     "safe/cli",
     "safe/program",

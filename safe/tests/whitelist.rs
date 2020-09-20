@@ -1,5 +1,3 @@
-extern crate rand;
-
 use serum_safe::accounts::{SafeAccount, Whitelist};
 use solana_client_gen::solana_sdk::commitment_config::CommitmentConfig;
 use solana_client_gen::solana_sdk::instruction::AccountMeta;

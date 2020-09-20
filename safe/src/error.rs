@@ -26,6 +26,10 @@ pub enum SafeErrorCode {
     WhitelistEntryNotFound = 10,
     NotSignedByAuthority = 11,
     WrongNumberOfAccounts = 12,
+    InsufficientBalance = 13,
+    Unauthorized = 14,
+    LsrmMintAlreadyInitialized = 15,
+    LsrmReceiptAlreadyInitialized = 16,
     Unknown = 1000,
 }
 
