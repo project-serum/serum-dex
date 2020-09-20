@@ -58,7 +58,7 @@ pub fn solana_client_gen(
     // Second pass:
     //
     // Parse the instruction enum and generate code from each enum variant.
-    let (client_methods, instruction_methods, decode_and_dispatch_tree, coder_definition) =
+    let (client_methods, instruction_methods, decode_and_dispatch_tree, coder_mod) =
         enum_to_methods(
             instruction_mod.ident.clone(),
             &instruction_enum_item,
@@ -88,118 +88,122 @@ pub fn solana_client_gen(
         }
     };
 
-    // Generate the entire client module.
     let client = quote! {
-        #[cfg(feature = "client")]
-        pub mod client {
-            use super::*;
+        use super::*;
 
-            #[derive(Debug, Error)]
-            pub enum ClientError {
-                #[error("Invalid keypair filename")]
-                InvalidKeyPairFile(String),
-                #[error("Error invoking rpc")]
-                RpcError(#[from] solana_client::client_error::ClientError),
-                #[error("Raw error")]
-                RawError(String),
-            }
+    #[derive(Debug, Error)]
+    pub enum ClientError {
+        #[error("Invalid keypair filename")]
+        InvalidKeyPairFile(String),
+        #[error("Error invoking rpc")]
+        RpcError(#[from] solana_client::client_error::ClientError),
+        #[error("Raw error")]
+        RawError(String),
+    }
 
-            use solana_client_gen::solana_sdk::instruction::InstructionError;
-            use solana_client_gen::solana_sdk::transaction::TransactionError;
-            use solana_client_gen::solana_client::client_error::ClientErrorKind as RpcClientErrorKind;
+    use solana_client_gen::solana_sdk::instruction::InstructionError;
+    use solana_client_gen::solana_sdk::transaction::TransactionError;
+    use solana_client_gen::solana_client::client_error::ClientErrorKind as RpcClientErrorKind;
 
-            impl ClientError {
-                // error_code returns Some(error_code) returned by the on chain program
-                // and none if the error resulted from somewhere else.
-                //
-                // TODO: there's gotta be a cleaner way of unpacking this.
-                pub fn error_code(&self) -> Option<u32> {
-                    match self {
-                        ClientError::RpcError(e) => match e.kind() {
-                            RpcClientErrorKind::TransactionError(e) => match e {
-                                TransactionError::InstructionError(_, instr_error) => match instr_error {
-                                    InstructionError::Custom(error_code) => {
-                                        Some(*error_code)
-                                    }
-                                    _ => None,
-                                },
-                                _ => None,
-                            },
+    impl ClientError {
+        // error_code returns Some(error_code) returned by the on chain program
+        // and none if the error resulted from somewhere else.
+        //
+        // TODO: there's gotta be a cleaner way of unpacking this.
+        pub fn error_code(&self) -> Option<u32> {
+            match self {
+                ClientError::RpcError(e) => match e.kind() {
+                    RpcClientErrorKind::TransactionError(e) => match e {
+                        TransactionError::InstructionError(_, instr_error) => match instr_error {
+                            InstructionError::Custom(error_code) => {
+                                Some(*error_code)
+                            }
                             _ => None,
                         },
                         _ => None,
-                    }
-                }
+                    },
+                    _ => None,
+                },
+                _ => None,
             }
+        }
+    }
 
-            #[derive(Debug)]
-            pub struct RequestOptions {
-                pub commitment: CommitmentConfig,
-                pub tx: RpcSendTransactionConfig,
+    #[derive(Debug)]
+    pub struct RequestOptions {
+        pub commitment: CommitmentConfig,
+        pub tx: RpcSendTransactionConfig,
+    }
+
+    // Client is the RPC client generated to talk to a program running
+    // on a configured Solana cluster.
+    pub struct Client {
+        program_id: Pubkey,
+        payer: Keypair,
+        rpc: RpcClient,
+        opts: RequestOptions,
+    }
+
+    impl Client {
+        pub fn new(
+            program_id: Pubkey,
+            payer: Keypair,
+            url: &str,
+            given_opts: Option<RequestOptions>,
+        ) -> Self {
+            let rpc = RpcClient::new(url.to_string());
+            let opts = match given_opts {
+                Some(opts) => opts,
+                // Use these default options if None are given.
+                None => RequestOptions {
+                    commitment: CommitmentConfig::single(),
+                    tx: RpcSendTransactionConfig {
+                        skip_preflight: true,
+                        preflight_commitment: None,
+                    },
+                },
+            };
+            Self {
+                program_id,
+                payer,
+                rpc,
+                opts,
             }
+        }
 
-            // Client is the RPC client generated to talk to a program running
-            // on a configured Solana cluster.
-            pub struct Client {
-                program_id: Pubkey,
-                payer: Keypair,
-                rpc: RpcClient,
-                opts: RequestOptions,
-            }
+        pub fn from_keypair_file(program_id: Pubkey, filename: &str, url: &str) -> Result<Self, ClientError> {
+            let kp = solana_sdk::signature::read_keypair_file(filename)
+                .map_err(|e| ClientError::InvalidKeyPairFile(filename.to_string()))?;
+            Ok(Self::new(program_id, kp, url, None))
+        }
 
-            impl Client {
-                pub fn new(
-                    program_id: Pubkey,
-                    payer: Keypair,
-                    url: &str,
-                    given_opts: Option<RequestOptions>,
-                ) -> Self {
-                    let rpc = RpcClient::new(url.to_string());
-                    let opts = match given_opts {
-                        Some(opts) => opts,
-                        // Use these default options if None are given.
-                        None => RequestOptions {
-                            commitment: CommitmentConfig::single(),
-                            tx: RpcSendTransactionConfig {
-                                skip_preflight: true,
-                                preflight_commitment: None,
-                            },
-                        },
-                    };
-                    Self {
-                        program_id,
-                        payer,
-                        rpc,
-                        opts,
-                    }
-                }
+        // Builder method to set the default options for each RPC request.
+        pub fn with_options(mut self, opts: RequestOptions) -> Self {
+            self.opts = opts;
+            self
+        }
 
-                pub fn from_keypair_file(program_id: Pubkey, filename: &str, url: &str) -> Result<Self, ClientError> {
-                    let kp = solana_sdk::signature::read_keypair_file(filename)
-                        .map_err(|e| ClientError::InvalidKeyPairFile(filename.to_string()))?;
-                    Ok(Self::new(program_id, kp, url, None))
-                }
+        pub fn rpc(&self) -> &RpcClient {
+            &self.rpc
+        }
 
-                // Builder method to set the default options for each RPC request.
-                pub fn with_options(mut self, opts: RequestOptions) -> Self {
-                    self.opts = opts;
-                    self
-                }
+        pub fn payer(&self) -> &Keypair {
+            &self.payer
+        }
 
-                pub fn rpc(&self) -> &RpcClient {
-                    &self.rpc
-                }
+        pub fn program(&self) -> &Pubkey {
+            &self.program_id
+        }
 
-                pub fn payer(&self) -> &Keypair {
-                    &self.payer
-                }
+        #client_methods
+    }
+    };
 
-                pub fn program(&self) -> &Pubkey {
-                    &self.program_id
-                }
-
-                #client_methods
-            }
+    // Generate the entire client module.
+    let client_mod = quote! {
+        #[cfg(feature = "client")]
+        pub mod client {
+            #client
         }
     };
 
@@ -235,16 +239,45 @@ pub fn solana_client_gen(
         }
     };
 
+    // When this meta macro is enabled, a client can extend the client
+    // to add custom apis. For example.
+    //
+    // solana_client_gen_extension! {
+    //   impl Client {
+    //     my_custom_api() {
+    //       ...
+    //     }
+    //   }
+    // }
+    let extendable_client_macro = quote! {
+        #[cfg(feature = "client-ext")]
+        #[macro_export]
+        macro_rules! solana_client_gen_extension {
+            ($($client_ext:tt)*) => {
+                pub mod client {
+                    #client
+                    $($client_ext)*
+                }
+                #new_instruction_mod
+
+                #coder_mod
+            }
+        }
+    };
+
     // Now put it all together.
     //
     // Output the transormed AST with the new client, new instruction mod,
     // and new coder definition.
     proc_macro::TokenStream::from(quote! {
-        #client
-
+        #[cfg(not(feature = "client-ext"))]
+        #client_mod
+        #[cfg(not(feature = "client-ext"))]
         #new_instruction_mod
+        #[cfg(not(feature = "client-ext"))]
+        #coder_mod
 
-        #coder_definition
+        #extendable_client_macro
     })
 }
 
@@ -268,10 +301,10 @@ fn enum_to_methods(
 ) {
     let coder_struct = match &coder_struct_opt {
         None => quote! {
-                _DefaultCoder
+            solana_client_gen_coder::_DefaultCoder
         },
         Some(cs) => quote! {
-                #cs
+            #cs
         },
     };
 
@@ -643,22 +676,25 @@ fn enum_to_methods(
     };
 
     // Define the instruction coder to use for serialization.
-    let coder_definition = match coder_struct_opt {
+    let coder_mod = match coder_struct_opt {
         // It's defined externally so do nothing.
         Some(_) => quote! {},
         // Coder not provided, so use declare and use the default one.
         None => quote! {
-            struct _DefaultCoder;
-            impl _DefaultCoder {
-                pub fn to_bytes(i: #instruction_mod_ident::#instruction_enum_ident) -> Vec<u8> {
-                    bincode::serialize(&(0u8, i))
-                        .expect("instruction must be serializable")
-                }
-                pub fn from_bytes(data: &[u8]) -> Result<Vec<u8>, ()> {
-                    match data.split_first() {
-                        None => Err(()),
-                        Some((&u08, rest)) => bincode::deserialize(rest).map_err(|_| ()),
-                        Some((_, _rest)) => Err(()),
+            mod solana_client_gen_coder {
+                use super::*;
+                pub struct _DefaultCoder;
+                impl _DefaultCoder {
+                    pub fn to_bytes(i: #instruction_mod_ident::#instruction_enum_ident) -> Vec<u8> {
+                        bincode::serialize(&(0u8, i))
+                            .expect("instruction must be serializable")
+                    }
+                    pub fn from_bytes(data: &[u8]) -> Result<Vec<u8>, ()> {
+                        match data.split_first() {
+                            None => Err(()),
+                            Some((&u08, rest)) => bincode::deserialize(rest).map_err(|_| ()),
+                            Some((_, _rest)) => Err(()),
+                        }
                     }
                 }
             }
@@ -669,7 +705,7 @@ fn enum_to_methods(
         client_methods,
         instruction_methods,
         decode_and_dispatch_tree,
-        coder_definition,
+        coder_mod,
     )
 }
 
