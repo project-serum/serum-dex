@@ -206,7 +206,12 @@ pub fn deposit() -> Deposited {
         depositor_balance_before,
     } = initialize();
 
-    let (vesting_account, vesting_account_beneficiary, expected_slots, expected_amounts) = {
+    let (
+        vesting_account,
+        vesting_account_beneficiary,
+        vesting_account_slots,
+        vesting_account_amounts,
+    ) = {
         let deposit_accounts = [
             AccountMeta::new(depositor.pubkey(), false),
             AccountMeta::new(client.payer().pubkey(), true), // Owner of the depositor SPL account.
@@ -240,6 +245,8 @@ pub fn deposit() -> Deposited {
         client,
         vesting_account_beneficiary,
         vesting_account: vesting_account.pubkey(),
+        vesting_account_slots,
+        vesting_account_amounts,
         safe_account: safe_account.pubkey(),
     }
 }
@@ -248,5 +255,7 @@ pub struct Deposited {
     pub client: Client,
     pub vesting_account_beneficiary: Keypair,
     pub vesting_account: Pubkey,
+    pub vesting_account_slots: Vec<u64>,
+    pub vesting_account_amounts: Vec<u64>,
     pub safe_account: Pubkey,
 }

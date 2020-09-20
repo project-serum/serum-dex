@@ -43,7 +43,7 @@ solana_client_gen_extension! {
             lsrm_count: usize,
             mut signers: Vec<&Keypair>,
             mut accounts: Vec<AccountMeta>,
-        ) -> Result<(Signature, Vec<Lsrm>), ClientError>{
+        ) -> Result<(Signature, Vec<Lsrm>), ClientError> {
             let (tx, mut lsrm_nft_mint_keys, mut lsrm_receipt_keys) = {
                 // Rescope lifetime to this block.
                 let mut signers = signers;
@@ -157,8 +157,12 @@ solana_client_gen_extension! {
         }
     }
 
+    /// Lsrm defines the required keys to redeem and otherwise use lSRM.
     pub struct Lsrm {
-        mint: Keypair,
-        receipt: Pubkey,
+        /// Posession of this key implies one is the proprietor of this asset.
+        pub mint: Keypair,
+        /// The receipt account address. Required upon redemption to prove
+        /// to the program this is a valid lSRM mint.
+        pub receipt: Pubkey,
     }
 }

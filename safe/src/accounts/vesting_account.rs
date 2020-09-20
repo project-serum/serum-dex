@@ -17,6 +17,8 @@ pub struct VestingAccount {
     pub beneficiary: Pubkey,
     /// True iff the vesting account has been initialized via deposit.
     pub initialized: bool,
+    /// The amount of locked SRM outstanding.
+    pub locked_outstanding: u64,
     /// The Solana slots at which each amount vests.
     pub slots: Vec<u64>,
     /// The amount that vests at each slot.
@@ -38,8 +40,8 @@ impl VestingAccount {
     }
 
     pub fn fixed_size() -> usize {
-        // 2*pubkey.len() + initialized
-        64 + 1
+        // 2*pubkey.len() + initialized + locked_outstanding
+        64 + 1 + 8
     }
 
     /// Returns the index of the intialized member in the underlying data array.
@@ -74,8 +76,9 @@ impl DynPack for VestingAccount {
             return Err(ProgramError::Custom(13));
         }
 
-        let src_fixed = array_ref![src, 0, 65];
-        let (safe, beneficiary, initialized) = array_refs![src_fixed, 32, 32, 1];
+        let src_fixed = array_ref![src, 0, 73];
+        let (safe, beneficiary, initialized, locked_outstanding) =
+            array_refs![src_fixed, 32, 32, 1, 8];
 
         let slots = {
             let slots_start = src[VestingAccount::fixed_size()..].to_vec();
@@ -109,13 +112,14 @@ impl DynPack for VestingAccount {
                 [1] => true,
                 _ => return Err(ProgramError::Custom(14)),
             },
+            locked_outstanding: u64::from_le_bytes(*locked_outstanding),
             slots,
             amounts,
         })
     }
     fn pack_into_slice(&self, dst: &mut [u8]) {
-        let (safe_dst, beneficiary_dst, initialized_dst, dynamic_dst) =
-            mut_array_refs![dst, 32, 32, 1; .. ;];
+        let (safe_dst, beneficiary_dst, initialized_dst, locked_outstanding_dst, dynamic_dst) =
+            mut_array_refs![dst, 32, 32, 1, 8; .. ;];
 
         let VestingAccount {
             safe,
@@ -123,11 +127,13 @@ impl DynPack for VestingAccount {
             initialized,
             slots,
             amounts,
+            locked_outstanding,
         } = self;
 
         safe_dst.copy_from_slice(safe.as_ref());
         beneficiary_dst.copy_from_slice(beneficiary.as_ref());
         initialized_dst[0] = *initialized as u8;
+        locked_outstanding_dst.copy_from_slice(&locked_outstanding.to_le_bytes());
 
         let slots_size = (dynamic_dst.len() / 2) / 8;
         let mut dyn_writer = std::io::Cursor::new(dynamic_dst);
@@ -160,16 +166,18 @@ mod tests {
         let amounts = vec![1, 2, 3, 4];
         let slots = vec![5, 6, 7, 8];
         let initialized = true;
+        let locked_outstanding = 99;
         let vesting_account = VestingAccount {
             safe,
             beneficiary,
             initialized,
+            locked_outstanding,
             amounts: amounts.clone(),
             slots: slots.clone(),
         };
 
         // When I pack it into a slice.
-        let size = 129; // 32 + 32 + 1 + 4*8 + 4*8;
+        let size = 137; // 32 + 32 + 1 + 8 + 4*8 + 4*8;
         let mut dst = vec![0; size];
         vesting_account.pack_into_slice(&mut dst);
 
@@ -177,6 +185,7 @@ mod tests {
         let va = VestingAccount::unpack_from_slice(&dst).unwrap();
         assert_eq!(va.safe, safe);
         assert_eq!(va.beneficiary, beneficiary);
+        assert_eq!(va.locked_outstanding, locked_outstanding);
 
         assert_eq!(va.amounts.len(), amounts.len());
         assert_eq!(va.slots.len(), slots.len());

@@ -200,7 +200,7 @@ pub fn mint_locked_srm(accounts: &[AccountInfo]) -> Result<(), SafeError> {
     if (accounts_len - 4) % 2 != 0 {
         return Err(SafeError::ErrorCode(SafeErrorCode::WrongNumberOfAccounts));
     }
-    let lsrm_nft_count = (accounts_len - 4) / 3;
+    let lsrm_nft_count = (accounts_len - 4) / 2;
 
     let account_info_iter = &mut accounts.iter();
 
@@ -214,9 +214,8 @@ pub fn mint_locked_srm(accounts: &[AccountInfo]) -> Result<(), SafeError> {
     let mut idx = 0;
     for _ in 0..lsrm_nft_count {
         let lsrm_spl_mint_info = next_account_info(account_info_iter)?;
-        let lsrm_spl_account_info = next_account_info(account_info_iter)?;
         let lsrm_receipt_info = next_account_info(account_info_iter)?;
-        lsrm_nfts.push((lsrm_spl_mint_info, lsrm_spl_account_info, lsrm_receipt_info));
+        lsrm_nfts.push((lsrm_spl_mint_info, lsrm_receipt_info));
     }
 
     VestingAccount::unpack_mut(
