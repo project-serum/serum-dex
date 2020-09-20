@@ -358,20 +358,36 @@ fn enum_to_methods(
                 #(#method_arg_idents_vec),*
             };
 
+
+            // The instruction enum, with var names but no types.
+            let instruction_enum = {
+                if variant.fields == syn::Fields::Unit {
+                    quote! {
+                        #instruction_enum_ident::#variant_name
+                    }
+                } else {
+                    quote! {
+                        #instruction_enum_ident::#variant_name {
+                            #method_arg_idents,
+                        }
+                    }
+                }
+            };
             // Generate the method to create a Solana `Instruction` representing this
             // enum variant.
-            let instruction_method = quote! {
-                pub fn #method_name(program_id: Pubkey, accounts: &[AccountMeta], #method_args) -> Instruction {
-                    // Create the instruction enum.
-                    let instruction = #instruction_enum_ident::#variant_name {
-                        #method_arg_idents,
-                    };
-                    // Serialize.
-                    let data = #coder_struct::to_bytes(instruction);
-                    Instruction {
-                        program_id: program_id,
-                        data,
-                        accounts: accounts.to_vec(),
+            let instruction_method = {
+                quote! {
+                    pub fn #method_name(program_id: Pubkey, accounts: &[AccountMeta], #method_args) -> Instruction {
+                        // Create the instruction enum.
+                        let instruction = #instruction_enum;
+
+                        // Serialize.
+                        let data = #coder_struct::to_bytes(instruction);
+                        Instruction {
+                            program_id: program_id,
+                            data,
+                            accounts: accounts.to_vec(),
+                        }
                     }
                 }
             };
@@ -455,7 +471,7 @@ fn enum_to_methods(
                                 let variant_instr = super::instruction::#method_name(
                                     self.program_id,
                                     &new_accounts,
-                                    #method_arg_idents,
+                                    #method_arg_idents
                                 );
 
                                 // Transaction: create the transaction with the combined instructions.
@@ -599,9 +615,7 @@ fn enum_to_methods(
 
             // Save the single dispatch arm representing this enum variant.
             dispatch_arms.push(quote! {
-                #instruction_enum_ident::#variant_name {
-                    #method_args
-                } => #method_name(accounts, #method_args)
+                #instruction_enum => #method_name(accounts, #method_args)
             });
 
             (client_method, instruction_method)
