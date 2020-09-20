@@ -26,14 +26,18 @@ fn mint_lsrm() {
     // When.
     //
     // I mint locked srm.
-    let mut accounts = vec![
-        AccountMeta::new(vesting_account_beneficiary.pubkey(), true),
-        AccountMeta::new(vesting_account, false),
-        AccountMeta::new(safe_account, false),
-        AccountMeta::new_readonly(sysvar::rent::ID, false),
-    ];
-    let signers = [&vesting_account_beneficiary, client.payer()];
-    let (sig, lsrm_nft_mint_keys) = client
-        .create_accounts_and_mint_locked_srm_with_signers(9, signers, accounts)
-        .unwrap();
+    let lsrm_nft_mint_keys = {
+        let mut mint_lsrm_accounts = vec![
+            AccountMeta::new(vesting_account_beneficiary.pubkey(), true),
+            AccountMeta::new(vesting_account, false),
+            AccountMeta::new(safe_account, false),
+            AccountMeta::new_readonly(sysvar::rent::ID, false),
+        ];
+        let mut signers = vec![&vesting_account_beneficiary, client.payer()];
+        let nft_count = 2;
+        let (_sig, lsrm_nft_mint_keys) = client
+            .create_nfts_and_mint_locked_srm_with_signers(nft_count, signers, mint_lsrm_accounts)
+            .unwrap();
+        lsrm_nft_mint_keys
+    };
 }

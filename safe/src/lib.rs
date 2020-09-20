@@ -12,6 +12,7 @@ pub mod accounts;
 pub mod error;
 pub mod pack;
 
+#[cfg(feature = "client")]
 pub use client_ext::client;
 
 #[cfg_attr(feature = "client", solana_client_gen)]
@@ -143,6 +144,6 @@ pub mod instruction {
     }
 }
 
-// Define below so the meta-macro is in scope to teh client_ext module.
+// Define below so the meta-macro is in scope for the client_ext module.
 #[cfg(feature = "client")]
 mod client_ext;

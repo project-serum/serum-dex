@@ -56,11 +56,6 @@ pub fn initialize(
     .map_err(|e| SafeError::ProgramError(e))
 }
 
-pub fn slash(accounts: &[AccountInfo], amount: u64) -> Result<(), SafeError> {
-    // todo
-    Ok(())
-}
-
 pub fn deposit_srm(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
@@ -202,7 +197,7 @@ pub fn mint_locked_srm(accounts: &[AccountInfo]) -> Result<(), SafeError> {
     info!("HANDLER: mint_locked_srm");
 
     let accounts_len = accounts.len();
-    if (accounts_len - 4) % 3 != 0 {
+    if (accounts_len - 4) % 2 != 0 {
         return Err(SafeError::ErrorCode(SafeErrorCode::WrongNumberOfAccounts));
     }
     let lsrm_nft_count = (accounts_len - 4) / 3;
@@ -250,6 +245,11 @@ pub fn burn_locked_srm(accounts: &[AccountInfo]) -> Result<(), SafeError> {
 
 pub fn withdraw_srm(accounts: &[AccountInfo], amount: u64) -> Result<(), SafeError> {
     info!("**********withdraw SRM!");
+    Ok(())
+}
+
+pub fn slash(accounts: &[AccountInfo], amount: u64) -> Result<(), SafeError> {
+    // todo
     Ok(())
 }
 
