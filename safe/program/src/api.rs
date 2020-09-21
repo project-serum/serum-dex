@@ -9,6 +9,7 @@ use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::info;
 use solana_sdk::program_error::ProgramError;
 use solana_sdk::pubkey::Pubkey;
+use solana_sdk::sysvar::clock::Clock;
 use solana_sdk::sysvar::rent::Rent;
 use solana_sdk::sysvar::Sysvar;
 use spl_token::pack::{IsInitialized, Pack};
@@ -18,6 +19,7 @@ pub fn initialize(
     accounts: &[AccountInfo],
     mint: Pubkey,
     authority: Pubkey,
+    nonce: u8,
 ) -> Result<(), SafeError> {
     info!("HANDLER: initialize");
     let account_info_iter = &mut accounts.iter();
@@ -26,27 +28,27 @@ pub fn initialize(
     let rent = &Rent::from_account_info(next_account_info(account_info_iter)?)?;
 
     let mut safe_account_data = safe_account_info.data.borrow_mut();
+
     SafeAccount::unpack_unchecked_mut(
         &mut safe_account_data,
         &mut |safe_account: &mut SafeAccount| {
-            if safe_account.is_initialized {
-                info!("ERROR: safe account already initialized");
-                return Err(SafeError::ErrorCode(SafeErrorCode::AlreadyInitialized).into());
-            }
-            if !rent.is_exempt(safe_account_info.lamports(), safe_account_data_len) {
-                info!("ERROR: safe account is not rent exempt");
-                return Err(SafeError::ErrorCode(SafeErrorCode::NotRentExempt).into());
-            }
-            if safe_account_info.owner != program_id {
-                info!("ERROR: safe account owner is not the program id");
-                return Err(SafeError::ErrorCode(SafeErrorCode::NotOwnedByProgram).into());
-            }
+            initialize_access_control(
+                program_id,
+                safe_account,
+                safe_account_info,
+                safe_account_data_len,
+                rent,
+                nonce,
+            )?;
 
             safe_account.mint = mint;
             safe_account.is_initialized = true;
             safe_account.supply = 0;
             safe_account.authority = authority;
             safe_account.whitelist = Whitelist::zeroed();
+            safe_account.nonce = nonce;
+            // todo: consider adding the vault to the safe account directly
+            //       if we do that, then check the owner in access control
 
             info!("safe initialization complete");
 
@@ -54,6 +56,35 @@ pub fn initialize(
         },
     )
     .map_err(|e| SafeError::ProgramError(e))
+}
+
+fn initialize_access_control(
+    program_id: &Pubkey,
+    safe_account: &SafeAccount,
+    safe_account_info: &AccountInfo,
+    safe_account_data_len: usize,
+    rent: &Rent,
+    nonce: u8,
+) -> Result<(), SafeError> {
+    if safe_account.is_initialized {
+        return Err(SafeError::ErrorCode(SafeErrorCode::AlreadyInitialized));
+    }
+    if !rent.is_exempt(safe_account_info.lamports(), safe_account_data_len) {
+        return Err(SafeError::ErrorCode(SafeErrorCode::NotRentExempt));
+    }
+    if safe_account_info.owner != program_id {
+        return Err(SafeError::ErrorCode(SafeErrorCode::NotOwnedByProgram));
+    }
+    if Pubkey::create_program_address(
+        &SrmVault::signer_seeds(safe_account_info.key, &[nonce]),
+        program_id,
+    )
+    .is_err()
+    {
+        return Err(SafeError::ErrorCode(SafeErrorCode::InvalidVaultNonce));
+    }
+
+    Ok(())
 }
 
 pub fn deposit_srm(
@@ -183,13 +214,12 @@ fn deposit_srm_access_control(
     }
     // Look into the safe vault's SPL account data and check for the owner (it should
     // be this program).
-    //
-    // TODO: enable this.
-    /*if Pubkey::new(&safe_srm_vault_to.try_borrow_data()?[32..64])
-        != SrmVault::program_derived_address(program_id, safe_account_info.key)
-    {
-        return Err(SafeError::ErrorCode(SafeErrorCode::WrongVaultAddress).into());
-    }*/
+    let nonce = &[safe_account.nonce];
+    let seeds = SrmVault::signer_seeds(safe_account_info.key, nonce);
+    let expected_authority = Pubkey::create_program_address(&seeds, program_id)?;
+    if Pubkey::new(&safe_srm_vault_to.try_borrow_data()?[32..64]) != expected_authority {
+        return Err(SafeError::ErrorCode(SafeErrorCode::WrongVault).into());
+    }
     Ok(())
 }
 
@@ -214,7 +244,6 @@ pub fn mint_locked_srm(program_id: &Pubkey, accounts: &[AccountInfo]) -> Result<
 
     let mut lsrm_nfts = vec![];
 
-    let mut idx = 0;
     for _ in 0..lsrm_nft_count {
         let lsrm_spl_mint_info = next_account_info(account_info_iter)?;
         let lsrm_receipt_info = next_account_info(account_info_iter)?;
@@ -299,28 +328,148 @@ fn mint_locked_srm_access_control(
 
         // NFT mint must be uninitialized.
         let data = mint.try_borrow_data()?;
+        let nft_data_len = data.len();
         let is_initialized = data[0x2d];
         if is_initialized != 0u8 {
             return Err(SafeError::ErrorCode(SafeErrorCode::LsrmMintAlreadyInitialized).into());
         }
-
         // LsrmReceipt must be uninitialized.
         let data = receipt.try_borrow_data()?;
+        let receipt_data_len = data.len();
         let initialized = data[0];
         if initialized != 0u8 {
             return Err(SafeError::ErrorCode(SafeErrorCode::LsrmReceiptAlreadyInitialized).into());
+        }
+
+        // Both must be rent exempt.
+        if !rent.is_exempt(mint.lamports(), nft_data_len) {
+            return Err(SafeError::ErrorCode(SafeErrorCode::NotRentExempt).into());
+        }
+        if !rent.is_exempt(receipt.lamports(), receipt_data_len) {
+            return Err(SafeError::ErrorCode(SafeErrorCode::NotRentExempt).into());
         }
     }
     Ok(())
 }
 
 pub fn burn_locked_srm(accounts: &[AccountInfo]) -> Result<(), SafeError> {
-    info!("**********burn SRM!");
+    info!("HANDLER: burn_locked_srm");
     Ok(())
 }
 
-pub fn withdraw_srm(accounts: &[AccountInfo], amount: u64) -> Result<(), SafeError> {
-    info!("**********withdraw SRM!");
+pub fn withdraw_srm(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    amount: u64,
+) -> Result<(), SafeError> {
+    info!("HANDLER: withdraw_srm");
+
+    let account_info_iter = &mut accounts.iter();
+
+    let vesting_account_beneficiary_info = next_account_info(account_info_iter)?;
+    let vesting_account_info = next_account_info(account_info_iter)?;
+    let beneficiary_spl_account_info = next_account_info(account_info_iter)?;
+    let safe_spl_vault_account_info = next_account_info(account_info_iter)?;
+    let safe_spl_vault_authority_account_info = next_account_info(account_info_iter)?;
+    let safe_account_info = next_account_info(account_info_iter)?;
+    let spl_program_account_info = next_account_info(account_info_iter)?;
+    let clock = Clock::from_account_info(next_account_info(account_info_iter)?)?;
+
+    VestingAccount::unpack_mut(
+        &mut vesting_account_info.try_borrow_mut_data()?,
+        &mut |vesting_account: &mut VestingAccount| {
+            withdraw_srm_access_control(
+                program_id,
+                &vesting_account_beneficiary_info,
+                vesting_account_info,
+                vesting_account,
+                amount,
+                &clock,
+                safe_spl_vault_account_info,
+                safe_spl_vault_authority_account_info,
+                safe_account_info,
+                spl_program_account_info,
+            )?;
+
+            vesting_account.deduct(amount);
+
+            info!("invoking withdrawal token transfer");
+            let withdraw_instruction = spl_token::instruction::transfer(
+                &spl_token::ID,
+                safe_spl_vault_account_info.key,
+                beneficiary_spl_account_info.key,
+                &safe_spl_vault_authority_account_info.key,
+                &[],
+                amount,
+            )?;
+            let r = solana_sdk::program::invoke_signed(
+                &withdraw_instruction,
+                &[
+                    safe_spl_vault_account_info.clone(),
+                    beneficiary_spl_account_info.clone(),
+                    safe_spl_vault_authority_account_info.clone(),
+                    spl_program_account_info.clone(),
+                ],
+                &[&[safe_account_info.key.as_ref()]],
+            );
+            info!("withdrawal token transfer complete");
+            r
+        },
+    )
+    .map_err(|e| SafeError::ProgramError(e))
+}
+
+pub fn withdraw_srm_access_control(
+    program_id: &Pubkey,
+    vesting_account_beneficiary_info: &AccountInfo,
+    vesting_account_info: &AccountInfo,
+    vesting_account: &VestingAccount,
+    amount: u64,
+    clock: &Clock,
+    safe_spl_vault_account_info: &AccountInfo,
+    safe_spl_vault_account_authority: &AccountInfo,
+    safe_account_info: &AccountInfo,
+    spl_program_account_info: &AccountInfo,
+) -> Result<(), SafeError> {
+    assert_eq!(*spl_program_account_info.key, spl_token::ID);
+
+    if vesting_account_info.owner != program_id {
+        return Err(SafeError::ErrorCode(SafeErrorCode::InvalidAccount));
+    }
+    if !vesting_account_beneficiary_info.is_signer {
+        return Err(SafeError::ErrorCode(SafeErrorCode::Unauthorized));
+    }
+    if vesting_account.beneficiary != *vesting_account_beneficiary_info.key {
+        return Err(SafeError::ErrorCode(SafeErrorCode::Unauthorized));
+    }
+    if amount > vesting_account.available_for_withdrawal(clock.slot) {
+        return Err(SafeError::ErrorCode(SafeErrorCode::InsufficientBalance));
+    }
+
+    // Validate the vault spl account.
+    {
+        let spl_vault_data = safe_spl_vault_account_info.try_borrow_data()?;
+
+        // The vault SPL account must be owned by this program.
+        let expected_owner = {
+            let data = safe_account_info.try_borrow_data()?;
+            let nonce = &[data[data.len() - 1]];
+            Pubkey::create_program_address(
+                &SrmVault::signer_seeds(safe_account_info.key, nonce),
+                program_id,
+            )
+            .expect("safe initialized with invalid nonce")
+        };
+        let owner = Pubkey::new(&spl_vault_data[32..64]);
+        if owner != expected_owner {
+            return Err(SafeError::ErrorCode(SafeErrorCode::WrongVault));
+        }
+        // The vault SPL account must be initialized.
+        if spl_vault_data[0x2d] != 1u8 {
+            return Err(SafeError::ErrorCode(SafeErrorCode::WrongVault));
+        }
+    }
+    // todo: check beneficiary account is initialized
     Ok(())
 }
 

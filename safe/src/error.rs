@@ -20,7 +20,6 @@ pub enum SafeErrorCode {
     NotOwnedByProgram = 4,
     VestingAccountDataInvalid = 5,
     WrongCoinMint = 6,
-    WrongVaultAddress = 7,
     SafeAccountDataInvalid = 8,
     WhitelistFull = 9,
     WhitelistEntryNotFound = 10,
@@ -30,7 +29,12 @@ pub enum SafeErrorCode {
     Unauthorized = 14,
     LsrmMintAlreadyInitialized = 15,
     LsrmReceiptAlreadyInitialized = 16,
+    InvalidAccount = 17,
+    WrongVault = 18,
+    InvalidVaultNonce = 19,
     Unknown = 1000,
+    Unknown2 = 1001,
+    Unknown3 = 1002,
 }
 
 impl std::fmt::Display for SafeErrorCode {

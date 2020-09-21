@@ -20,6 +20,8 @@ fn whitelist_add() {
         safe_srm_vault,
         depositor,
         depositor_balance_before,
+        srm_mint,
+        ..
     } = common::lifecycle::initialize();
     // A program to whitelist.
     let program_to_whitelist = Keypair::generate(&mut OsRng).pubkey();
@@ -69,6 +71,7 @@ fn whitelist_remove() {
         depositor,
         depositor_balance_before,
         whitelist,
+        srm_mint,
     } = common::lifecycle::initialize_with_whitelist();
     let program_to_remove = whitelist.get_at(0);
 

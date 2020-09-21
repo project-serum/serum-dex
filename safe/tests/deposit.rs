@@ -24,8 +24,10 @@ fn deposit_srm() {
         safe_account,
         safe_authority,
         safe_srm_vault,
+        safe_srm_vault_authority,
         depositor,
         depositor_balance_before,
+        srm_mint,
     } = common::lifecycle::initialize();
 
     // When.
@@ -37,7 +39,7 @@ fn deposit_srm() {
             AccountMeta::new(client.payer().pubkey(), true), // Owner of the depositor SPL account.
             AccountMeta::new(safe_srm_vault.pubkey(), false),
             AccountMeta::new(safe_account.pubkey(), false),
-            AccountMeta::new(spl_token::ID, false),
+            AccountMeta::new_readonly(spl_token::ID, false),
             AccountMeta::new_readonly(solana_sdk::sysvar::rent::ID, false),
         ];
         let vesting_account_beneficiary = Keypair::generate(&mut OsRng);
@@ -101,7 +103,7 @@ fn deposit_srm() {
         assert_eq!(vesting_account.amounts.len(), matching);
         assert_eq!(vesting_account.amounts.len(), expected_slots.len());
     }
-    // Check.
+    // Then.
     //
     // The depositor's SPL token account has funds reduced.
     {
@@ -117,7 +119,7 @@ fn deposit_srm() {
         let expected_balance = depositor_balance_before - expected_amounts.iter().sum::<u64>();
         assert_eq!(depositor_spl_account.amount, expected_balance,);
     }
-    // Check.
+    // Then.
     //
     // The program-owned SPL token vault has funds increased.
     {
@@ -132,5 +134,7 @@ fn deposit_srm() {
         };
         let expected_balance = expected_amounts.iter().sum::<u64>();
         assert_eq!(safe_vault_spl_account.amount, expected_balance);
+        // Sanity check the owner of the vault account.
+        assert_eq!(safe_vault_spl_account.owner, safe_srm_vault_authority,);
     }
 }

@@ -1,6 +1,6 @@
 //! The client_ext module extends the auto-generated program client.
 
-use crate::accounts::{LsrmReceipt, SafeAccount, VestingAccount};
+use crate::accounts::{LsrmReceipt, SafeAccount, SrmVault, VestingAccount};
 use serde::{Deserialize, Serialize};
 use solana_client_gen::prelude::*;
 use solana_client_gen::prelude::*;
@@ -13,7 +13,104 @@ use spl_token::pack::Pack;
 solana_client_gen_extension! {
     use solana_client_gen::solana_sdk::signers::Signers;
 
+    pub struct SafeInitialization {
+        pub signature: Signature,
+        pub safe_account: Keypair,
+        pub vault_account: Keypair,
+        pub vault_account_authority: Pubkey,
+        pub nonce: u8,
+    }
+
     impl Client {
+        /// Does complete initialization of the safe.
+        ///
+        /// Assumes:
+        ///
+        ///   * The coin to be deposited (SRM) is already minted.
+        ///   * The program is already deployed on chain.
+        ///
+        pub fn create_all_accounts_and_initialize(
+            &self,
+            accounts: &[AccountMeta],
+            srm_mint: &Pubkey,
+            safe_authority: &Pubkey,
+        ) -> Result<SafeInitialization, ClientError> {
+            // Build the data dependent addresses.
+            let safe_account = Keypair::generate(&mut OsRng);
+            let (safe_vault_authority, nonce) = Pubkey::find_program_address(
+                &[safe_account.pubkey().as_ref()],
+                self.program(),
+            );
+
+            // Create and initialize the vault.
+            let safe_srm_vault = serum_common_client::rpc::create_spl_account(
+                self.rpc(),
+                &srm_mint,
+                &safe_vault_authority,
+                self.payer(),
+            ).map_err(|e| ClientError::RawError(e.to_string()))?;
+
+            // Now build the final transaction.
+            let instructions = {
+                let create_safe_account_instr = {
+                    let lamports = self
+                        .rpc()
+                        .get_minimum_balance_for_rent_exemption(SafeAccount::SIZE)
+                        .map_err(|e| ClientError::RpcError(e))?;
+                    system_instruction::create_account(
+                        &self.payer().pubkey(),
+                        &safe_account.pubkey(),
+                        lamports,
+                        SafeAccount::SIZE as u64,
+                        self.program(),
+                    )
+                };
+
+                let mut accounts = accounts.to_vec();
+                accounts.insert(0, AccountMeta::new(safe_account.pubkey(), false));
+
+                let initialize_instr = super::instruction::initialize(
+                    *self.program(),
+                    &accounts,
+                    *srm_mint,
+                    *safe_authority,
+                    nonce,
+                );
+                vec![create_safe_account_instr, initialize_instr]
+            };
+
+            let tx = {
+                let (recent_hash, _fee_calc) = self
+                    .rpc()
+                    .get_recent_blockhash()
+                    .map_err(|e| ClientError::RawError(e.to_string()))?;
+                let signers = vec![self.payer(), &safe_account];
+                Transaction::new_signed_with_payer(
+                    &instructions,
+                    Some(&self.payer().pubkey()),
+                    &signers,
+                    recent_hash,
+                )
+            };
+
+            // Execute the transaction.
+            self
+                .rpc
+                .send_and_confirm_transaction_with_spinner_and_config(
+                    &tx,
+                    self.opts.commitment,
+                    self.opts.tx,
+                )
+                .map_err(|e| ClientError::RpcError(e))
+                .map(|sig| SafeInitialization {
+                    signature: sig,
+                    safe_account,
+                    vault_account_authority: safe_vault_authority,
+                    vault_account: safe_srm_vault,
+                                        nonce,
+                })
+        }
+
         /// Creates a multi instruction transaction. For each `lsrm_count` number
         /// of lSRM NFTs to mint, executes
         ///

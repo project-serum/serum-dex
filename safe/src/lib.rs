@@ -32,7 +32,6 @@ pub mod instruction {
         ///
         /// 0. `[writable]` The SafeAccount to initialize.
         /// 1. `[]`         Rent sysvar
-        #[cfg_attr(feature = "client", create_account(SafeAccount::SIZE))]
         Initialize {
             /// The mint of the SPL token to store in the safe, i.e., the
             /// SRM mint.
@@ -40,32 +39,9 @@ pub mod instruction {
             /// The owner of the admin account to set into the SafeAccount.
             /// This account has the power to slash deposits.
             authority: Pubkey,
-        },
-        /// WhitelistAdd adds the given program id to the safe account's
-        /// whitelist, allowing locked srm to be sent to/from the program.
-        ///
-        /// Accounts:
-        ///
-        /// 0.  `[signer]`   The authority of the Safe.
-        /// 1.  `[writable]` The SafeAccount representing the instance.
-        WhitelistAdd {
-            /// The program id to add to the whitelist.
-            program_id_to_add: Pubkey,
-        },
-        /// Whitelist delete removes the given program id from the whitelist.
-        ///
-        /// Accounts:
-        /// 0. `[signer]`   The authority of the Safe.
-        /// 1. `[writable]` The SafeAccount representing the instance.
-        WhitelistDelete { program_id_to_delete: Pubkey },
-        /// Slash punishes a vesting account who misbehaved, punititvely
-        /// revoking funds.
-        ///
-        /// 0. `[signer]`   The authority of the SafeAccount.
-        /// 1. `[writable]` The vesting account to slash.
-        Slash {
-            /// The amount of SRM to slash.
-            amount: u64,
+            /// The nonce to use for the safe's spl vault authority program derived
+            /// address.
+            nonce: u8,
         },
         /// DepositSrm initializes the deposit, transferring tokens from the controlling SPL token
         /// account to one owned by the SrmSafe program.
@@ -104,7 +80,8 @@ pub mod instruction {
         /// 0.  `[signer]`   The vesting account beneficiary.
         /// 1.  `[writable]` The vesting account to mint lSRM from.
         /// 2.  `[]          The safe account instance.
-        /// 3.  `[]`         The rent sysvar.
+        /// 3.  `[]`         SPL token program.
+        /// 4.  `[]`         The rent sysvar.
         /// ... `[writable]` A variable number of lSRM SPL mints one for each NFT
         ///                  instance of lSRM. The mint must be uninitialized.
         /// ... `[writable]` A variable number of lSRM receipts, one for each lSRM
@@ -116,9 +93,9 @@ pub mod instruction {
         ///
         /// Accounts:
         ///
-        /// 0. `[signer]`   the owner of the lSRM SPL token account to burn from.
-        /// 1. `[writable]` the lSRM SPL token account to burn from.
-        /// 2. `[writable]` the vesting account.
+        /// 0. `[signer]`   The owner of the lSRM SPL token account to burn from.
+        /// 1. `[writable]` The lSRM SPL token account to burn from.
+        /// 2. `[writable]` The vesting account.
         ///
         /// Note that the signer, i.e., the owner of the lSRM SPL token account must be
         /// equal to the vesting' account's spl wallet owner, i.e. `user_spl_wallet_owner`.
@@ -126,19 +103,46 @@ pub mod instruction {
         /// the final SRM wallet account to withdraw from.
         ///
         BurnLockedSrm,
-        /// WithdrawSrm withdraws the given amount from the SrmSafe SPL account vault,
-        /// updating the user's vesting account.
+        /// WithdrawSrm withdraws the given amount from the given vesting account.
         ///
         /// Accounts:
         ///
-        /// 0. `[signer]`   the vesting account's `user_spl_wallet_owner`. I.e., the
-        ///                 owner of the spl wallet assigned to the vesting account.
-        /// 1. `[writable]` the vesting account to withdraw from.
-        /// 2. `[writable]` the SRM SPL token account to withdraw to.
-        /// 3. `[writable]` the SrmSafe SPL account vault from which we are transferring
+        /// 0. `[signer]`   The vesting account's beneficiary.
+        /// 1. `[writable]` The vesting account to withdraw from.
+        /// 2. `[writable]` The SRM SPL token account to withdraw to.
+        /// 3. `[writable]` The Safe's SPL account vault from which we are transferring
         ///                 ownership of the SRM out of.
+        /// 4  `[]`         The SrmSafe account.
+        /// 5. `[]`         SPL token program.
+        /// 4. `[]`         Clock sysvar.
         WithdrawSrm {
             // Amount of SRM to withdraw.
+            amount: u64,
+        },
+        /// WhitelistAdd adds the given program id to the safe account's
+        /// whitelist, allowing locked srm to be sent to/from the program.
+        ///
+        /// Accounts:
+        ///
+        /// 0.  `[signer]`   The authority of the Safe.
+        /// 1.  `[writable]` The SafeAccount representing the instance.
+        WhitelistAdd {
+            /// The program id to add to the whitelist.
+            program_id_to_add: Pubkey,
+        },
+        /// Whitelist delete removes the given program id from the whitelist.
+        ///
+        /// Accounts:
+        /// 0. `[signer]`   The authority of the Safe.
+        /// 1. `[writable]` The SafeAccount representing the instance.
+        WhitelistDelete { program_id_to_delete: Pubkey },
+        /// Slash punishes a vesting account who misbehaved, punititvely
+        /// revoking funds.
+        ///
+        /// 0. `[signer]`   The authority of the SafeAccount.
+        /// 1. `[writable]` The vesting account to slash.
+        Slash {
+            /// The amount of SRM to slash.
             amount: u64,
         },
     }

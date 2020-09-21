@@ -27,9 +27,11 @@ fn process_instruction(
 
     // Dispatch.
     let result = match instruction {
-        SrmSafeInstruction::Initialize { mint, authority } => {
-            api::initialize(program_id, accounts, mint, authority)
-        }
+        SrmSafeInstruction::Initialize {
+            mint,
+            authority,
+            nonce,
+        } => api::initialize(program_id, accounts, mint, authority, nonce),
         SrmSafeInstruction::DepositSrm {
             vesting_account_beneficiary,
             vesting_slots,
@@ -42,7 +44,9 @@ fn process_instruction(
             vesting_amounts,
         ),
         SrmSafeInstruction::MintLockedSrm => api::mint_locked_srm(program_id, accounts),
-        SrmSafeInstruction::WithdrawSrm { amount } => api::withdraw_srm(accounts, amount),
+        SrmSafeInstruction::WithdrawSrm { amount } => {
+            api::withdraw_srm(program_id, accounts, amount)
+        }
         SrmSafeInstruction::BurnLockedSrm => api::burn_locked_srm(accounts),
         SrmSafeInstruction::Slash { amount } => api::slash(accounts, amount),
         SrmSafeInstruction::WhitelistAdd { program_id_to_add } => {

@@ -10,7 +10,7 @@ TEST_CLUSTER_URL=localnet
 # One can optionally set this along with the test-program command
 # to avoid redeploying everytime tests are run.
 #
-TEST_PROGRAM_ID="8zkU53hD8dDDoBs2vEohbQTTZhpLDBwCBNCVShcYiv25"
+TEST_PROGRAM_ID="FEMsUTaKy1EicyEaFkPdoQUhbM1rN4T4SzupNBWu22ph"
 #
 # Path to the BPF sdk to build solana programs.
 #

@@ -1,5 +1,3 @@
-extern crate rand;
-
 use serum_safe::accounts::{LsrmReceipt, VestingAccount};
 use serum_safe::pack::DynPack;
 use solana_client_gen::solana_sdk::commitment_config::CommitmentConfig;
@@ -26,6 +24,7 @@ fn mint_lsrm() {
         vesting_account_slots,
         vesting_account_amounts,
         safe_account,
+        ..
     } = common::lifecycle::deposit();
 
     // When.

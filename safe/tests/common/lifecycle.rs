@@ -5,14 +5,14 @@
 use crate::common;
 use rand::rngs::OsRng;
 use serum_safe::accounts::{SafeAccount, SrmVault, VestingAccount, Whitelist};
-use serum_safe::client::{Client, ClientError, RequestOptions};
+use serum_safe::client::{Client, ClientError, Lsrm, RequestOptions, SafeInitialization};
 use serum_safe::error::{SafeError, SafeErrorCode};
-use serum_safe::pack::DynPack;
 use solana_client_gen::solana_sdk;
 use solana_client_gen::solana_sdk::commitment_config::CommitmentConfig;
 use solana_client_gen::solana_sdk::instruction::AccountMeta;
 use solana_client_gen::solana_sdk::pubkey::Pubkey;
 use solana_client_gen::solana_sdk::signature::{Keypair, Signature, Signer};
+use solana_client_gen::solana_sdk::sysvar;
 use solana_transaction_status::UiTransactionEncoding;
 use spl_token::pack::Pack;
 use std::error::Error;
@@ -90,50 +90,50 @@ pub fn initialize() -> Initialized {
     let safe_authority = Keypair::generate(&mut OsRng);
 
     // Initialize the Safe.
-    let rent_account = AccountMeta::new_readonly(solana_sdk::sysvar::rent::id(), false);
-    let init_accounts = vec![rent_account];
-    let (_signature, safe_account) = client
-        .create_account_and_initialize(&init_accounts, srm_mint.pubkey(), safe_authority.pubkey())
-        .unwrap();
-
-    // Create an SPL account representing the Safe program's vault.
-    let safe_srm_vault = {
-        let safe_srm_vault_program_derived_address =
-            SrmVault::program_derived_address(client.program(), &safe_account.pubkey());
-        let safe_srm_vault = serum_common_client::rpc::create_spl_account(
-            client.rpc(),
+    let init_accounts = [AccountMeta::new_readonly(
+        solana_sdk::sysvar::rent::id(),
+        false,
+    )];
+    let SafeInitialization {
+        signature,
+        safe_account,
+        vault_account,
+        vault_account_authority,
+        nonce,
+        ..
+    } = client
+        .create_all_accounts_and_initialize(
+            &init_accounts,
             &srm_mint.pubkey(),
-            &safe_srm_vault_program_derived_address,
-            client.payer(),
+            &safe_authority.pubkey(),
         )
         .unwrap();
 
-        // Ensure the safe_srm_vault has 0 SRM before the deposit.
-        let safe_srm_vault_account = {
+    // Ensure the safe_srm_vault has 0 SRM before the deposit.
+    {
+        let safe_srm_vault_spl_account = {
             let account = client
                 .rpc()
-                .get_account_with_commitment(&safe_srm_vault.pubkey(), CommitmentConfig::recent())
+                .get_account_with_commitment(&vault_account.pubkey(), CommitmentConfig::recent())
                 .unwrap()
                 .value
                 .unwrap();
             spl_token::state::Account::unpack_from_slice(&account.data).unwrap()
         };
-        assert_eq!(safe_srm_vault_account.mint, srm_mint.pubkey());
-        assert_eq!(
-            safe_srm_vault_account.owner,
-            safe_srm_vault_program_derived_address
-        );
-        assert_eq!(safe_srm_vault_account.amount, 0);
-
-        safe_srm_vault
+        assert_eq!(safe_srm_vault_spl_account.mint, srm_mint.pubkey());
+        assert_eq!(safe_srm_vault_spl_account.owner, vault_account_authority,);
+        assert_eq!(safe_srm_vault_spl_account.amount, 0);
     };
+
     Initialized {
         client,
         safe_account,
-        safe_srm_vault,
+        safe_srm_vault: vault_account,
+        safe_srm_vault_authority: vault_account_authority,
         safe_authority,
         depositor,
         depositor_balance_before,
+        srm_mint,
     }
 }
 
@@ -141,9 +141,11 @@ pub struct Initialized {
     pub client: Client,
     pub safe_account: Keypair,
     pub safe_srm_vault: Keypair,
+    pub safe_srm_vault_authority: Pubkey,
     pub safe_authority: Keypair,
     pub depositor: Keypair,
     pub depositor_balance_before: u64,
+    pub srm_mint: Keypair,
 }
 
 pub fn initialize_with_whitelist() -> InitializedWithWhitelist {
@@ -155,6 +157,8 @@ pub fn initialize_with_whitelist() -> InitializedWithWhitelist {
         safe_srm_vault,
         depositor,
         depositor_balance_before,
+        srm_mint,
+        ..
     } = initialize();
 
     // A program to whitelist.
@@ -183,6 +187,7 @@ pub fn initialize_with_whitelist() -> InitializedWithWhitelist {
         depositor,
         depositor_balance_before,
         whitelist,
+        srm_mint,
     }
 }
 
@@ -194,16 +199,28 @@ pub struct InitializedWithWhitelist {
     pub depositor: Keypair,
     pub depositor_balance_before: u64,
     pub whitelist: Whitelist,
+    pub srm_mint: Keypair,
 }
 
 pub fn deposit() -> Deposited {
+    let vesting_slots = vec![11, 12, 13, 14, 15];
+    let vesting_amounts = vec![1, 2, 3, 4, 5];
+    deposit_with_schedule(vesting_slots, vesting_amounts)
+}
+
+pub fn deposit_with_schedule(
+    vesting_slot_offsets: Vec<u64>,
+    vesting_amounts: Vec<u64>,
+) -> Deposited {
     let Initialized {
         client,
         safe_account,
         safe_authority,
         safe_srm_vault,
+        safe_srm_vault_authority,
         depositor,
         depositor_balance_before,
+        srm_mint,
     } = initialize();
 
     let (
@@ -221,9 +238,12 @@ pub fn deposit() -> Deposited {
             AccountMeta::new(spl_token::ID, false),
             AccountMeta::new_readonly(solana_sdk::sysvar::rent::ID, false),
         ];
+        let current_slot = client.rpc().get_slot().unwrap();
+        let vesting_slots = vesting_slot_offsets
+            .iter()
+            .map(|offset| current_slot + offset)
+            .collect::<Vec<u64>>();
         let vesting_account_beneficiary = Keypair::generate(&mut OsRng);
-        let vesting_slots = vec![11, 12, 13, 14, 15];
-        let vesting_amounts = vec![1, 2, 3, 4, 5];
         let vesting_account_size = VestingAccount::data_size(vesting_slots.len());
         let (signature, keypair) = client
             .create_account_with_size_and_deposit_srm(
@@ -249,6 +269,9 @@ pub fn deposit() -> Deposited {
         vesting_account_slots,
         vesting_account_amounts,
         safe_account: safe_account.pubkey(),
+        safe_srm_vault,
+        safe_srm_vault_authority,
+        srm_mint,
     }
 }
 
@@ -259,4 +282,51 @@ pub struct Deposited {
     pub vesting_account_slots: Vec<u64>,
     pub vesting_account_amounts: Vec<u64>,
     pub safe_account: Pubkey,
+    pub safe_srm_vault: Keypair,
+    pub safe_srm_vault_authority: Pubkey,
+    pub srm_mint: Keypair,
+}
+
+pub fn mint_lsrm(nft_count: usize) -> LsrmMinted {
+    let Deposited {
+        client,
+        vesting_account,
+        vesting_account_beneficiary,
+        vesting_account_slots,
+        vesting_account_amounts,
+        safe_account,
+        srm_mint,
+        ..
+    } = deposit();
+
+    let lsrm = {
+        let mut mint_lsrm_accounts = vec![
+            AccountMeta::new(vesting_account_beneficiary.pubkey(), true),
+            AccountMeta::new(vesting_account, false),
+            AccountMeta::new(safe_account, false),
+            AccountMeta::new(spl_token::ID, false),
+            AccountMeta::new_readonly(sysvar::rent::ID, false),
+        ];
+        let mut signers = vec![&vesting_account_beneficiary, client.payer()];
+        let (_sig, lsrm_nfts) = client
+            .create_nfts_and_mint_locked_srm_with_signers(nft_count, signers, mint_lsrm_accounts)
+            .unwrap();
+        lsrm_nfts
+    };
+
+    LsrmMinted {
+        client,
+        lsrm,
+        vesting_account,
+        vesting_account_beneficiary,
+        srm_mint,
+    }
+}
+
+pub struct LsrmMinted {
+    pub client: Client,
+    pub lsrm: Vec<Lsrm>,
+    pub vesting_account: Pubkey,
+    pub vesting_account_beneficiary: Keypair,
+    pub srm_mint: Keypair,
 }

@@ -1,6 +1,6 @@
 use rand::rngs::OsRng;
 use serum_safe::accounts::{SafeAccount, SrmVault, VestingAccount, Whitelist};
-use serum_safe::client::{Client, ClientError, RequestOptions};
+use serum_safe::client::{Client, ClientError, RequestOptions, SafeInitialization};
 use serum_safe::error::{SafeError, SafeErrorCode};
 use solana_client_gen::solana_sdk;
 use solana_client_gen::solana_sdk::commitment_config::CommitmentConfig;
@@ -31,8 +31,13 @@ fn initialized() {
     let safe_authority = Keypair::generate(&mut OsRng);
     let rent_account = AccountMeta::new_readonly(solana_sdk::sysvar::rent::id(), false);
     let accounts = vec![rent_account];
-    let (_signature, safe_account) = client
-        .create_account_and_initialize(&accounts, srm_mint.pubkey(), safe_authority.pubkey())
+    let SafeInitialization {
+        signature,
+        safe_account,
+        nonce,
+        ..
+    } = client
+        .create_all_accounts_and_initialize(&accounts, &srm_mint.pubkey(), &safe_authority.pubkey())
         .unwrap();
 
     // Then.
@@ -49,35 +54,54 @@ fn initialized() {
     assert_eq!(safe_account.supply, 0);
     assert_eq!(safe_account.is_initialized, true);
     assert_eq!(safe_account.whitelist, Whitelist::zeroed());
+    assert_eq!(safe_account.nonce, nonce);
 }
 
 #[test]
 fn initialized_already() {
-    let client = common::client();
-    let safe_authority = Keypair::generate(&mut OsRng);
+    // Given.
+    let common::lifecycle::Genesis {
+        client,
+        mint_authority,
+        srm_mint,
+        god,
+        god_balance_before,
+    } = common::lifecycle::genesis();
 
-    // Create the safe account and initialize it.
-    let srm_mint = Keypair::generate(&mut OsRng);
+    // When
+    //
+    // I create the safe account and initialize it.
+    let safe_authority = Keypair::generate(&mut OsRng);
     let rent_account = AccountMeta::new_readonly(solana_sdk::sysvar::rent::id(), false);
     let accounts = vec![rent_account.clone()];
-    let (signature, safe_account) = client
-        .create_account_and_initialize(
+    let SafeInitialization {
+        signature,
+        safe_account,
+        nonce,
+        ..
+    } = client
+        .create_all_accounts_and_initialize(
             &accounts.clone(),
-            srm_mint.pubkey(),
-            safe_authority.pubkey(),
+            &srm_mint.pubkey(),
+            &safe_authority.pubkey(),
         )
         .unwrap();
-
-    // Now try to initialize it for second time.
+    // And
+    //
+    // I try to initialize it for second time.
     let accounts_again = vec![AccountMeta::new(safe_account.pubkey(), false), rent_account];
     let new_safe_authority = Keypair::generate(&mut OsRng);
-    let signature = match client.initialize(
+    match client.initialize(
         &accounts_again,
         srm_mint.pubkey(),
         new_safe_authority.pubkey(),
+        nonce,
     ) {
         Ok(_) => panic!("transaction should fail"),
         Err(e) => {
+            // Then.
+            //
+            // It should error.
             let expected: u32 = SafeErrorCode::AlreadyInitialized.into();
             assert_eq!(e.error_code().unwrap(), expected);
         }

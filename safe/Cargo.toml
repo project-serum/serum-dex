@@ -6,9 +6,9 @@ edition = "2018"
 
 [features]
 program = ["solana-client-gen/program", "spl-token/program"]
-client = ["solana-client-gen/client", "spl-token/default"]
+client = ["solana-client-gen/client", "spl-token/default", "serum-common-client"]
 client-ext = []
-test = ["rand", "solana-transaction-status", "solana-client-gen/client", "solana-client", "serum-common-client", "spl-token/default"]
+test = ["rand", "solana-transaction-status", "solana-client-gen/client", "solana-client", "spl-token/default"]
 default = []
 
 [dependencies]

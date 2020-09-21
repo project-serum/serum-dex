@@ -54,6 +54,40 @@ impl VestingAccount {
     pub fn total(&self) -> u64 {
         self.amounts.iter().sum()
     }
+
+    /// Returns the total vested amount up to the given slot. This is not
+    /// necessarily available for withdrawal.
+    pub fn vested_amount(&self, slot: u64) -> u64 {
+        self.slots
+            .iter()
+            .filter_map(|s| if *s < slot { Some(s) } else { None })
+            .enumerate()
+            .map(|(idx, _slot)| self.amounts[idx])
+            .sum()
+    }
+
+    /// Returns the amount available for withdrawal as of the given slot.
+    pub fn available_for_withdrawal(&self, slot: u64) -> u64 {
+        self.vested_amount(slot) - self.locked_outstanding
+    }
+
+    /// Deducts the given amount from the vesting account from the earliest
+    /// vesting slots.
+    pub fn deduct(&mut self, mut amount: u64) {
+        for k in 0..self.amounts.len() {
+            if amount < self.amounts[k] {
+                self.amounts[k] -= amount;
+                return;
+            } else if amount == self.amounts[k] {
+                self.amounts[k] = 0;
+                return;
+            } else {
+                let old = self.amounts[k];
+                self.amounts[k] = 0;
+                amount -= old;
+            }
+        }
+    }
 }
 
 impl IsInitialized for VestingAccount {

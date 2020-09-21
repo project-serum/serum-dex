@@ -23,10 +23,12 @@ pub struct SafeAccount {
     pub is_initialized: bool,
     /// The list of acceptable program ids to send lSRM to.
     pub whitelist: Whitelist,
+    /// The nonce to use for the vault signer.
+    pub nonce: u8,
 }
 
 impl SafeAccount {
-    pub const SIZE: usize = 393;
+    pub const SIZE: usize = 394;
 }
 
 impl IsInitialized for SafeAccount {
@@ -42,8 +44,8 @@ impl Pack for SafeAccount {
 
     fn unpack_from_slice(src: &[u8]) -> Result<Self, ProgramError> {
         let src = array_ref![src, 0, SafeAccount::LEN];
-        let (mint, authority, supply, is_initialized, whitelist) =
-            array_refs![src, 32, 32, 8, 1, Whitelist::SIZE];
+        let (mint, authority, supply, is_initialized, whitelist, nonce) =
+            array_refs![src, 32, 32, 8, 1, Whitelist::SIZE, 1];
 
         Ok(SafeAccount {
             mint: Pubkey::new(mint),
@@ -55,25 +57,28 @@ impl Pack for SafeAccount {
                 _ => return Err(ProgramError::InvalidAccountData),
             },
             whitelist: Whitelist::from_bytes(whitelist),
+            nonce: nonce[0],
         })
     }
 
     fn pack_into_slice(&self, dst: &mut [u8]) {
         let dst = array_mut_ref![dst, 0, SafeAccount::LEN];
-        let (mint_dst, authority_dst, supply_dst, is_initialized_dst, whitelist_dst) =
-            mut_array_refs![dst, 32, 32, 8, 1, Whitelist::SIZE];
+        let (mint_dst, authority_dst, supply_dst, is_initialized_dst, whitelist_dst, nonce_dst) =
+            mut_array_refs![dst, 32, 32, 8, 1, Whitelist::SIZE, 1];
         let SafeAccount {
             mint,
             authority,
             supply,
             is_initialized,
             whitelist,
+            nonce,
         } = self;
         mint_dst.copy_from_slice(mint.as_ref());
         authority_dst.copy_from_slice(authority.as_ref());
         *supply_dst = supply.to_le_bytes();
         is_initialized_dst[0] = *is_initialized as u8;
         whitelist.to_bytes(whitelist_dst);
+        nonce_dst[0] = *nonce;
     }
 }
 
@@ -200,6 +205,7 @@ mod tests {
             supply,
             is_initialized,
             whitelist: whitelist.clone(),
+            nonce: 33,
         };
 
         let mut dst = vec![0; SafeAccount::SIZE];
@@ -212,5 +218,6 @@ mod tests {
         assert_eq!(new_safe.supply, supply);
         assert_eq!(new_safe.is_initialized, is_initialized);
         assert_eq!(new_safe.whitelist, whitelist);
+        assert_eq!(new_safe.nonce, 33);
     }
 }
