@@ -13,7 +13,7 @@ use solana_sdk::sysvar::Sysvar;
 use spl_token::pack::Pack;
 use spl_token::state::{Account, AccountState, Mint};
 
-use instruction::{initialize_market, MarketInstruction, NewOrderInstruction};
+use instruction::{initialize_market, MarketInstruction, NewOrderInstructionV1};
 use matching::{OrderType, Side};
 use state::gen_vault_signer_key;
 use state::{MarketState, OpenOrders, State, ToAlignedBytes};
@@ -262,7 +262,7 @@ fn test_new_order() {
     let pc_account = new_token_account(&mut rng, accounts.pc_mint.key, owner.key, &bump);
     let spl_token_program = new_spl_token_program(&bump);
 
-    let instruction_data = MarketInstruction::NewOrder(NewOrderInstruction {
+    let instruction_data = MarketInstruction::NewOrder(NewOrderInstructionV1 {
         side: Side::Bid,
         limit_price: NonZeroU64::new(100_000).unwrap(),
         max_qty: NonZeroU64::new(5).unwrap(),
@@ -302,7 +302,7 @@ fn test_new_order() {
     )
     .unwrap();
 
-    let instruction_data = MarketInstruction::NewOrder(NewOrderInstruction {
+    let instruction_data = MarketInstruction::NewOrder(NewOrderInstructionV1 {
         side: Side::Ask,
         limit_price: NonZeroU64::new(99_000).unwrap(),
         max_qty: NonZeroU64::new(4).unwrap(),

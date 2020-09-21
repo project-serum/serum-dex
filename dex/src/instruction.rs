@@ -1,7 +1,8 @@
+#![cfg_attr(not(feature = "program"), allow(unused))]
+use std::convert::TryInto;
 use crate::error::DexError;
 use crate::matching::{OrderType, Side};
-use bytemuck::{bytes_of, cast};
-#[cfg(test)]
+use bytemuck::cast;
 use serde::{Deserialize, Serialize};
 use solana_sdk::{
     instruction::{AccountMeta, Instruction},
@@ -10,6 +11,7 @@ use solana_sdk::{
 
 use arrayref::{array_ref, array_refs};
 use std::num::NonZeroU64;
+use num_enum::{IntoPrimitive, TryFromPrimitive};
 
 #[cfg(test)]
 use proptest::prelude::*;
@@ -36,8 +38,8 @@ pub mod fee_sweeper {
     declare_id!("DeqYsmBd9BnrbgUwQjVH4sQWK71dEgE6eoZFw3Rp4ftE");
 }
 
-#[derive(PartialEq, Eq, Debug, Clone)]
-#[cfg_attr(test, derive(Arbitrary, Serialize, Deserialize))]
+#[derive(PartialEq, Eq, Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(test, derive(Arbitrary))]
 #[cfg_attr(test, proptest(no_params))]
 #[cfg_attr(feature = "fuzz", derive(arbitrary::Arbitrary))]
 pub struct InitializeMarketInstruction {
@@ -56,9 +58,37 @@ pub struct InitializeMarketInstruction {
     pub pc_dust_threshold: u64,
 }
 
-#[derive(PartialEq, Eq, Debug, Clone)]
-#[cfg_attr(test, derive(Arbitrary, Serialize, Deserialize))]
-pub struct NewOrderInstruction {
+#[derive(PartialEq, Eq, Copy, Clone, Debug, TryFromPrimitive, IntoPrimitive, Serialize, Deserialize)]
+#[cfg_attr(test, derive(Arbitrary))]
+#[cfg_attr(feature = "fuzz", derive(arbitrary::Arbitrary))]
+#[repr(u8)]
+pub enum SelfTradeBehavior {
+    DecrementTake = 0,
+    CancelProvide = 1,
+}
+
+#[derive(PartialEq, Eq, Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(test, derive(Arbitrary))]
+pub struct NewOrderInstructionV2 {
+    pub side: Side,
+    #[cfg_attr(
+        test,
+        proptest(strategy = "(1u64..=std::u64::MAX).prop_map(|x| NonZeroU64::new(x).unwrap())")
+    )]
+    pub limit_price: NonZeroU64,
+    #[cfg_attr(
+        test,
+        proptest(strategy = "(1u64..=std::u64::MAX).prop_map(|x| NonZeroU64::new(x).unwrap())")
+    )]
+    pub max_qty: NonZeroU64,
+    pub order_type: OrderType,
+    pub client_id: u64,
+    pub self_trade_behavior: SelfTradeBehavior,
+}
+
+#[derive(PartialEq, Eq, Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(test, derive(Arbitrary))]
+pub struct NewOrderInstructionV1 {
     pub side: Side,
     #[cfg_attr(
         test,
@@ -74,8 +104,56 @@ pub struct NewOrderInstruction {
     pub client_id: u64,
 }
 
-#[derive(PartialEq, Eq, Debug, Clone)]
-#[cfg_attr(test, derive(Arbitrary, Serialize, Deserialize))]
+impl NewOrderInstructionV1 {
+    pub fn add_self_trade_behavior(self, self_trade_behavior: SelfTradeBehavior) -> NewOrderInstructionV2 {
+        let NewOrderInstructionV1 {
+            side,
+            limit_price,
+            max_qty,
+            order_type,
+            client_id,
+        } = self;
+        NewOrderInstructionV2 {
+            side,
+            limit_price,
+            max_qty,
+            order_type,
+            client_id,
+            self_trade_behavior,
+        }
+    }
+}
+
+impl NewOrderInstructionV1 {
+    fn unpack(data: &[u8; 32]) -> Option<Self> {
+        let (&side_arr, &price_arr, &max_qty_arr, &otype_arr, &client_id_bytes) =
+            array_refs![data, 4, 8, 8, 4, 8];
+        let client_id = u64::from_le_bytes(client_id_bytes);
+        let side = match u32::from_le_bytes(side_arr) {
+            0 => Side::Bid,
+            1 => Side::Ask,
+            _ => return None,
+        };
+        let limit_price = NonZeroU64::new(u64::from_le_bytes(price_arr))?;
+        let max_qty = NonZeroU64::new(u64::from_le_bytes(max_qty_arr))?;
+        let order_type = match u32::from_le_bytes(otype_arr) {
+            0 => OrderType::Limit,
+            1 => OrderType::ImmediateOrCancel,
+            2 => OrderType::PostOnly,
+            _ => return None,
+        };
+        Some(NewOrderInstructionV1 {
+            side,
+            limit_price,
+            max_qty,
+            order_type,
+            client_id,
+        })
+    }
+}
+
+#[derive(PartialEq, Eq, Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(test, derive(Arbitrary))]
 #[cfg_attr(feature = "fuzz", derive(arbitrary::Arbitrary))]
 pub struct CancelOrderInstruction {
     pub side: Side,
@@ -84,8 +162,8 @@ pub struct CancelOrderInstruction {
     pub owner_slot: u8,
 }
 
-#[derive(PartialEq, Eq, Debug, Clone)]
-#[cfg_attr(test, derive(Arbitrary, Serialize, Deserialize))]
+#[derive(PartialEq, Eq, Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(test, derive(Arbitrary))]
 #[cfg_attr(feature = "fuzz", derive(arbitrary::Arbitrary))]
 pub enum MarketInstruction {
     /// 0. `[writable]` the market to initialize
@@ -108,7 +186,7 @@ pub enum MarketInstruction {
     /// 7. `[]` spl token program
     /// 8. `[]` the rent sysvar
     /// 9. `[writable]` (optional) the (M)SRM account used for fee discounts
-    NewOrder(NewOrderInstruction),
+    NewOrder(NewOrderInstructionV1),
     /// 0. `[writable]` market
     /// 1. `[writable]` req_q
     /// 2. `[writable]` event_q
@@ -154,60 +232,22 @@ pub enum MarketInstruction {
     /// 4. `[]` vault signer
     /// 5. `[]` spl token program
     SweepFees,
+    /// 0. `[writable]` the market
+    /// 1. `[writable]` the OpenOrders account to use
+    /// 2. `[writable]` the request queue
+    /// 3. `[writable]` the (coin or price currency) account paying for the order
+    /// 4. `[signer]` owner of the OpenOrders account
+    /// 5. `[writable]` coin vault
+    /// 6. `[writable]` pc vault
+    /// 7. `[]` spl token program
+    /// 8. `[]` the rent sysvar
+    /// 9. `[writable]` (optional) the (M)SRM account used for fee discounts
+    NewOrderV2(NewOrderInstructionV2),
 }
 
 impl MarketInstruction {
-    #[cfg(test)]
-    #[inline]
-    pub fn serde_pack(&self) -> Vec<u8> {
-        bincode::serialize(&(0u8, self)).unwrap()
-    }
-
     pub fn pack(&self) -> Vec<u8> {
-        let mut buf = Vec::with_capacity(43);
-        match self {
-            MarketInstruction::InitializeMarket(ref inst) => {
-                buf.extend_from_slice(&[0; 5]);
-                buf.extend_from_slice(&inst.coin_lot_size.to_le_bytes());
-                buf.extend_from_slice(&inst.pc_lot_size.to_le_bytes());
-                buf.extend_from_slice(&inst.fee_rate_bps.to_le_bytes());
-                buf.extend_from_slice(&inst.vault_signer_nonce.to_le_bytes());
-                buf.extend_from_slice(&inst.pc_dust_threshold.to_le_bytes());
-            }
-            MarketInstruction::NewOrder(ref inst) => {
-                buf.extend_from_slice(&[0, 1, 0, 0, 0]);
-                buf.extend_from_slice(&(inst.side as u32).to_le_bytes());
-                buf.extend_from_slice(&inst.limit_price.get().to_le_bytes());
-                buf.extend_from_slice(&inst.max_qty.get().to_le_bytes());
-                buf.extend_from_slice(&(inst.order_type as u32).to_le_bytes());
-                buf.extend_from_slice(&(inst.client_id).to_le_bytes());
-            }
-            MarketInstruction::MatchOrders(limit) => {
-                buf.extend_from_slice(&[0, 2, 0, 0, 0]);
-                buf.extend_from_slice(&limit.to_le_bytes());
-            }
-            MarketInstruction::ConsumeEvents(limit) => {
-                buf.extend_from_slice(&[0, 3, 0, 0, 0]);
-                buf.extend_from_slice(&limit.to_le_bytes());
-            }
-            MarketInstruction::CancelOrder(ref inst) => {
-                buf.extend_from_slice(&[0, 4, 0, 0, 0]);
-                buf.extend_from_slice(&(inst.side as u32).to_le_bytes());
-                buf.extend_from_slice(&inst.order_id.to_le_bytes());
-                buf.extend_from_slice(bytes_of(&inst.owner));
-                buf.push(inst.owner_slot);
-            }
-            MarketInstruction::SettleFunds => {
-                buf.extend_from_slice(&[0, 5, 0, 0, 0]);
-            }
-            MarketInstruction::CancelOrderByClientId(client_id) => {
-                buf.extend_from_slice(&[0, 6, 0, 0, 0]);
-                buf.extend_from_slice(&client_id.to_le_bytes());
-            }
-            MarketInstruction::DisableMarket => buf.extend_from_slice(&[0, 7, 0, 0, 0]),
-            MarketInstruction::SweepFees => buf.extend_from_slice(&[0, 8, 0, 0, 0]),
-        };
-        buf
+        bincode::serialize(&(0u8, self)).unwrap()
     }
 
     pub fn unpack(versioned_bytes: &[u8]) -> Option<Self> {
@@ -218,8 +258,9 @@ impl MarketInstruction {
         if version != 0 {
             return None;
         }
-        Some(match u32::from_le_bytes(discrim) {
-            0 if data.len() == 34 => MarketInstruction::InitializeMarket({
+        let discrim = u32::from_le_bytes(discrim);
+        Some(match (discrim, data.len()) {
+            (0, 34) => MarketInstruction::InitializeMarket({
                 let data_array = array_ref![data, 0, 34];
                 let fields = array_refs![data_array, 8, 8, 2, 8, 8];
                 InitializeMarketInstruction {
@@ -230,44 +271,19 @@ impl MarketInstruction {
                     pc_dust_threshold: u64::from_le_bytes(*fields.4),
                 }
             }),
-            1 if (data.len() == 24 || data.len() == 32) => MarketInstruction::NewOrder({
-                let (&side_arr, &price_arr, &max_qty_arr, &otype_arr, client_id_bytes) =
-                    array_refs![data, 4, 8, 8, 4; .. ;];
-                let client_id = match client_id_bytes.len() {
-                    0 => 0,
-                    8 => u64::from_le_bytes(*array_ref![client_id_bytes, 0, 8]),
-                    _ => unreachable!(),
-                };
-                let side = match u32::from_le_bytes(side_arr) {
-                    0 => Side::Bid,
-                    1 => Side::Ask,
-                    _ => return None,
-                };
-                let limit_price = NonZeroU64::new(u64::from_le_bytes(price_arr))?;
-                let max_qty = NonZeroU64::new(u64::from_le_bytes(max_qty_arr))?;
-                let order_type = match u32::from_le_bytes(otype_arr) {
-                    0 => OrderType::Limit,
-                    1 => OrderType::ImmediateOrCancel,
-                    2 => OrderType::PostOnly,
-                    _ => return None,
-                };
-                NewOrderInstruction {
-                    side,
-                    limit_price,
-                    max_qty,
-                    order_type,
-                    client_id,
-                }
+            (1, 32) => MarketInstruction::NewOrder({
+                let data_arr = array_ref![data, 0, 32];
+                NewOrderInstructionV1::unpack(data_arr)?
             }),
-            2 if data.len() == 2 => {
+            (2, 2) => {
                 let limit = array_ref![data, 0, 2];
                 MarketInstruction::MatchOrders(u16::from_le_bytes(*limit))
             }
-            3 if data.len() == 2 => {
+            (3, 2) => {
                 let limit = array_ref![data, 0, 2];
                 MarketInstruction::ConsumeEvents(u16::from_le_bytes(*limit))
             }
-            4 if data.len() == 53 => MarketInstruction::CancelOrder({
+            (4, 53) => MarketInstruction::CancelOrder({
                 let data_array = array_ref![data, 0, 53];
                 let fields = array_refs![data_array, 4, 16, 32, 1];
                 let side = match u32::from_le_bytes(*fields.0) {
@@ -285,13 +301,22 @@ impl MarketInstruction {
                     owner_slot,
                 }
             }),
-            5 => MarketInstruction::SettleFunds,
-            6 if data.len() == 8 => {
+            (5, 0) => MarketInstruction::SettleFunds,
+            (6, 8) => {
                 let client_id = array_ref![data, 0, 8];
                 MarketInstruction::CancelOrderByClientId(u64::from_le_bytes(*client_id))
             }
-            7 => MarketInstruction::DisableMarket,
-            8 => MarketInstruction::SweepFees,
+            (7, 0) => MarketInstruction::DisableMarket,
+            (8, 0) => MarketInstruction::SweepFees,
+            (9, 36) => MarketInstruction::NewOrderV2({
+                let data_arr = array_ref![data, 0, 36];
+                let (v1_data_arr, v2_data_arr) = array_refs![data_arr, 32, 4];
+                let v1_instr = NewOrderInstructionV1::unpack(v1_data_arr)?;
+                let self_trade_behavior = SelfTradeBehavior::try_from_primitive(
+                    u32::from_le_bytes(*v2_data_arr).try_into().ok()?
+                ).ok()?;
+                v1_instr.add_self_trade_behavior(self_trade_behavior)
+            }),
             _ => return None,
         })
     }
@@ -374,7 +399,7 @@ mod tests {
     proptest! {
         #[test]
         fn test_pack_unpack_roundtrip(inst: MarketInstruction) {
-            let serialized = inst.serde_pack();
+            let serialized = inst.pack();
             let unpack_serde_result = MarketInstruction::unpack_serde(&serialized).ok();
             let unpack_result = MarketInstruction::unpack(&serialized);
             assert_eq!(unpack_result, Some(inst));
@@ -382,14 +407,6 @@ mod tests {
                 "Serialized:\n{:?}\nLeft:\n{:#?}\nRight:\n{:#?}",
                 serialized, unpack_serde_result, unpack_result
             );
-        }
-    }
-    proptest! {
-        #[test]
-        fn test_hand_serde_pack(inst: MarketInstruction) {
-            let serde_packed = inst.serde_pack();
-            let hand_packed = inst.pack();
-            assert_eq!(serde_packed, hand_packed);
         }
     }
 }
@@ -408,9 +425,25 @@ mod fuzzing {
         pub max_qty: u64,
         pub order_type: OrderType,
         pub client_id: u64,
+        pub self_trade_behavior: SelfTradeBehavior,
     }
 
-    impl TryFrom<NewOrderInstructionU64> for NewOrderInstruction {
+    impl TryFrom<NewOrderInstructionU64> for NewOrderInstructionV2 {
+        type Error = std::num::TryFromIntError;
+
+        fn try_from(value: NewOrderInstructionU64) -> Result<Self, Self::Error> {
+            Ok(Self {
+                side: value.side,
+                limit_price: value.limit_price.try_into()?,
+                max_qty: value.max_qty.try_into()?,
+                order_type: value.order_type,
+                client_id: value.client_id,
+                self_trade_behavior: value.self_trade_behavior,
+            })
+        }
+    }
+
+    impl TryFrom<NewOrderInstructionU64> for NewOrderInstructionV1 {
         type Error = std::num::TryFromIntError;
 
         fn try_from(value: NewOrderInstructionU64) -> Result<Self, Self::Error> {
@@ -424,19 +457,54 @@ mod fuzzing {
         }
     }
 
-    impl From<&NewOrderInstruction> for NewOrderInstructionU64 {
-        fn from(value: &NewOrderInstruction) -> Self {
+    impl From<&NewOrderInstructionV1> for NewOrderInstructionU64 {
+        fn from(value: &NewOrderInstructionV1) -> Self {
             Self {
                 side: value.side,
                 limit_price: value.limit_price.get(),
                 max_qty: value.max_qty.get(),
                 order_type: value.order_type,
                 client_id: value.client_id,
+                self_trade_behavior: SelfTradeBehavior::DecrementTake,
             }
         }
     }
 
-    impl arbitrary::Arbitrary for NewOrderInstruction {
+    impl From<&NewOrderInstructionV2> for NewOrderInstructionU64 {
+        fn from(value: &NewOrderInstructionV2) -> Self {
+            Self {
+                side: value.side,
+                limit_price: value.limit_price.get(),
+                max_qty: value.max_qty.get(),
+                order_type: value.order_type,
+                client_id: value.client_id,
+                self_trade_behavior: value.self_trade_behavior,
+            }
+        }
+    }
+
+    impl arbitrary::Arbitrary for NewOrderInstructionV1 {
+        fn arbitrary(u: &mut Unstructured<'_>) -> Result<Self, arbitrary::Error> {
+            <NewOrderInstructionU64 as arbitrary::Arbitrary>::arbitrary(u)?
+                .try_into()
+                .map_err(|_| arbitrary::Error::IncorrectFormat)
+        }
+
+        fn size_hint(depth: usize) -> (usize, Option<usize>) {
+            <NewOrderInstructionU64 as arbitrary::Arbitrary>::size_hint(depth)
+        }
+
+        fn shrink(&self) -> Box<dyn Iterator<Item = Self>> {
+            let x: NewOrderInstructionU64 = self.into();
+            Box::new(
+                x.shrink()
+                    .map(NewOrderInstructionU64::try_into)
+                    .filter_map(Result::ok),
+            )
+        }
+    }
+
+    impl arbitrary::Arbitrary for NewOrderInstructionV2 {
         fn arbitrary(u: &mut Unstructured<'_>) -> Result<Self, arbitrary::Error> {
             <NewOrderInstructionU64 as arbitrary::Arbitrary>::arbitrary(u)?
                 .try_into()

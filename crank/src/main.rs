@@ -10,7 +10,7 @@ use safe_transmute::{
     transmute_many, transmute_many_pedantic, transmute_many_permissive, transmute_one,
     transmute_one_pedantic, try_copy,
 };
-use serum_dex::instruction::{MarketInstruction, NewOrderInstruction};
+use serum_dex::instruction::{MarketInstruction, NewOrderInstructionV1};
 use serum_dex::matching::{OrderType, Side};
 use serum_dex::state::gen_vault_signer_key;
 use serum_dex::state::Event;
@@ -824,7 +824,7 @@ fn whole_shebang(client: &RpcClient, program_id: &Pubkey, payer: &Keypair) -> Re
         &pc_wallet.pubkey(),
         &market_keys,
         &mut orders,
-        NewOrderInstruction {
+        NewOrderInstructionV1 {
             side: Side::Bid,
             limit_price: NonZeroU64::new(500).unwrap(),
             max_qty: NonZeroU64::new(1_000).unwrap(),
@@ -844,7 +844,7 @@ fn whole_shebang(client: &RpcClient, program_id: &Pubkey, payer: &Keypair) -> Re
         &coin_wallet.pubkey(),
         &market_keys,
         &mut orders,
-        NewOrderInstruction {
+        NewOrderInstructionV1 {
             side: Side::Ask,
             limit_price: NonZeroU64::new(499).unwrap(),
             max_qty: NonZeroU64::new(1_000).unwrap(),
@@ -896,7 +896,7 @@ fn place_order(
     state: &MarketPubkeys,
     orders: &mut Option<Pubkey>,
 
-    new_order: NewOrderInstruction,
+    new_order: NewOrderInstructionV1,
 ) -> Result<()> {
     let mut instructions = Vec::new();
     let orders_keypair;

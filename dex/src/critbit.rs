@@ -230,6 +230,7 @@ impl AsRef<AnyNode> for InnerNode {
 }
 
 impl AsRef<AnyNode> for LeafNode {
+    #[inline]
     fn as_ref(&self) -> &AnyNode {
         cast_ref(self)
     }

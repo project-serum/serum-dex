@@ -13,7 +13,7 @@ use libfuzzer_sys::fuzz_target;
 use solana_sdk::account_info::AccountInfo;
 
 use serum_dex::error::{DexError, DexErrorCode};
-use serum_dex::instruction::{CancelOrderInstruction, MarketInstruction, NewOrderInstruction};
+use serum_dex::instruction::{CancelOrderInstruction, MarketInstruction, NewOrderInstructionV2};
 use serum_dex::matching::Side;
 use serum_dex::state::{strip_header, MarketState, OpenOrders, ToAlignedBytes};
 use serum_dex_fuzz::{
@@ -26,7 +26,7 @@ use serum_dex_fuzz::{
 enum Action {
     PlaceOrder {
         owner_id: OwnerId,
-        instruction: NewOrderInstruction,
+        instruction: NewOrderInstructionV2,
     },
     CancelOrder {
         owner_id: OwnerId,
@@ -244,14 +244,14 @@ fn run_actions(actions: Vec<Action>) {
         total_coin_bal + market_state.coin_fees_accrued,
         owners.len() as u64 * INITIAL_COIN_BALANCE
     );
-    assert_eq!(market_state.coin_fees_accrued, 0);
-    assert_eq!(market_state.pc_fees_accrued, 0);
-    assert_eq!(market_state.coin_deposits_total, 0);
-    assert_eq!(market_state.pc_deposits_total, 0);
     assert_eq!(
         total_pc_bal + market_state.referrer_rebates_accrued + total_referrer_rebates + swept_fees,
         owners.len() as u64 * INITIAL_PC_BALANCE
     );
+    assert_eq!(market_state.coin_fees_accrued, 0);
+    assert_eq!(market_state.pc_fees_accrued, 0);
+    assert_eq!(market_state.coin_deposits_total, 0);
+    assert_eq!(market_state.pc_deposits_total, 0);
 
     assert_eq!(
         market_state.coin_deposits_total,
@@ -359,7 +359,7 @@ fn run_action<'bump>(
                     market_accounts.spl_token_program.clone(),
                     market_accounts.rent_sysvar.clone(),
                 ],
-                &MarketInstruction::NewOrder(instruction.clone()).pack(),
+                &MarketInstruction::NewOrderV2(instruction.clone()).pack(),
             )
             .map_err(|e| match e {
                 DexError::ErrorCode(DexErrorCode::InsufficientFunds) => {}
