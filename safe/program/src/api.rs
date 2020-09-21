@@ -27,8 +27,7 @@ pub fn initialize(
     let safe_account_data_len = safe_account_info.data_len();
     let rent = &Rent::from_account_info(next_account_info(account_info_iter)?)?;
 
-    let mut safe_account_data = safe_account_info.data.borrow_mut();
-
+    let mut safe_account_data = safe_account_info.try_borrow_mut_data()?;
     SafeAccount::unpack_unchecked_mut(
         &mut safe_account_data,
         &mut |safe_account: &mut SafeAccount| {
@@ -65,6 +64,7 @@ fn initialize_access_control(
     rent: &Rent,
     nonce: u8,
 ) -> Result<(), SafeError> {
+    info!("ACCESS CONTROL: initialize");
     if safe_account.is_initialized {
         return Err(SafeError::ErrorCode(SafeErrorCode::AlreadyInitialized));
     }
@@ -82,7 +82,7 @@ fn initialize_access_control(
     {
         return Err(SafeError::ErrorCode(SafeErrorCode::InvalidVaultNonce));
     }
-
+    info!("ACCESS CONTROL: success");
     Ok(())
 }
 
@@ -401,6 +401,11 @@ pub fn withdraw_srm(
                 &[],
                 amount,
             )?;
+
+            let data = safe_account_info.try_borrow_data()?;
+            let nonce = &[data[data.len() - 1]];
+            let signer_seeds = SrmVault::signer_seeds(safe_account_info.key, nonce);
+
             let r = solana_sdk::program::invoke_signed(
                 &withdraw_instruction,
                 &[
@@ -409,7 +414,7 @@ pub fn withdraw_srm(
                     safe_spl_vault_authority_account_info.clone(),
                     spl_program_account_info.clone(),
                 ],
-                &[&[safe_account_info.key.as_ref()]],
+                &[&signer_seeds],
             );
             info!("withdrawal token transfer complete");
             r
@@ -449,22 +454,24 @@ pub fn withdraw_srm_access_control(
     {
         let spl_vault_data = safe_spl_vault_account_info.try_borrow_data()?;
 
-        // The vault SPL account must be owned by this program.
+        assert_eq!(*safe_spl_vault_account_info.owner, spl_token::ID);
+        assert_eq!(spl_vault_data.len(), spl_token::state::Account::LEN);
+
+        // AccountState must be initialized.
+        if spl_vault_data[0x6c] != 1u8 {
+            return Err(SafeError::ErrorCode(SafeErrorCode::WrongVault));
+        }
+        // The SPL account owner must be hte program derived address.
         let expected_owner = {
             let data = safe_account_info.try_borrow_data()?;
             let nonce = &[data[data.len() - 1]];
-            Pubkey::create_program_address(
-                &SrmVault::signer_seeds(safe_account_info.key, nonce),
-                program_id,
-            )
-            .expect("safe initialized with invalid nonce")
+            let signer_seeds = SrmVault::signer_seeds(safe_account_info.key, nonce);
+
+            Pubkey::create_program_address(&signer_seeds, program_id)
+                .expect("safe initialized with invalid nonce")
         };
         let owner = Pubkey::new(&spl_vault_data[32..64]);
         if owner != expected_owner {
-            return Err(SafeError::ErrorCode(SafeErrorCode::WrongVault));
-        }
-        // The vault SPL account must be initialized.
-        if spl_vault_data[0x2d] != 1u8 {
             return Err(SafeError::ErrorCode(SafeErrorCode::WrongVault));
         }
     }

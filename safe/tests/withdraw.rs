@@ -1,4 +1,5 @@
 use serum_safe::accounts::{SrmVault, VestingAccount};
+use serum_safe::error::SafeErrorCode;
 use serum_safe::pack::DynPack;
 use solana_client_gen::solana_sdk::commitment_config::CommitmentConfig;
 use solana_client_gen::solana_sdk::instruction::AccountMeta;
@@ -8,13 +9,128 @@ use spl_token::pack::Pack;
 
 mod common;
 
+// Summary.
+//
+// * Vesting amount of 30 for first period.
+// * First vesting period passes.
+// * Withdraw 30 SRM.
+//
+// Should receive the SRM.
 #[test]
 fn withdraw() {
-    return;
+    withdraw_test(WithdrawTestParams {
+        test_type: TestType::Normal,
+        vesting_slot_offsets: vec![1, 100_000, 200_000],
+        vesting_amounts: vec![30, 40, 50],
+        expected_vesting_amounts: vec![0, 40, 50],
+        expected_withdraw_amount: 30,
+        expected_spl_balance: 30,
+        slot_wait_index: Some(0),
+        error_code: None,
+    })
+}
+
+// Summary.
+//
+// * Vesting amount of 30.
+// * Vesting period passes.
+// * Withdraw 31.
+//
+// Should not receive anything.
+#[test]
+fn withdraw_more_than_vested() {
+    withdraw_test(WithdrawTestParams {
+        test_type: TestType::Normal,
+        vesting_slot_offsets: vec![1, 100_000, 200_000],
+        vesting_amounts: vec![30, 40, 50],
+        expected_vesting_amounts: vec![30, 40, 50],
+        expected_withdraw_amount: 31,
+        expected_spl_balance: 0,
+        slot_wait_index: Some(0),
+        error_code: Some(SafeErrorCode::InsufficientBalance.into()),
+    })
+}
+
+// Summary.
+//
+// * Vesting amount of 30.
+// * Vesting period does not pass.
+// * Withdraw 1.
+//
+// Should not receive anything.
+#[test]
+fn withdraw_without_vesting() {
+    withdraw_test(WithdrawTestParams {
+        test_type: TestType::Normal,
+        vesting_slot_offsets: vec![99_000, 100_000, 200_000],
+        vesting_amounts: vec![30, 40, 50],
+        expected_vesting_amounts: vec![30, 40, 50],
+        expected_withdraw_amount: 100,
+        expected_spl_balance: 0,
+        slot_wait_index: None,
+        error_code: Some(SafeErrorCode::InsufficientBalance.into()),
+    })
+}
+
+// Summary.
+//
+// * Vesting amount of 30.
+// * Mint 2 lSRM.
+// * Vesting period passes.
+// * Withdraw 20 SRM.
+//
+// Should receive the SRM.
+#[test]
+fn withdraw_some_when_locked_srm_outstanding() {
+    withdraw_test(WithdrawTestParams {
+        test_type: TestType::LsrmMinted(2),
+        vesting_slot_offsets: vec![1, 100_000, 200_000],
+        vesting_amounts: vec![30, 40, 50],
+        expected_vesting_amounts: vec![10, 40, 50],
+        expected_withdraw_amount: 20,
+        expected_spl_balance: 20,
+        slot_wait_index: Some(0),
+        error_code: None,
+    })
+}
+
+// Summary.
+//
+// * Vesting amount of 30.
+// * Mint 2 LSRM.
+// * Vesting period passes.
+// * Withdraw 30 SRM.
+//
+// Should not receive anything.
+#[test]
+fn withdraw_all_when_locked_srm_outstanding() {
+    withdraw_test(WithdrawTestParams {
+        test_type: TestType::LsrmMinted(2),
+        vesting_slot_offsets: vec![1, 100_000, 200_000],
+        vesting_amounts: vec![30, 40, 50],
+        expected_vesting_amounts: vec![30, 40, 50],
+        expected_withdraw_amount: 30,
+        expected_spl_balance: 0,
+        slot_wait_index: Some(0),
+        error_code: Some(SafeErrorCode::InsufficientBalance.into()),
+    })
+}
+
+fn withdraw_test(params: WithdrawTestParams) {
+    let WithdrawTestParams {
+        test_type,
+        vesting_slot_offsets,
+        vesting_amounts,
+        expected_vesting_amounts,
+        expected_withdraw_amount,
+        expected_spl_balance,
+        slot_wait_index,
+        error_code,
+    } = params;
     // Given.
     //
-    // An initialized Serum Safe with deposit.
-    let common::lifecycle::Deposited {
+    // A vesting account.
+    let StartState {
         client,
         vesting_account,
         vesting_account_beneficiary,
@@ -24,7 +140,8 @@ fn withdraw() {
         safe_srm_vault,
         safe_srm_vault_authority,
         srm_mint,
-    } = common::lifecycle::deposit_with_schedule(vec![1, 100_000, 200_000], vec![30, 40, 50]);
+        ..
+    } = start_state(test_type, vesting_slot_offsets, vesting_amounts);
     // And.
     //
     // An empty SRM SPL token account.
@@ -38,12 +155,14 @@ fn withdraw() {
 
     // When.
     //
-    // The vesting period passes.
-    common::blockchain::pass_time(client.rpc(), vesting_account_slots[0]);
+    // The vesting period passes (or doesn't if set to None).
+    if let Some(slot_wait_index) = slot_wait_index {
+        common::blockchain::pass_time(client.rpc(), vesting_account_slots[slot_wait_index]);
+    }
     // And.
     //
     // I withdraw from the vesting account *to* the empty SPL token account.
-    let expected_withdraw_amount = {
+    {
         let accounts = [
             AccountMeta::new_readonly(vesting_account_beneficiary.pubkey(), true),
             AccountMeta::new(vesting_account, false),
@@ -55,16 +174,19 @@ fn withdraw() {
             AccountMeta::new_readonly(sysvar::clock::ID, false),
         ];
         let signers = [&vesting_account_beneficiary, client.payer()];
-        let withdraw_amount = 20;
-        client
-            .withdraw_srm_with_signers(&signers, &accounts, withdraw_amount)
-            .unwrap();
-        withdraw_amount
+        let r = client.withdraw_srm_with_signers(&signers, &accounts, expected_withdraw_amount);
+        if error_code.is_some() {
+            match r {
+                Ok(_) => panic!("expected error code from withdrawal"),
+                Err(client_error) => {
+                    assert_eq!(client_error.error_code(), error_code);
+                }
+            };
+        }
     };
-
     // Then.
     //
-    // I have a balance in that account.
+    // I should have SRM in my account.
     {
         let spl_account = {
             let account = client
@@ -78,11 +200,12 @@ fn withdraw() {
                 .unwrap();
             spl_token::state::Account::unpack_from_slice(&account.data).unwrap()
         };
-        assert_eq!(spl_account.amount, expected_withdraw_amount);
+        assert_eq!(spl_account.amount, expected_spl_balance);
     }
+
     // Then.
     //
-    // My vesting account is updated.
+    // My vesting account amounts should be updated.
     {
         let vesting_account = {
             let account = client
@@ -93,89 +216,73 @@ fn withdraw() {
                 .unwrap();
             VestingAccount::unpack(&account.data).unwrap()
         };
-        assert_eq!(vesting_account.amounts[0], 10);
-        assert_eq!(vesting_account.amounts[1], 40);
-        assert_eq!(vesting_account.amounts[2], 50);
+        let matching = vesting_account
+            .amounts
+            .iter()
+            .zip(&expected_vesting_amounts)
+            .filter(|&(a, b)| a == b)
+            .count();
+        assert_eq!(vesting_account.amounts.len(), matching);
+        assert_eq!(
+            vesting_account.amounts.len(),
+            expected_vesting_amounts.len()
+        );
     }
 }
 
-// TODO
-#[test]
-fn withdraw_some_when_locked_srm_outstanding() {
-    // Given.
-    //
-    // A vesting account with outstanding lSRM.
-    let common::lifecycle::LsrmMinted {
-        client,
-        lsrm,
-        vesting_account,
-        vesting_account_beneficiary,
-        srm_mint,
-    } = common::lifecycle::mint_lsrm(2);
+type StartState = common::lifecycle::LsrmMinted;
 
-    // When.
-    //
-    // I withdraw some of the vested amount after the vesting period.
-
-    // Then.
-    //
-    // I should have SRM in my account.
-
-    // Then.
-    //
-    // My vesting account should be updated.
+// Using the LsrmMinted type here because we don't use the `lsrm` field in these tests
+// and so we can avoid making another needless type.
+fn start_state(
+    test_type: TestType,
+    vesting_slot_offsets: Vec<u64>,
+    vesting_amounts: Vec<u64>,
+) -> StartState {
+    match test_type {
+        TestType::LsrmMinted(lsrm_count) => {
+            common::lifecycle::mint_lsrm(lsrm_count, vesting_slot_offsets, vesting_amounts)
+        }
+        TestType::Normal => {
+            let common::lifecycle::Deposited {
+                client,
+                vesting_account,
+                vesting_account_beneficiary,
+                vesting_account_slots,
+                vesting_account_amounts,
+                safe_account,
+                safe_srm_vault,
+                safe_srm_vault_authority,
+                srm_mint,
+            } = common::lifecycle::deposit_with_schedule(vesting_slot_offsets, vesting_amounts);
+            common::lifecycle::LsrmMinted {
+                client,
+                vesting_account,
+                vesting_account_beneficiary,
+                vesting_account_slots,
+                vesting_account_amounts,
+                safe_account,
+                safe_srm_vault,
+                safe_srm_vault_authority,
+                srm_mint,
+                lsrm: vec![],
+            }
+        }
+    }
 }
 
-// TODO
-#[test]
-fn withdraw_all_when_locked_srm_outstanding() {
-    // Given.
-    //
-    // A vesting account with outstanding lSRM.
-    let common::lifecycle::LsrmMinted {
-        client,
-        lsrm,
-        vesting_account,
-        vesting_account_beneficiary,
-        srm_mint,
-    } = common::lifecycle::mint_lsrm(2);
-
-    // When.
-    //
-    // I withdraw the entire vested amount after the vesting period.
-
-    // Then.
-    //
-    // I should *not* have SRM in my account.
-
-    // Then.
-    //
-    // My vesting account should not be updated.
+struct WithdrawTestParams {
+    test_type: TestType,
+    vesting_slot_offsets: Vec<u64>,
+    vesting_amounts: Vec<u64>,
+    expected_vesting_amounts: Vec<u64>,
+    expected_withdraw_amount: u64,
+    expected_spl_balance: u64,
+    slot_wait_index: Option<usize>,
+    error_code: Option<u32>,
 }
 
-// TODO
-#[test]
-fn withdraw_more_than_vested() {
-    // Given.
-    //
-    // A vesting account.
-    let common::lifecycle::LsrmMinted {
-        client,
-        lsrm,
-        vesting_account,
-        vesting_account_beneficiary,
-        srm_mint,
-    } = common::lifecycle::mint_lsrm(2);
-
-    // When.
-    //
-    // I withdraw more than has vested.
-
-    // Then.
-    //
-    // I should *not* have SRM in my account.
-
-    // Then.
-    //
-    // My vesting account should not be updated.
+enum TestType {
+    Normal,
+    LsrmMinted(usize),
 }

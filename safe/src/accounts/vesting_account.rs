@@ -60,7 +60,7 @@ impl VestingAccount {
     pub fn vested_amount(&self, slot: u64) -> u64 {
         self.slots
             .iter()
-            .filter_map(|s| if *s < slot { Some(s) } else { None })
+            .filter_map(|s| if *s <= slot { Some(s) } else { None })
             .enumerate()
             .map(|(idx, _slot)| self.amounts[idx])
             .sum()
@@ -239,5 +239,28 @@ mod tests {
         assert_eq!(va.amounts.len(), match_slots);
 
         assert_eq!(va.initialized, initialized);
+    }
+
+    #[test]
+    fn available_for_withdrawal() {
+        let safe = Keypair::generate(&mut OsRng).pubkey();
+        let beneficiary = Keypair::generate(&mut OsRng).pubkey();
+        let amounts = vec![1, 2, 3, 4];
+        let slots = vec![5, 6, 7, 8];
+        let initialized = true;
+        let locked_outstanding = 0;
+        let vesting_account = VestingAccount {
+            safe,
+            beneficiary,
+            initialized,
+            locked_outstanding,
+            amounts: amounts.clone(),
+            slots: slots.clone(),
+        };
+        assert_eq!(0, vesting_account.available_for_withdrawal(4));
+        assert_eq!(1, vesting_account.available_for_withdrawal(5));
+        assert_eq!(3, vesting_account.available_for_withdrawal(6));
+        assert_eq!(10, vesting_account.available_for_withdrawal(8));
+        assert_eq!(10, vesting_account.available_for_withdrawal(100));
     }
 }

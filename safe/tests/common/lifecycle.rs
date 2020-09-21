@@ -1,6 +1,9 @@
 //! The lifecycle module defines common functions used in safe tests to bring
-//! the program up to a certain state. For example, immediately after
-//! initialization, a deposit, etc. They are used to setup tests.
+//! the program up to a certain state or point in time. For example, immediately
+//! for every deposit test, we want to skip the boilerplate and have everything
+//! already initialized.
+//!
+//! Each stage here builds on eachother. Genesis -> Initialization -> Deposit, etc.
 
 use crate::common;
 use rand::rngs::OsRng;
@@ -233,7 +236,11 @@ pub struct Deposited {
     pub srm_mint: Keypair,
 }
 
-pub fn mint_lsrm(nft_count: usize) -> LsrmMinted {
+pub fn mint_lsrm(
+    nft_count: usize,
+    vesting_slot_offsets: Vec<u64>,
+    vesting_amounts: Vec<u64>,
+) -> LsrmMinted {
     let Deposited {
         client,
         vesting_account,
@@ -241,9 +248,10 @@ pub fn mint_lsrm(nft_count: usize) -> LsrmMinted {
         vesting_account_slots,
         vesting_account_amounts,
         safe_account,
+        safe_srm_vault,
+        safe_srm_vault_authority,
         srm_mint,
-        ..
-    } = deposit();
+    } = deposit_with_schedule(vesting_slot_offsets, vesting_amounts);
 
     let lsrm = {
         let mut mint_lsrm_accounts = vec![
@@ -262,10 +270,15 @@ pub fn mint_lsrm(nft_count: usize) -> LsrmMinted {
 
     LsrmMinted {
         client,
-        lsrm,
         vesting_account,
         vesting_account_beneficiary,
         srm_mint,
+        vesting_account_slots,
+        vesting_account_amounts,
+        safe_account,
+        safe_srm_vault,
+        safe_srm_vault_authority,
+        lsrm,
     }
 }
 
@@ -274,5 +287,10 @@ pub struct LsrmMinted {
     pub lsrm: Vec<Lsrm>,
     pub vesting_account: Pubkey,
     pub vesting_account_beneficiary: Keypair,
+    pub vesting_account_slots: Vec<u64>,
+    pub vesting_account_amounts: Vec<u64>,
+    pub safe_account: Pubkey,
+    pub safe_srm_vault: Keypair,
+    pub safe_srm_vault_authority: Pubkey,
     pub srm_mint: Keypair,
 }

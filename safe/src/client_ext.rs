@@ -107,7 +107,7 @@ solana_client_gen_extension! {
                     safe_account,
                     vault_account_authority: safe_vault_authority,
                     vault_account: safe_srm_vault,
-                                        nonce,
+                    nonce,
                 })
         }
 

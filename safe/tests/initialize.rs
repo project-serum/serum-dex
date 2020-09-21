@@ -35,25 +35,50 @@ fn initialized() {
         signature,
         safe_account,
         nonce,
+        vault_account,
+        vault_account_authority,
         ..
     } = client
         .create_all_accounts_and_initialize(&accounts, &srm_mint.pubkey(), &safe_authority.pubkey())
         .unwrap();
 
     // Then.
-    let account = client
-        .rpc()
-        .get_account_with_commitment(&safe_account.pubkey(), CommitmentConfig::recent())
-        .unwrap()
-        .value
-        .unwrap();
-    let safe_account = SafeAccount::unpack_from_slice(&account.data).unwrap();
-    assert_eq!(&account.owner, client.program());
-    assert_eq!(account.data.len(), SafeAccount::SIZE);
-    assert_eq!(safe_account.authority, safe_authority.pubkey());
-    assert_eq!(safe_account.supply, 0);
-    assert_eq!(safe_account.is_initialized, true);
-    assert_eq!(safe_account.nonce, nonce);
+    //
+    // The SafeAccount should be setup.
+    {
+        let account = client
+            .rpc()
+            .get_account_with_commitment(&safe_account.pubkey(), CommitmentConfig::recent())
+            .unwrap()
+            .value
+            .unwrap();
+        let safe_account = SafeAccount::unpack_from_slice(&account.data).unwrap();
+        assert_eq!(&account.owner, client.program());
+        assert_eq!(account.data.len(), SafeAccount::SIZE);
+        assert_eq!(safe_account.authority, safe_authority.pubkey());
+        assert_eq!(safe_account.supply, 0);
+        assert_eq!(safe_account.is_initialized, true);
+        assert_eq!(safe_account.nonce, nonce);
+    }
+    // Then.
+    //
+    // The safe's SPL vault should be setup.
+    {
+        let account = client
+            .rpc()
+            .get_account_with_commitment(&vault_account.pubkey(), CommitmentConfig::recent())
+            .unwrap()
+            .value
+            .unwrap();
+        let safe_account_vault = spl_token::state::Account::unpack(&account.data).unwrap();
+        assert_eq!(safe_account_vault.owner, vault_account_authority);
+        assert_eq!(
+            safe_account_vault.state,
+            spl_token::state::AccountState::Initialized
+        );
+        assert_eq!(safe_account_vault.amount, 0);
+        assert_eq!(safe_account_vault.mint, srm_mint.pubkey());
+    }
 }
 
 #[test]
