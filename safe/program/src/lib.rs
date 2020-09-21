@@ -49,12 +49,6 @@ fn process_instruction(
         }
         SrmSafeInstruction::BurnLockedSrm => api::burn_locked_srm(accounts),
         SrmSafeInstruction::Slash { amount } => api::slash(accounts, amount),
-        SrmSafeInstruction::WhitelistAdd { program_id_to_add } => {
-            api::whitelist_add(program_id, accounts, program_id_to_add)
-        }
-        SrmSafeInstruction::WhitelistDelete {
-            program_id_to_delete,
-        } => api::whitelist_delete(program_id, accounts, program_id_to_delete),
     };
 
     result?;

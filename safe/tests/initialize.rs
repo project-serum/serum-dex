@@ -1,5 +1,5 @@
 use rand::rngs::OsRng;
-use serum_safe::accounts::{SafeAccount, SrmVault, VestingAccount, Whitelist};
+use serum_safe::accounts::{SafeAccount, SrmVault, VestingAccount};
 use serum_safe::client::{Client, ClientError, RequestOptions, SafeInitialization};
 use serum_safe::error::{SafeError, SafeErrorCode};
 use solana_client_gen::solana_sdk;
@@ -53,7 +53,6 @@ fn initialized() {
     assert_eq!(safe_account.authority, safe_authority.pubkey());
     assert_eq!(safe_account.supply, 0);
     assert_eq!(safe_account.is_initialized, true);
-    assert_eq!(safe_account.whitelist, Whitelist::zeroed());
     assert_eq!(safe_account.nonce, nonce);
 }
 

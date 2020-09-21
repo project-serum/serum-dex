@@ -119,23 +119,6 @@ pub mod instruction {
             // Amount of SRM to withdraw.
             amount: u64,
         },
-        /// WhitelistAdd adds the given program id to the safe account's
-        /// whitelist, allowing locked srm to be sent to/from the program.
-        ///
-        /// Accounts:
-        ///
-        /// 0.  `[signer]`   The authority of the Safe.
-        /// 1.  `[writable]` The SafeAccount representing the instance.
-        WhitelistAdd {
-            /// The program id to add to the whitelist.
-            program_id_to_add: Pubkey,
-        },
-        /// Whitelist delete removes the given program id from the whitelist.
-        ///
-        /// Accounts:
-        /// 0. `[signer]`   The authority of the Safe.
-        /// 1. `[writable]` The SafeAccount representing the instance.
-        WhitelistDelete { program_id_to_delete: Pubkey },
         /// Slash punishes a vesting account who misbehaved, punititvely
         /// revoking funds.
         ///

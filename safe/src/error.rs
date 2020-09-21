@@ -21,8 +21,6 @@ pub enum SafeErrorCode {
     VestingAccountDataInvalid = 5,
     WrongCoinMint = 6,
     SafeAccountDataInvalid = 8,
-    WhitelistFull = 9,
-    WhitelistEntryNotFound = 10,
     NotSignedByAuthority = 11,
     WrongNumberOfAccounts = 12,
     InsufficientBalance = 13,

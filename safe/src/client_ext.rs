@@ -42,7 +42,7 @@ solana_client_gen_extension! {
                 self.program(),
             );
 
-            // Create and initialize the vault.
+            // Create and initialize the vault, owned by a program-derived-address.
             let safe_srm_vault = serum_common_client::rpc::create_spl_account(
                 self.rpc(),
                 &srm_mint,

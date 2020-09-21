@@ -4,7 +4,7 @@
 
 use crate::common;
 use rand::rngs::OsRng;
-use serum_safe::accounts::{SafeAccount, SrmVault, VestingAccount, Whitelist};
+use serum_safe::accounts::{SafeAccount, SrmVault, VestingAccount};
 use serum_safe::client::{Client, ClientError, Lsrm, RequestOptions, SafeInitialization};
 use serum_safe::error::{SafeError, SafeErrorCode};
 use solana_client_gen::solana_sdk;
@@ -145,60 +145,6 @@ pub struct Initialized {
     pub safe_authority: Keypair,
     pub depositor: Keypair,
     pub depositor_balance_before: u64,
-    pub srm_mint: Keypair,
-}
-
-pub fn initialize_with_whitelist() -> InitializedWithWhitelist {
-    // An initialized safe.
-    let Initialized {
-        client,
-        safe_account,
-        safe_authority,
-        safe_srm_vault,
-        depositor,
-        depositor_balance_before,
-        srm_mint,
-        ..
-    } = initialize();
-
-    // A program to whitelist.
-    let program_to_whitelist = Keypair::generate(&mut OsRng).pubkey();
-    let whitelist = {
-        let mut w = Whitelist::zeroed();
-        w.push(program_to_whitelist);
-        w
-    };
-
-    // Add to whitelist.
-    let accounts = [
-        AccountMeta::new(safe_authority.pubkey(), true),
-        AccountMeta::new(safe_account.pubkey(), false),
-    ];
-    let signers = [&safe_authority, client.payer()];
-    client
-        .whitelist_add_with_signers(&signers, &accounts, program_to_whitelist)
-        .unwrap();
-
-    InitializedWithWhitelist {
-        client,
-        safe_account,
-        safe_authority,
-        safe_srm_vault,
-        depositor,
-        depositor_balance_before,
-        whitelist,
-        srm_mint,
-    }
-}
-
-pub struct InitializedWithWhitelist {
-    pub client: Client,
-    pub safe_account: Keypair,
-    pub safe_srm_vault: Keypair,
-    pub safe_authority: Keypair,
-    pub depositor: Keypair,
-    pub depositor_balance_before: u64,
-    pub whitelist: Whitelist,
     pub srm_mint: Keypair,
 }
 

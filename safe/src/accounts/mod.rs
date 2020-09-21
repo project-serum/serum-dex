@@ -6,6 +6,6 @@ mod vault;
 mod vesting_account;
 
 pub use lsrm_receipt::LsrmReceipt;
-pub use safe_account::{SafeAccount, Whitelist};
+pub use safe_account::SafeAccount;
 pub use vault::SrmVault;
 pub use vesting_account::VestingAccount;
