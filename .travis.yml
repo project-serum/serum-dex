@@ -1,14 +1,36 @@
-language: minimal
+language: shell
+os: linux
 
-sudo: required
-
-services:
-  - docker
-
-before_install:
-- docker pull projectserum/development:latest
-- docker run -it -d --name dev projectserum/development:latest bash
-- docker exec dev git clone https://github.com/project-serum/serum-dex.git
-
-script:
-  - docker exec dev serum-dex/do.sh test dex
+_defaults: &defaults
+  cache:
+    directories:
+      - $TRAVIS_HOME/.cargo
+      - $TRAVIS_HOME/.rustup
+      - $TRAVIS_HOME/.cache
+      - $TRAVIS_BUILD_DIR/crank/target
+      - $TRAVIS_BUILD_DIR/dex/target
+  services:
+    - docker
+  before_install:
+    - scripts/travis/run-docker.sh
+  install:
+    - mkdir -p bin && ./bpf-sdk-install.sh bin
+  before_cache:
+    - scripts/travis/stop-docker.sh
+    - rm -rf "$TRAVIS_HOME/.cargo/registry/src"
+jobs:
+  include:
+    - <<: *defaults
+      name: Unit tests
+      script:
+        - docker exec dev ./do.sh test dex
+    - <<: *defaults
+      name: Integration tests
+      language: node_js
+      node_js:
+        - "node"
+      script:
+        - npm install -g @solana/web3.js
+        - npx solana-localnet update
+        - npx solana-localnet up
+        - docker exec dev ./scripts/travis/e2e-tests.sh

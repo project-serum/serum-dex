@@ -14,6 +14,6 @@ development-push:
 	@docker push $(IMG_ORG)/development:$(IMG_VER)
 
 development-shell:
-	@docker run -ti --rm \
+	@docker run -ti --rm --net=host \
 		-v $(WORKDIR)/..:/workdir \
 		$(IMG_ORG)/development:$(IMG_VER) bash
