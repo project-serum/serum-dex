@@ -18,11 +18,11 @@ TEST_PROGRAM_ID="FEMsUTaKy1EicyEaFkPdoQUhbM1rN4T4SzupNBWu22ph"
 #
 # Path to the BPF sdk to build solana programs.
 #
-BPF_SDK=../bin/bpf-sdk
+BPF_SDK=$(shell pwd)/../bin/bpf-sdk
 #
 # Parent dir for the Solana program's build target.
 #
-BUILD_DIR=../target/bpfel-unknown-unknown/release
+BUILD_DIR=$(shell pwd)/../target/bpfel-unknown-unknown/release
 #
 # The program's crate name.
 #
@@ -46,10 +46,13 @@ else
 	cargo build --features client,client-ext
 endif
 
+workdir:
+	echo $(BPF_SDK)
+
 build-program:
-	$(shell pwd)/$(BPF_SDK)/rust/build.sh program
+	$(BPF_SDK)/rust/build.sh program
 	cp $(BUILD_DIR)/$(LIB_NAME).so $(BUILD_DIR)/$(LIB_NAME)_debug.so
-	$(shell pwd)/$(BPF_SDK)/dependencies/llvm-native/bin/llvm-objcopy --strip-all $(BUILD_DIR)/$(LIB_NAME).so $(BUILD_DIR)/$(LIB_NAME).so
+	$(BPF_SDK)/dependencies/llvm-native/bin/llvm-objcopy --strip-all $(BUILD_DIR)/$(LIB_NAME).so $(BUILD_DIR)/$(LIB_NAME).so
 
 deploy: build
 	$(eval TEST_PROGRAM_ID=$(shell solana deploy ../target/bpfel-unknown-unknown/release/$(LIB_NAME).so | jq .programId -r))
