@@ -1844,7 +1844,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "serum-common"
+name = "serum-common-client"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -1863,7 +1863,7 @@ dependencies = [
  "num_enum",
  "rand",
  "serde",
- "serum-common",
+ "serum-common-client",
  "solana-client",
  "solana-client-gen",
  "solana-sdk",
@@ -1877,7 +1877,7 @@ name = "serum-safe-cli"
 version = "0.1.0"
 dependencies = [
  "rand",
- "serum-common",
+ "serum-common-client",
  "serum-safe",
  "solana-client",
  "solana-sdk",
