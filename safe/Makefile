@@ -18,7 +18,7 @@ TEST_PROGRAM_ID="FEMsUTaKy1EicyEaFkPdoQUhbM1rN4T4SzupNBWu22ph"
 #
 # Path to the BPF sdk to build solana programs.
 #
-BPF_SDK=$(PWD)/../bin/bpf-sdk
+BPF_SDK=../bin/bpf-sdk
 #
 # Parent dir for the Solana program's build target.
 #
@@ -47,9 +47,9 @@ else
 endif
 
 build-program:
-	$(BPF_SDK)/rust/build.sh program
+	$(shell pwd)/$(BPF_SDK)/rust/build.sh program
 	cp $(BUILD_DIR)/$(LIB_NAME).so $(BUILD_DIR)/$(LIB_NAME)_debug.so
-	$(BPF_SDK)/dependencies/llvm-native/bin/llvm-objcopy --strip-all $(BUILD_DIR)/$(LIB_NAME).so $(BUILD_DIR)/$(LIB_NAME).so
+	$(shell pwd)/$(BPF_SDK)/dependencies/llvm-native/bin/llvm-objcopy --strip-all $(BUILD_DIR)/$(LIB_NAME).so $(BUILD_DIR)/$(LIB_NAME).so
 
 deploy: build
 	$(eval TEST_PROGRAM_ID=$(shell solana deploy ../target/bpfel-unknown-unknown/release/$(LIB_NAME).so | jq .programId -r))

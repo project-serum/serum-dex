@@ -86,7 +86,6 @@ pub fn create_spl_account(
     Ok(spl_account)
 }
 
-// TODO: share this with the crank code's genesis function.
 pub fn create_and_init_mint(
     client: &RpcClient,
     payer_keypair: &Keypair,

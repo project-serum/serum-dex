@@ -10,7 +10,9 @@ use safe_transmute::{
     transmute_many, transmute_many_pedantic, transmute_many_permissive, transmute_one,
     transmute_one_pedantic, try_copy,
 };
-use serum_common_client::rpc::{create_spl_account, genesis, mint_to_new_account, send_txn};
+use serum_common_client::rpc::{
+    create_and_init_mint, create_spl_account, mint_to_new_account, send_txn,
+};
 use serum_common_client::Cluster;
 use serum_dex::instruction::{MarketInstruction, NewOrderInstruction};
 use serum_dex::matching::{OrderType, Side};
@@ -207,7 +209,7 @@ fn main() -> Result<()> {
         } => {
             let payer = read_keypair_file(&payer)?;
             let mint = read_keypair_file(&mint)?;
-            genesis(&client, &payer, &mint, &owner_pubkey, decimals)?;
+            create_and_init_mint(&client, &payer, &mint, &owner_pubkey, decimals)?;
         }
         Command::Mint {
             payer,
@@ -729,11 +731,11 @@ fn consume_events(
 fn whole_shebang(client: &RpcClient, program_id: &Pubkey, payer: &Keypair) -> Result<()> {
     let coin_mint = Keypair::generate(&mut OsRng);
     println!("Coin mint: {}", coin_mint.pubkey());
-    genesis(client, payer, &coin_mint, &payer.pubkey(), 3)?;
+    create_and_init_mint(client, payer, &coin_mint, &payer.pubkey(), 3)?;
 
     let pc_mint = Keypair::generate(&mut OsRng);
     println!("Pc mint: {}", pc_mint.pubkey());
-    genesis(client, payer, &pc_mint, &payer.pubkey(), 3)?;
+    create_and_init_mint(client, payer, &pc_mint, &payer.pubkey(), 3)?;
 
     let market_keys = list_market(
         client,
