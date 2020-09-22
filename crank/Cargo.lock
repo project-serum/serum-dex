@@ -416,7 +416,7 @@ dependencies = [
  "log 0.4.11",
  "rand 0.7.3",
  "safe-transmute",
- "serum-common",
+ "serum-common-client",
  "serum_dex",
  "slog-scope",
  "slog-stdlog",
@@ -2168,7 +2168,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "serum-common"
+name = "serum-common-client"
 version = "0.1.0"
 dependencies = [
  "anyhow",

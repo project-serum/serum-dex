@@ -7,7 +7,7 @@ edition = "2018"
 
 [dependencies]
 serum_dex = { path = "../dex", features = ["client"] }
-serum-common = { path = "../common" }
+serum-common-client = { path = "../common/client" }
 spl-token = { version = "=2.0.3", default-features = false }
 clap = "3.0.0-beta.1"
 solana-client = "1.3.4"

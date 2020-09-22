@@ -42,7 +42,7 @@ jobs:
     - <<: *defaults
       name: Safe strict build
       script:
-        - docker exec dev -w=/workdir/safe make build features=strict
+        - docker exec dev -w=/workdir/serum-dex/safe make build features=strict
     - <<: *defaults
       name: Safe tests
       language: node_js
@@ -50,4 +50,4 @@ jobs:
         - "node"
       <<: *localnet
       script:
-        - docker exec dev -w=/workdir/safe make init-test
+        - docker exec dev -w=/workdir/serum-dex/safe make init-test
