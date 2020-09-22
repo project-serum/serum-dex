@@ -28,10 +28,6 @@ fn burn_lsrm() {
     // When.
     //
     // I burn my lSRM.
-    //    let lsrm_to_burn = lsrm[0];
-    //    let accounts = [
-    //				AccountMeta::new()
-    //		];
     let accounts = &[
         AccountMeta::new(lsrm1.token_account.pubkey(), true),
         AccountMeta::new(lsrm1.mint.pubkey(), false),
@@ -48,4 +44,12 @@ fn burn_lsrm() {
     // Then.
     //
     // My lSRM receipt should be burned.
+
+    // Then.
+    //
+    // I should no longer have lSRM in my account.
+
+    // Then.
+    //
+    // The NFT mint supply should be zero.
 }

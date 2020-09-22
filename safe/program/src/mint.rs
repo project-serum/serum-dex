@@ -206,16 +206,14 @@ fn state_transition<'a, 'b>(req: StateTransitionRequest<'a, 'b>) -> Result<(), S
                 {
                     info!("invoke: spl_token::instruction::mint_to");
 
-                    let mint_to_instr = {
-                        spl_token::instruction::mint_to(
-                            &spl_token::ID,
-                            mint.key,
-                            token_account.key,
-                            safe_vault_authority_account_info.key,
-                            &[],
-                            1,
-                        )?
-                    };
+                    let mint_to_instr = spl_token::instruction::mint_to(
+                        &spl_token::ID,
+                        mint.key,
+                        token_account.key,
+                        safe_vault_authority_account_info.key,
+                        &[],
+                        1,
+                    )?;
 
                     let data = safe_account_info.try_borrow_data()?;
                     let nonce = &[data[data.len() - 1]];
@@ -227,6 +225,29 @@ fn state_transition<'a, 'b>(req: StateTransitionRequest<'a, 'b>) -> Result<(), S
                         &[&signer_seeds],
                     )?;
                 }
+                // Set the mint authority to None.
+                {
+                    info!("invoke: spl_token::instruction::set_authority");
+                    let set_authority_instr = spl_token::instruction::set_authority(
+                        &spl_token::ID,
+                        &mint.key,
+                        None,
+                        spl_token::instruction::AuthorityType::MintTokens,
+                        safe_vault_authority_account_info.key,
+                        &[],
+                    )?;
+
+                    let data = safe_account_info.try_borrow_data()?;
+                    let nonce = &[data[data.len() - 1]];
+                    let signer_seeds = SrmVault::signer_seeds(safe_account_info.key, nonce);
+
+                    solana_sdk::program::invoke_signed(
+                        &set_authority_instr,
+                        &accounts[..],
+                        &[&signer_seeds],
+                    )?;
+                }
+
                 Ok(())
             },
         )?;

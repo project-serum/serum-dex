@@ -69,7 +69,7 @@ fn mint_lsrm() {
 
         for mint in lsrm_nft_mints {
             assert!(mint.is_initialized);
-            assert_eq!(mint.mint_authority, COption::Some(safe_srm_vault_authority));
+            assert_eq!(mint.mint_authority, COption::None);
             assert_eq!(mint.supply, 1);
             assert_eq!(mint.decimals, 0);
             assert_eq!(mint.freeze_authority, COption::None);
