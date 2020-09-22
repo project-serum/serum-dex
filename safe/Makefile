@@ -14,7 +14,7 @@ TEST_CLUSTER_URL="http://localhost:8899"
 # One can optionally set this along with the test-program command
 # to avoid redeploying everytime tests are run.
 #
-TEST_PROGRAM_ID="FEMsUTaKy1EicyEaFkPdoQUhbM1rN4T4SzupNBWu22ph"
+TEST_PROGRAM_ID=""
 #
 # Path to the BPF sdk to build solana programs.
 #
@@ -55,7 +55,7 @@ build-program:
 	$(BPF_SDK)/dependencies/llvm-native/bin/llvm-objcopy --strip-all $(BUILD_DIR)/$(LIB_NAME).so $(BUILD_DIR)/$(LIB_NAME).so
 
 deploy: build
-	$(eval TEST_PROGRAM_ID=$(shell solana deploy ../target/bpfel-unknown-unknown/release/$(LIB_NAME).so | jq .programId -r))
+	$(eval TEST_PROGRAM_ID=$(shell solana deploy $(BUILD_DIR)/$(LIB_NAME).so | jq .programId -r))
 	@echo "Deployed program at address $(TEST_PROGRAM_ID)"
 
 test-program:
@@ -74,4 +74,4 @@ test-unit:
 
 init:
 	yes | solana-keygen new --outfile $(TEST_PAYER_FILEPATH)
-	yes | solana airdrop --url $(TEST_CLUSTER_URL) 100
+	yes | solana airdrop --url $(TEST_CLUSTER_URL) --keypair $(TEST_PAYER_FILEPATH) 100

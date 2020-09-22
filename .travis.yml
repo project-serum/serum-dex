@@ -20,6 +20,9 @@ _defaults: &defaults
     - rm -rf "$TRAVIS_HOME/.cargo/registry/src"
 
 _localnet: &localnet
+  language: node_js
+  node_js:
+    - "node"
   before_script:
     - npm install -g @solana/web3.js
     - npx solana-localnet update
@@ -33,9 +36,6 @@ jobs:
         - docker exec dev ./do.sh test dex
     - <<: *defaults
       name: Dex integration tests
-      language: node_js
-      node_js:
-        - "node"
       <<: *localnet
       script:
         - docker exec dev ./scripts/travis/dex-tests.sh
@@ -45,9 +45,6 @@ jobs:
         - docker exec dev make -C safe build features=strict
     - <<: *defaults
       name: Safe tests
-      language: node_js
-      node_js:
-        - "node"
       <<: *localnet
       script:
         - docker exec dev make -C safe init-test
