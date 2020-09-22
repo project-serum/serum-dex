@@ -1,3 +1,4 @@
+use common::assert::assert_eq_vec;
 use serum_safe::accounts::{LsrmReceipt, VestingAccount};
 use serum_safe::pack::DynPack;
 use solana_client_gen::solana_sdk::commitment_config::CommitmentConfig;
@@ -111,29 +112,7 @@ fn mint_lsrm() {
             vesting_account_beneficiary.pubkey()
         );
         assert_eq!(updated_vesting_account.initialized, true);
-        // Check slots.
-        let matching = updated_vesting_account
-            .slots
-            .iter()
-            .zip(&vesting_account_slots)
-            .filter(|&(a, b)| a == b)
-            .count();
-        assert_eq!(vesting_account_slots.len(), matching);
-        assert_eq!(
-            vesting_account_slots.len(),
-            updated_vesting_account.slots.len()
-        );
-        // Check amounts
-        let matching = updated_vesting_account
-            .amounts
-            .iter()
-            .zip(&vesting_account_amounts)
-            .filter(|&(a, b)| a == b)
-            .count();
-        assert_eq!(vesting_account_amounts.len(), matching);
-        assert_eq!(
-            vesting_account_amounts.len(),
-            updated_vesting_account.amounts.len()
-        );
+        assert_eq_vec(updated_vesting_account.slots, vesting_account_slots);
+        assert_eq_vec(updated_vesting_account.amounts, vesting_account_amounts);
     }
 }

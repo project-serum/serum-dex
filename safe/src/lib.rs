@@ -8,13 +8,6 @@ use solana_client_gen::solana_sdk::instruction::AccountMeta;
 use solana_client_gen::solana_sdk::pubkey::Pubkey;
 use spl_token::pack::Pack;
 
-pub mod accounts;
-pub mod error;
-pub mod pack;
-
-#[cfg(feature = "client")]
-pub use client_ext::client;
-
 #[cfg_attr(feature = "client", solana_client_gen)]
 pub mod instruction {
     use super::*;
@@ -86,21 +79,17 @@ pub mod instruction {
         ///                  instance of lSRM. The mint must be uninitialized.
         /// ... `[writable]` A variable number of lSRM receipts, one for each lSRM
         ///                  NFT, each owned by this program and given uninitialized.
+        ///
         MintLockedSrm,
-        /// BurnLockedSrm destroys the lSRM associated with the vesting account, updating
-        /// the vesting account's metadata so that subsequent withdrawals are not affected
-        /// by the burned lSRM.
+        /// BurnLockedSrm destroys the lSRM associated with the vesting account, so that
+        /// subsequent withdrawals and lSRM issuance are unaffected by the outstanding
+        /// coin.
         ///
         /// Accounts:
         ///
-        /// 0. `[signer]`   The owner of the lSRM SPL token account to burn from.
-        /// 1. `[writable]` The lSRM SPL token account to burn from.
-        /// 2. `[writable]` The vesting account.
-        ///
-        /// Note that the signer, i.e., the owner of the lSRM SPL token account must be
-        /// equal to the vesting' account's spl wallet owner, i.e. `user_spl_wallet_owner`.
-        /// This means the same address must be the owner of *both* the lSRM account and
-        /// the final SRM wallet account to withdraw from.
+        /// 0. `[signer]`   The SPL Mint representing the lSRM NFT.
+        /// 1. `[writable]` The vesting account owning the lSRM.
+        /// 2. `[writable]` The lSRM receipt proving validity of the lSRM.
         ///
         BurnLockedSrm,
         /// WithdrawSrm withdraws the given amount from the given vesting account.
@@ -115,22 +104,19 @@ pub mod instruction {
         /// 4  `[]`         The SrmSafe account.
         /// 5. `[]`         SPL token program.
         /// 4. `[]`         Clock sysvar.
-        WithdrawSrm {
-            // Amount of SRM to withdraw.
-            amount: u64,
-        },
-        /// Slash punishes a vesting account who misbehaved, punititvely
-        /// revoking funds.
-        ///
-        /// 0. `[signer]`   The authority of the SafeAccount.
-        /// 1. `[writable]` The vesting account to slash.
-        Slash {
-            /// The amount of SRM to slash.
-            amount: u64,
-        },
+        WithdrawSrm { amount: u64 },
     }
 }
 
-// Define below so the meta-macro is in scope for the client_ext module.
+// Define modules below so the macro output is in scope.
 #[cfg(feature = "client")]
-mod client_ext;
+pub mod client_ext;
+#[cfg(feature = "client")]
+pub use client_ext::client;
+#[cfg(feature = "client")]
+pub use client_ext::instruction;
+
+pub mod accounts;
+//mod coder;
+pub mod error;
+pub mod pack;

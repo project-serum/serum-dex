@@ -1,3 +1,4 @@
+use common::assert::assert_eq_vec;
 use serum_safe::accounts::{SrmVault, VestingAccount};
 use serum_safe::error::SafeErrorCode;
 use serum_safe::pack::DynPack;
@@ -216,24 +217,14 @@ fn withdraw_test(params: WithdrawTestParams) {
                 .unwrap();
             VestingAccount::unpack(&account.data).unwrap()
         };
-        let matching = vesting_account
-            .amounts
-            .iter()
-            .zip(&expected_vesting_amounts)
-            .filter(|&(a, b)| a == b)
-            .count();
-        assert_eq!(vesting_account.amounts.len(), matching);
-        assert_eq!(
-            vesting_account.amounts.len(),
-            expected_vesting_amounts.len()
-        );
+        assert_eq_vec(vesting_account.amounts, expected_vesting_amounts);
     }
 }
 
+// Alisasing LsrmMinted type here because we don't use the `lsrm` field in these
+// tests and so we can avoid making another needless type.
 type StartState = common::lifecycle::LsrmMinted;
 
-// Using the LsrmMinted type here because we don't use the `lsrm` field in these tests
-// and so we can avoid making another needless type.
 fn start_state(
     test_type: TestType,
     vesting_slot_offsets: Vec<u64>,
