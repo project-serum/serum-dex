@@ -68,21 +68,31 @@ pub mod instruction {
         ///
         /// 0.  `[signer]`   The vesting account beneficiary.
         /// 1.  `[writable]` The vesting account to mint lSRM from.
-        /// 3.  `[]`         SPL token program.
-        /// 4.  `[]`         The rent sysvar.
+        /// 2.  `[]`         The SafeAccount.
+        /// 3.  `[]`         The safe's vault authority, a program derived address.
+        /// 4.  `[]`         SPL token program.
+        /// 5.  `[]`         The rent sysvar.
         /// ... `[writable]` A variable number of lSRM SPL mints one for each NFT
         ///                  instance of lSRM. The mint must be uninitialized.
+        /// ... `[writable]` A variable number of lSRM SPL accounts associated with
+        ///                  each NFT mint.
         /// ... `[writable]` A variable number of lSRM receipts, one for each lSRM
         ///                  NFT, each owned by this program and given uninitialized.
         ///
-        MintLockedSrm,
+        MintLockedSrm {
+            /// The *owner* of the SPL token account to send the funds to.
+            /// It's currently assumed all NFT token accounts have the same owner
+            /// that may or may not be equal to the vesting account beneficiary.
+            token_account_owner: Pubkey,
+        },
         /// BurnLockedSrm destroys the lSRM associated with the vesting account, so that
         /// subsequent withdrawals and lSRM issuance are unaffected by the outstanding
         /// coin.
         ///
         /// Accounts:
         ///
-        /// 0. `[signer]`   The SPL Mint representing the lSRM NFT.
+        /// 0. `[signer]`   The SPL token account holding the lSRM NFT.
+        /// 0. `[writable]` The SPL Mint representing the lSRM NFT.
         /// 1. `[writable]` The vesting account owning the lSRM.
         /// 2. `[writable]` The lSRM receipt proving validity of the lSRM.
         ///

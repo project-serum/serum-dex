@@ -16,7 +16,7 @@ pub fn create_account_rent_exempt(
     owner: &Pubkey,
 ) -> Result<Keypair> {
     let account = Keypair::generate(&mut OsRng);
-    // TODO: check if the new account needs to sign (probably not).
+
     let signers = [payer, &account];
 
     let lamports = client.get_minimum_balance_for_rent_exemption(data_size)?;
@@ -44,6 +44,7 @@ pub fn create_account_rent_exempt(
     Ok(account)
 }
 
+// TODO: rename to create_token-account.
 pub fn create_spl_account(
     client: &RpcClient,
     mint_pubkey: &Pubkey,

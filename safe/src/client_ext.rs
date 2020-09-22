@@ -7,6 +7,17 @@ use solana_client_gen::solana_sdk::instruction::AccountMeta;
 use solana_client_gen::solana_sdk::pubkey::Pubkey;
 use spl_token::pack::Pack;
 
+// TODO: Use deterministic derived addresses for all accounts associated with the program.
+//       This will allow users to query on chain data with nothing but the program address
+//       and "instance" address (e.g. the "Mint" in SPL tokens).
+//
+//       * https://docs.rs/solana-sdk/1.3.12/solana_sdk/pubkey/struct.Pubkey.html#method.create_with_seed
+//       * https://docs.rs/solana-sdk/1.3.12/solana_sdk/system_instruction/fn.create_account_with_seed.html
+//
+//
+//       Would be nice to have macro support for this in the future.
+//
+//       Right now all tests just use randomly generated accounts.
 solana_client_gen_extension! {
     use solana_client_gen::solana_sdk::signers::Signers;
 
@@ -135,10 +146,19 @@ solana_client_gen_extension! {
             &self,
             // On localnet this maxes out at 2 before the transaction is too large.
             lsrm_count: usize,
+            lsrm_nft_token_account_owner: &Pubkey,
             signers: Vec<&Keypair>,
             mut accounts: Vec<AccountMeta>,
         ) -> Result<(Signature, Vec<Lsrm>), ClientError> {
-            let (tx, mut lsrm_nft_mint_keys, mut lsrm_receipt_keys) = {
+            // Create the lsrm-receipt accounts (in separate transactions).
+            let mut lsrm_receipt_keys = self.create_lsrm_receipts(lsrm_count)?;
+
+            // Build the mint-lsrm transaction.
+            let (
+                tx,
+                mut lsrm_nft_mint_keys,
+                mut lsrm_nft_token_account_keys,
+            ) = {
                 // Rescope lifetime to this block.
                 let mut signers = signers;
 
@@ -146,17 +166,25 @@ solana_client_gen_extension! {
                 let (
                     mut instructions,
                     lsrm_nft_mint_keys,
-                    lsrm_receipt_keys,
-                ) = self.create_nfts_instructions_and_keys(lsrm_count, &mut accounts)?;
+                    lsrm_nft_token_account_keys,
+                ) = self.create_nfts_instructions_and_keys(
+                    lsrm_count,
+                    &mut accounts,
+                    &lsrm_receipt_keys,
+                )?;
 
                 // Collect signers (for account creation).
                 for k in 0..lsrm_nft_mint_keys.len() {
                     signers.push(&lsrm_nft_mint_keys[k]);
-                    signers.push(&lsrm_receipt_keys[k]);
+                    signers.push(&lsrm_nft_token_account_keys[k]);
                 }
 
                 // Add the mint_lsrm instruction.
-                let mint_lsrm_instr = super::instruction::mint_locked_srm(*self.program(), &accounts);
+                let mint_lsrm_instr = super::instruction::mint_locked_srm(
+                    *self.program(),
+                    &accounts,
+                    *lsrm_nft_token_account_owner,
+                );
                 instructions.push(mint_lsrm_instr);
 
                 // Create the tx.
@@ -167,7 +195,7 @@ solana_client_gen_extension! {
                     &signers,
                     recent_hash,
                 );
-                (tx, lsrm_nft_mint_keys, lsrm_receipt_keys)
+                (tx, lsrm_nft_mint_keys, lsrm_nft_token_account_keys)
             };
             // Execute it.
             self
@@ -183,14 +211,36 @@ solana_client_gen_extension! {
                     let mut lsrm_nfts = vec![];
                     for _ in 0..lsrm_nft_mint_keys.len() {
                         let mint = lsrm_nft_mint_keys.pop().unwrap();
+                        let token_account = lsrm_nft_token_account_keys.pop().unwrap();
                         let receipt = lsrm_receipt_keys.pop().unwrap();
                         lsrm_nfts.push(Lsrm {
                             mint,
+                            token_account,
                             receipt: receipt.pubkey(),
                         });
                     }
                     (sig, lsrm_nfts)
                 })
+        }
+
+        // TODO: Batch the account create instructions to minimize RPCs.
+        //
+        //       Ideally we'd just put these into the same transaction as the mint
+        //       but the transaction gets too large.
+        fn create_lsrm_receipts(&self, lsrm_count: usize) -> Result<Vec<Keypair>, ClientError> {
+            let mut receipts = vec![];
+
+            for _ in 0..lsrm_count {
+                let kp = serum_common_client::rpc::create_account_rent_exempt(
+                    self.rpc(),
+                    &self.payer(),
+                    LsrmReceipt::SIZE,
+                    &self.program(),
+                ).map_err(|e| ClientError::RawError(e.to_string()))?;
+
+                receipts.push(kp);
+            }
+            Ok(receipts)
         }
 
         // Build the create_account instructions for both the SPL NFTs and
@@ -201,20 +251,21 @@ solana_client_gen_extension! {
             &self,
             lsrm_count: usize,
             accounts: &mut Vec<AccountMeta>,
+            lsrm_receipt_keys: &[Keypair],
         ) -> Result<(Vec<Instruction>, Vec<Keypair>, Vec<Keypair>), ClientError>  {
             let mut lsrm_nft_mint_keys = vec![];
-            let mut lsrm_receipt_keys = vec![];
+            let mut lsrm_nft_token_account_keys = vec![];
+
             let mut instructions = vec![];
 
             let lamports_mint = self.rpc().get_minimum_balance_for_rent_exemption(
                 spl_token::state::Mint::LEN,
             )?;
-            let lamports_receipt = self.rpc().get_minimum_balance_for_rent_exemption(
-                LsrmReceipt::SIZE,
+            let lamports_token_account = self.rpc().get_minimum_balance_for_rent_exemption(
+                spl_token::state::Account::LEN,
             )?;
-
-            for _ in 0..lsrm_count {
-                // The NFT to intialize.
+            for k in 0..lsrm_count {
+                // The NFT Mint to intialize.
                 let lsrm_nft_mint = Keypair::generate(&mut OsRng);
                 let create_mint_account_instr = solana_sdk::system_instruction::create_account(
                     &self.payer().pubkey(),
@@ -224,36 +275,40 @@ solana_client_gen_extension! {
                     &spl_token::ID,
                 );
 
-                // The receipt for the mint								.
-                let lsrm_receipt = Keypair::generate(&mut OsRng);
-                let lsrm_receipt_instr = solana_sdk::system_instruction::create_account(
+                // The token Account to hold the NFT.
+                let lsrm_nft_token_account = Keypair::generate(&mut OsRng);
+                let create_token_account_instr = solana_sdk::system_instruction::create_account(
                     &self.payer().pubkey(),
-                    &lsrm_receipt.pubkey(),
-                    lamports_receipt,
-                    LsrmReceipt::SIZE as u64,
-                    self.program(),
+                    &lsrm_nft_token_account.pubkey(),
+                    lamports_token_account,
+                    spl_token::state::Account::LEN as u64,
+                    &spl_token::ID,
                 );
 
                 // Push the instructions into the tx.
                 instructions.push(create_mint_account_instr);
-                instructions.push(lsrm_receipt_instr);
+                instructions.push(create_token_account_instr);
 
                 // Push the accounts for the eventual mint_locked_srm instruction.
                 accounts.push(AccountMeta::new(lsrm_nft_mint.pubkey(), true));
-                accounts.push(AccountMeta::new(lsrm_receipt.pubkey(), true));
+                accounts.push(AccountMeta::new(lsrm_nft_token_account.pubkey(), true));
+                accounts.push(AccountMeta::new(lsrm_receipt_keys[k].pubkey(), false));
 
-                // Save the keys for signing.
+                // Save the keys for return.
                 lsrm_nft_mint_keys.push(lsrm_nft_mint);
-                lsrm_receipt_keys.push(lsrm_receipt);
+                lsrm_nft_token_account_keys.push(lsrm_nft_token_account);
             }
-            Ok((instructions, lsrm_nft_mint_keys, lsrm_receipt_keys))
+            Ok((instructions, lsrm_nft_mint_keys, lsrm_nft_token_account_keys))
         }
     }
 
     /// Lsrm defines the required keys to redeem and otherwise use lSRM.
     pub struct Lsrm {
-        /// Posession of this key implies one is the proprietor of this asset.
+        /// The SPL token mint representing the NFT instance.
         pub mint: Keypair,
+        /// The only account allowed to own the mint (other than valid
+        /// locked programs).
+        pub token_account: Keypair,
         /// The receipt account address. Required upon redemption to prove
         /// to the program this is a valid lSRM mint.
         pub receipt: Pubkey,

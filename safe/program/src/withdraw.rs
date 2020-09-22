@@ -153,7 +153,7 @@ fn state_transition<'a, 'b>(req: StateTransitionRequest<'a, 'b>) -> Result<(), S
     let nonce = &[data[data.len() - 1]];
     let signer_seeds = SrmVault::signer_seeds(safe_account_info.key, nonce);
 
-    let r = solana_sdk::program::invoke_signed(
+    solana_sdk::program::invoke_signed(
         &withdraw_instruction,
         &[
             safe_spl_vault_account_info.clone(),

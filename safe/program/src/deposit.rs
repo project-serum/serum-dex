@@ -17,7 +17,7 @@ pub fn handler<'a>(
     vesting_slots: Vec<u64>,
     vesting_amounts: Vec<u64>,
 ) -> Result<(), SafeError> {
-    info!("HANDLER: deposit_srm");
+    info!("handler: deposit_srm");
 
     let account_info_iter = &mut accounts.iter();
 
@@ -83,11 +83,12 @@ pub fn handler<'a>(
         },
     )?;
 
-    info!("deposit_srm complete");
     Ok(())
 }
 
 fn access_control<'a, 'b, 'c>(req: AccessControlRequest<'a, 'b, 'c>) -> Result<(), ProgramError> {
+    info!("access-control: deposit");
+
     let AccessControlRequest {
         program_id,
         vesting_account,
@@ -121,6 +122,9 @@ fn access_control<'a, 'b, 'c>(req: AccessControlRequest<'a, 'b, 'c>) -> Result<(
     if Pubkey::new(&safe_srm_vault_to.try_borrow_data()?[32..64]) != expected_authority {
         return Err(SafeError::ErrorCode(SafeErrorCode::WrongVault).into());
     }
+
+    info!("access-control: success");
+
     Ok(())
 }
 
@@ -137,6 +141,8 @@ struct AccessControlRequest<'a, 'b, 'c> {
 }
 
 fn state_transition<'a, 'b>(req: StateTransitionRequest<'a, 'b>) -> Result<(), SafeError> {
+    info!("state-transition: deposit");
+
     let StateTransitionRequest {
         vesting_account,
         vesting_account_beneficiary,
@@ -184,6 +190,7 @@ fn state_transition<'a, 'b>(req: StateTransitionRequest<'a, 'b>) -> Result<(), S
     )?;
 
     info!("SPL token transfer complete");
+    info!("state-transition: complete");
 
     Ok(())
 }

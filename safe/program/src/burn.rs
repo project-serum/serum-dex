@@ -5,13 +5,26 @@ use solana_sdk::info;
 use solana_sdk::pubkey::Pubkey;
 
 pub fn handler(_program_id: &Pubkey, _accounts: &[AccountInfo]) -> Result<(), SafeError> {
-    info!("HANDLER: burn_locked_srm");
-    // todo
-    access_control()?;
+    info!("handler: burn_locked_srm");
+    access_control(AccessControlRequest {})?;
     Ok(())
 }
 
-fn access_control() -> Result<(), SafeError> {
-    // todo
+fn access_control(req: AccessControlRequest) -> Result<(), SafeError> {
+    info!("access-control: burn");
+    let AccessControlRequest {} = req;
+
+    info!("access-control: success");
     Ok(())
 }
+
+fn state_transition(req: StateTransitionRequest) -> Result<(), SafeError> {
+    info!("state-transition: burn");
+    let StateTransitionRequest {} = req;
+    info!("state-transition: success");
+    Ok(())
+}
+
+struct AccessControlRequest {}
+
+struct StateTransitionRequest {}

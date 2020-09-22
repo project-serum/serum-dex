@@ -255,12 +255,19 @@ pub fn mint_lsrm(
         let mint_lsrm_accounts = vec![
             AccountMeta::new(vesting_account_beneficiary.pubkey(), true),
             AccountMeta::new(vesting_account, false),
+            AccountMeta::new_readonly(safe_account, false),
+            AccountMeta::new(safe_srm_vault_authority, false),
             AccountMeta::new(spl_token::ID, false),
             AccountMeta::new_readonly(sysvar::rent::ID, false),
         ];
         let signers = vec![&vesting_account_beneficiary, client.payer()];
         let (_sig, lsrm_nfts) = client
-            .create_nfts_and_mint_locked_srm_with_signers(nft_count, signers, mint_lsrm_accounts)
+            .create_nfts_and_mint_locked_srm_with_signers(
+                nft_count,
+                &vesting_account_beneficiary.pubkey(),
+                signers,
+                mint_lsrm_accounts,
+            )
             .unwrap();
         lsrm_nfts
     };
@@ -279,7 +286,6 @@ pub fn mint_lsrm(
     }
 }
 
-#[cfg(test)]
 pub struct LsrmMinted {
     pub client: Client,
     pub lsrm: Vec<Lsrm>,

@@ -44,7 +44,9 @@ fn process_instruction<'a>(
             vesting_slots,
             vesting_amounts,
         ),
-        SrmSafeInstruction::MintLockedSrm => mint::handler(program_id, accounts),
+        SrmSafeInstruction::MintLockedSrm {
+            token_account_owner,
+        } => mint::handler(program_id, accounts, token_account_owner),
         SrmSafeInstruction::WithdrawSrm { amount } => {
             withdraw::handler(program_id, accounts, amount)
         }
@@ -62,9 +64,9 @@ fn process_instruction<'a>(
     Ok(())
 }
 
+// TODO: remove this once Solana updates their rust version.
 mod coder {
     use super::SrmSafeInstruction;
-
     pub fn from_bytes(data: &[u8]) -> Result<SrmSafeInstruction, ()> {
         match data.split_first() {
             None => Err(()),
