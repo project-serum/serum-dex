@@ -3,7 +3,6 @@
 
 use heck::SnakeCase;
 use proc_quote::quote;
-use std::str::FromStr;
 use syn::parse::Parser;
 use syn::parse_macro_input;
 
@@ -173,7 +172,7 @@ pub fn solana_client_gen(
 
         pub fn from_keypair_file(program_id: Pubkey, filename: &str, url: &str) -> Result<Self, ClientError> {
             let kp = solana_sdk::signature::read_keypair_file(filename)
-                .map_err(|e| ClientError::InvalidKeyPairFile(filename.to_string()))?;
+                .map_err(|_| ClientError::InvalidKeyPairFile(filename.to_string()))?;
             Ok(Self::new(program_id, kp, url, None))
         }
 
@@ -259,7 +258,6 @@ pub fn solana_client_gen(
                     $($client_ext)*
                 }
                 #new_instruction_mod
-
                 #coder_mod
             }
         }
@@ -554,7 +552,7 @@ fn enum_to_methods(
                                         &self.payer().pubkey(),    // The from account on the tx.
                                         &new_account.pubkey(),     // Account to create.
                                         lamports,                  // Rent exempt balance to send to the new account.
-                                        account_data_size as u64, // Data init for the new acccount.
+                                        account_data_size as u64,  // Data init for the new acccount.
                                         self.program(),            // Owner of the new account.
                                     )
                                 };
@@ -681,7 +679,7 @@ fn enum_to_methods(
         Some(_) => quote! {},
         // Coder not provided, so use declare and use the default one.
         None => quote! {
-            mod solana_client_gen_coder {
+            pub mod solana_client_gen_coder {
                 use super::*;
                 pub struct _DefaultCoder;
                 impl _DefaultCoder {
@@ -692,7 +690,7 @@ fn enum_to_methods(
                     pub fn from_bytes(data: &[u8]) -> Result<Vec<u8>, ()> {
                         match data.split_first() {
                             None => Err(()),
-                            Some((&u08, rest)) => bincode::deserialize(rest).map_err(|_| ()),
+                            Some((&0u8, rest)) => bincode::deserialize(rest).map_err(|_| ()),
                             Some((_, _rest)) => Err(()),
                         }
                     }
