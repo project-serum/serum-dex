@@ -18,7 +18,7 @@ pub mod lifecycle;
 pub fn client() -> Client {
     let program_id = std::env::var("TEST_PROGRAM_ID").unwrap().parse().unwrap();
     let payer_filepath = std::env::var("TEST_PAYER_FILEPATH").unwrap().clone();
-    let cluster: Cluster = std::env::var("TEST_CLUSTER_URL").unwrap().parse().unwrap();
+    let cluster: Cluster = std::env::var("TEST_CLUSTER").unwrap().parse().unwrap();
 
     Client::from_keypair_file(program_id, &payer_filepath, cluster.url())
         .expect("invalid keypair file")
