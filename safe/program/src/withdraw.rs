@@ -29,7 +29,7 @@ pub fn handler<'a>(
     VestingAccount::unpack_mut(
         &mut vesting_account_info.try_borrow_mut_data()?,
         &mut |vesting_account: &mut VestingAccount| {
-            withdraw_srm_access_control(AccessControlRequest {
+            access_control(AccessControlRequest {
                 program_id,
                 vesting_account_beneficiary_info: &vesting_account_beneficiary_info,
                 vesting_account_info,
@@ -57,7 +57,9 @@ pub fn handler<'a>(
     .map_err(|e| SafeError::ProgramError(e))
 }
 
-fn withdraw_srm_access_control<'a, 'b>(req: AccessControlRequest<'a, 'b>) -> Result<(), SafeError> {
+fn access_control<'a, 'b>(req: AccessControlRequest<'a, 'b>) -> Result<(), SafeError> {
+    info!("access-control: withdraw");
+
     let AccessControlRequest {
         program_id,
         vesting_account_beneficiary_info,
@@ -110,6 +112,7 @@ fn withdraw_srm_access_control<'a, 'b>(req: AccessControlRequest<'a, 'b>) -> Res
         }
     }
     // todo: check beneficiary account is initialized
+    info!("access-control: success");
     Ok(())
 }
 
@@ -126,6 +129,8 @@ struct AccessControlRequest<'a, 'b> {
 }
 
 fn state_transition<'a, 'b>(req: StateTransitionRequest<'a, 'b>) -> Result<(), SafeError> {
+    info!("state-transition: withdraw");
+
     let StateTransitionRequest {
         vesting_account,
         amount,
@@ -165,6 +170,7 @@ fn state_transition<'a, 'b>(req: StateTransitionRequest<'a, 'b>) -> Result<(), S
     )?;
 
     info!("withdrawal token transfer complete");
+    info!("state-transition: success");
 
     Ok(())
 }

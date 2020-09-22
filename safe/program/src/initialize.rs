@@ -14,7 +14,7 @@ pub fn handler<'a>(
     authority: Pubkey,
     nonce: u8,
 ) -> Result<(), SafeError> {
-    info!("HANDLER: initialize");
+    info!("handler: initialize");
     let account_info_iter = &mut accounts.iter();
     let safe_account_info = next_account_info(account_info_iter)?;
     let safe_account_data_len = safe_account_info.data_len();
@@ -49,7 +49,7 @@ pub fn handler<'a>(
 }
 
 fn access_control<'a, 'b>(req: AccessControlRequest<'a, 'b>) -> Result<(), SafeError> {
-    info!("ACCESS CONTROL: initialize");
+    info!("access-control: initialize");
 
     let AccessControlRequest {
         program_id,
@@ -77,7 +77,7 @@ fn access_control<'a, 'b>(req: AccessControlRequest<'a, 'b>) -> Result<(), SafeE
     {
         return Err(SafeError::ErrorCode(SafeErrorCode::InvalidVaultNonce));
     }
-    info!("ACCESS CONTROL: success");
+    info!("access-control: success");
     Ok(())
 }
 
@@ -91,6 +91,8 @@ struct AccessControlRequest<'a, 'b> {
 }
 
 fn state_transition<'a>(req: StateTransitionRequest<'a>) -> Result<(), SafeError> {
+    info!("state-transition: initialize");
+
     let StateTransitionRequest {
         safe_account,
         mint,
@@ -105,6 +107,8 @@ fn state_transition<'a>(req: StateTransitionRequest<'a>) -> Result<(), SafeError
     safe_account.nonce = nonce;
     // todo: consider adding the vault to the safe account directly
     //       if we do that, then check the owner in access control
+
+    info!("state-transition: success");
 
     Ok(())
 }

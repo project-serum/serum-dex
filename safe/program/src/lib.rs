@@ -23,7 +23,7 @@ fn process_instruction<'a>(
     accounts: &'a [AccountInfo<'a>],
     instruction_data: &[u8],
 ) -> ProgramResult {
-    info!("INSTRUCTION ENTER");
+    info!("process-instruction");
     let instruction: SrmSafeInstruction = coder::from_bytes(instruction_data)
         .map_err(|_| SafeError::ErrorCode(SafeErrorCode::WrongSerialization))?;
 
@@ -59,7 +59,7 @@ fn process_instruction<'a>(
 
     result?;
 
-    info!("INSTRUCTION SUCCESS");
+    info!("process-instruction success");
 
     Ok(())
 }

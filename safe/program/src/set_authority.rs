@@ -10,7 +10,7 @@ pub fn handler<'a>(
     accounts: &'a [AccountInfo<'a>],
     new_authority: Pubkey,
 ) -> Result<(), SafeError> {
-    info!("HANDLER: set_authority");
+    info!("handler: set_authority");
 
     let account_info_iter = &mut accounts.iter();
 
@@ -40,6 +40,8 @@ pub fn handler<'a>(
 }
 
 fn access_control<'a, 'b>(req: AccessControlRequest<'a, 'b>) -> Result<(), SafeError> {
+    info!("access-control: set-authority");
+
     let AccessControlRequest {
         safe_authority_account_info,
         safe_account_info,
@@ -51,6 +53,9 @@ fn access_control<'a, 'b>(req: AccessControlRequest<'a, 'b>) -> Result<(), SafeE
     if safe_account_authority != safe_authority_account_info.key {
         return Err(SafeError::ErrorCode(SafeErrorCode::Unauthorized));
     }
+
+    info!("access-control: success");
+
     Ok(())
 }
 
@@ -61,12 +66,16 @@ struct AccessControlRequest<'a, 'b> {
 }
 
 fn state_transition<'a>(req: StateTransitionRequest<'a>) -> Result<(), SafeError> {
+    info!("state-transition: set-authority");
+
     let StateTransitionRequest {
         safe_account,
         new_authority,
     } = req;
 
     safe_account.authority = new_authority;
+
+    info!("state-transition: success");
 
     Ok(())
 }

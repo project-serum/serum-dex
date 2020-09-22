@@ -6,7 +6,7 @@ use solana_sdk::pubkey::Pubkey;
 use spl_token::pack::Pack;
 
 pub fn handler<'a>(_program_id: &Pubkey, accounts: &'a [AccountInfo<'a>]) -> Result<(), SafeError> {
-    info!("HANDLER: migrate");
+    info!("handler: migrate");
 
     let account_info_iter = &mut accounts.iter();
 
@@ -48,6 +48,7 @@ pub fn handler<'a>(_program_id: &Pubkey, accounts: &'a [AccountInfo<'a>]) -> Res
 }
 
 fn access_control<'a, 'b>(req: AccessControlRequest<'a, 'b>) -> Result<(), SafeError> {
+    info!("access-control: migrate");
     let AccessControlRequest {
         safe_authority_account_info,
         safe_account_info,
@@ -60,6 +61,7 @@ fn access_control<'a, 'b>(req: AccessControlRequest<'a, 'b>) -> Result<(), SafeE
         return Err(SafeError::ErrorCode(SafeErrorCode::Unauthorized));
     }
     // todo
+    info!("access-control: success");
     Ok(())
 }
 
@@ -70,7 +72,7 @@ struct AccessControlRequest<'a, 'b> {
 }
 
 fn state_transition<'a, 'b>(req: StateTransitionRequest<'a, 'b>) -> Result<(), SafeError> {
-    info!("invoking migration token transfer");
+    info!("state-transition: migrate");
 
     let StateTransitionRequest {
         safe_account,
@@ -81,6 +83,8 @@ fn state_transition<'a, 'b>(req: StateTransitionRequest<'a, 'b>) -> Result<(), S
         receiver_spl_account_info,
         spl_program_account_info,
     } = req;
+
+    info!("invoking migration token transfer");
 
     let withdraw_instruction = spl_token::instruction::transfer(
         &spl_token::ID,
@@ -99,8 +103,12 @@ fn state_transition<'a, 'b>(req: StateTransitionRequest<'a, 'b>) -> Result<(), S
         safe_spl_vault_authority_account_info.clone(),
         spl_program_account_info.clone(),
     ];
-    let r = solana_sdk::program::invoke_signed(&withdraw_instruction, &accounts, &[&signer_seeds]);
+    solana_sdk::program::invoke_signed(&withdraw_instruction, &accounts, &[&signer_seeds])?;
+
     info!("migration token transfer complete");
+
+    info!("state-transition: success");
+
     Ok(())
 }
 
