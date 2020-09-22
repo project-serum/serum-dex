@@ -19,6 +19,7 @@ default = []
 solana-sdk = { version = "=1.3.9", default-features = false }
 spl-token = { version = "=2.0.3", default-features = false }
 serum-safe = { path = "../" }
+serum-common = { path = "../../common", features = ["program"] }
 arrayref = "0.3.6"
 safe-transmute = "0.11.0"
 bincode = "1.3.1"

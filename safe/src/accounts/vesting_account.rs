@@ -1,6 +1,6 @@
-use crate::pack::DynPack;
 use arrayref::{array_ref, array_refs, mut_array_refs};
 use byteorder::{ReadBytesExt, WriteBytesExt};
+use serum_common::pack::DynPack;
 use solana_client_gen::solana_sdk::program_error::ProgramError;
 use solana_client_gen::solana_sdk::pubkey::Pubkey;
 // TODO: this is in the solana_sdk. Use that version instead.

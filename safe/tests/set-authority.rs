@@ -43,7 +43,7 @@ fn set_authority() {
     // The safe account should be updated.
     {
         let safe_account: SafeAccount =
-            serum_common_client::rpc::account_unpacked(client.rpc(), &safe_account.pubkey());
+            serum_common::client::rpc::account_unpacked(client.rpc(), &safe_account.pubkey());
         assert_eq!(safe_account.authority, new_authority.pubkey());
     }
 }
@@ -82,7 +82,7 @@ fn set_authority_zero() {
     // The safe account should be updated.
     {
         let safe_account: SafeAccount =
-            serum_common_client::rpc::account_unpacked(client.rpc(), &safe_account.pubkey());
+            serum_common::client::rpc::account_unpacked(client.rpc(), &safe_account.pubkey());
         assert_eq!(safe_account.authority, new_authority);
     }
 }

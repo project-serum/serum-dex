@@ -1,0 +1,18 @@
+[package]
+name = "serum-common"
+version = "0.1.0"
+authors = ["armaniferrante <armaniferrante@gmail.com>"]
+edition = "2018"
+
+[features]
+program = ["spl-token/program", "solana-client-gen/program"]
+client = ["spl-token/default", "solana-client-gen/client", "anyhow", "rand"]
+
+[dependencies]
+spl-token = { version = "=2.0.3", default-features = false }
+solana-client-gen = { path = "../solana-client-gen" }
+arrayref = "0.3.6"
+
+# Client only.
+anyhow = { version = "1.0.32", optional = true }
+rand = { version = "0.7.3", optional = true }

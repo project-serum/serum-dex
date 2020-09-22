@@ -1,8 +1,8 @@
 use common::assert::assert_eq_vec;
 use common::lifecycle;
+use serum_common::pack::DynPack;
 use serum_safe::accounts::VestingAccount;
 use serum_safe::error::SafeErrorCode;
-use serum_safe::pack::DynPack;
 use solana_client_gen::solana_sdk::commitment_config::CommitmentConfig;
 use solana_client_gen::solana_sdk::instruction::AccountMeta;
 use solana_client_gen::solana_sdk::signature::Signer;
@@ -146,7 +146,7 @@ fn withdraw_test(params: WithdrawTestParams) {
     // And.
     //
     // An empty SRM SPL token account.
-    let beneficiary_srm_spl_account = serum_common_client::rpc::create_spl_account(
+    let beneficiary_srm_spl_account = serum_common::client::rpc::create_spl_account(
         client.rpc(),
         &srm_mint.pubkey(),
         &vesting_account_beneficiary.pubkey(),

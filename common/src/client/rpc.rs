@@ -1,11 +1,13 @@
+use crate::pack::DynPack;
 use anyhow::Result;
 use rand::rngs::OsRng;
-use solana_client::rpc_client::RpcClient;
-use solana_client::rpc_config::RpcSendTransactionConfig;
-use solana_sdk::commitment_config::CommitmentConfig;
-use solana_sdk::pubkey::Pubkey;
-use solana_sdk::signature::{Keypair, Signature, Signer};
-use solana_sdk::transaction::Transaction;
+use solana_client_gen::solana_client::rpc_client::RpcClient;
+use solana_client_gen::solana_client::rpc_config::RpcSendTransactionConfig;
+use solana_client_gen::solana_sdk;
+use solana_client_gen::solana_sdk::commitment_config::CommitmentConfig;
+use solana_client_gen::solana_sdk::pubkey::Pubkey;
+use solana_client_gen::solana_sdk::signature::{Keypair, Signature, Signer};
+use solana_client_gen::solana_sdk::transaction::Transaction;
 use spl_token::instruction as token_instruction;
 use spl_token::pack::Pack;
 
@@ -194,4 +196,13 @@ pub fn account_unpacked<T: Pack>(client: &RpcClient, addr: &Pubkey) -> T {
         .value
         .unwrap();
     T::unpack_from_slice(&account.data).unwrap()
+}
+
+pub fn account_dyn_unpacked<T: DynPack>(client: &RpcClient, addr: &Pubkey) -> T {
+    let account = client
+        .get_account_with_commitment(addr, CommitmentConfig::recent())
+        .unwrap()
+        .value
+        .unwrap();
+    T::unpack_unchecked(&account.data).unwrap()
 }

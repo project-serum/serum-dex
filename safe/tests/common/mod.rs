@@ -1,7 +1,7 @@
 // Work around for https://github.com/rust-lang/rust/issues/46379.
 #![allow(dead_code)]
 
-use serum_common_client::Cluster;
+use serum_common::client::Cluster;
 use serum_safe::client::{Client, RequestOptions};
 use solana_client::rpc_config::RpcSendTransactionConfig;
 use solana_client_gen::solana_sdk::commitment_config::CommitmentConfig;

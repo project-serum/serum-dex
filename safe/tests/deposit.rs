@@ -1,6 +1,6 @@
 use rand::rngs::OsRng;
+use serum_common::pack::DynPack;
 use serum_safe::accounts::VestingAccount;
-use serum_safe::pack::DynPack;
 use solana_client_gen::solana_sdk;
 use solana_client_gen::solana_sdk::commitment_config::CommitmentConfig;
 use solana_client_gen::solana_sdk::instruction::AccountMeta;

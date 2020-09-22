@@ -27,7 +27,7 @@ pub fn genesis() -> Genesis {
     // Initialize the SPL token representing SRM.
     let mint_authority = Keypair::from_bytes(&Keypair::to_bytes(client.payer().clone())).unwrap();
     let srm_mint = Keypair::generate(&mut OsRng);
-    let _ = serum_common_client::rpc::create_and_init_mint(
+    let _ = serum_common::client::rpc::create_and_init_mint(
         client.rpc(),
         client.payer(),
         &srm_mint,
@@ -41,7 +41,7 @@ pub fn genesis() -> Genesis {
     // Create a funded SRM SPL account representing the depositor allocating
     // vesting accounts.
     let god_balance_before = 1_000_000;
-    let god = serum_common_client::rpc::mint_to_new_account(
+    let god = serum_common::client::rpc::mint_to_new_account(
         client.rpc(),
         client.payer(),
         &mint_authority,

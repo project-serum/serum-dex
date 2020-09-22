@@ -9,11 +9,9 @@ pub mod instruction {
     use super::*;
     #[derive(serde::Serialize, serde::Deserialize)]
     pub enum SrmSafeInstruction {
-        /// Initialize instruction configures the safe with an admin that is
-        /// responsible for slashing people who use their locked serum for
-        /// invalid purposes.
+        /// Initializes a safe instance for use.
         ///
-        /// Similar to a mint, this must be included in the same instruction
+        /// Similar to a token mint, this must be included in the same instruction
         /// that creates the account to initialize. Otherwise someone
         /// can take control of the account by calling initialize on it.
         ///
@@ -146,4 +144,3 @@ pub use client_ext::instruction;
 
 pub mod accounts;
 pub mod error;
-pub mod pack;

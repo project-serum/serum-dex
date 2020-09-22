@@ -31,7 +31,7 @@ fn migrate() {
     //
     // An SPL account to transfer to.
     let recipient_owner = Keypair::generate(&mut OsRng);
-    let receiver_spl_account = serum_common_client::rpc::create_spl_account(
+    let receiver_spl_account = serum_common::client::rpc::create_spl_account(
         client.rpc(),
         &srm_mint.pubkey(),
         &recipient_owner.pubkey(),
@@ -58,14 +58,14 @@ fn migrate() {
     // The safe's vault should be drained.
     {
         let safe_vault: spl_token::state::Account =
-            serum_common_client::rpc::account_unpacked(client.rpc(), &safe_srm_vault.pubkey());
+            serum_common::client::rpc::account_unpacked(client.rpc(), &safe_srm_vault.pubkey());
         assert_eq!(safe_vault.amount, 0);
     }
     // Then.
     //
     // The receipient should have all the funds.
     {
-        let recipient: spl_token::state::Account = serum_common_client::rpc::account_unpacked(
+        let recipient: spl_token::state::Account = serum_common::client::rpc::account_unpacked(
             client.rpc(),
             &receiver_spl_account.pubkey(),
         );
