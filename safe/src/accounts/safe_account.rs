@@ -1,6 +1,4 @@
-use crate::pack::DynPack;
 use arrayref::{array_mut_ref, array_ref, array_refs, mut_array_refs};
-use byteorder::{ReadBytesExt, WriteBytesExt};
 use solana_client_gen::solana_sdk::program_error::ProgramError;
 use solana_client_gen::solana_sdk::pubkey::Pubkey;
 // TODO: this is in the solana_sdk. Use that version instead.
@@ -13,7 +11,7 @@ use spl_token::pack::{IsInitialized, Pack, Sealed};
 pub struct SafeAccount {
     /// The mint of the SPL token the safe is storing, i.e., the SRM mint.
     pub mint: Pubkey,
-    ///
+    /// The key with the ability to migrate or change the authority.
     pub authority: Pubkey,
     /// Total SRM deposited.
     // TODO: we don't actually use this field right now, but it might

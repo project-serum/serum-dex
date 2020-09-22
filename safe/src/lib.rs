@@ -1,17 +1,13 @@
 //! serum-safe defines the interface for the serum safe program.
 
-use accounts::{LsrmReceipt, SafeAccount, VestingAccount};
-use serde::{Deserialize, Serialize};
+#![cfg_attr(feature = "strict", deny(warnings))]
+
 use solana_client_gen::prelude::*;
-use solana_client_gen::solana_sdk;
-use solana_client_gen::solana_sdk::instruction::AccountMeta;
-use solana_client_gen::solana_sdk::pubkey::Pubkey;
-use spl_token::pack::Pack;
 
 #[cfg_attr(feature = "client", solana_client_gen)]
 pub mod instruction {
     use super::*;
-    #[derive(Serialize, Deserialize)]
+    #[derive(serde::Serialize, serde::Deserialize)]
     pub enum SrmSafeInstruction {
         /// Initialize instruction configures the safe with an admin that is
         /// responsible for slashing people who use their locked serum for
@@ -72,7 +68,6 @@ pub mod instruction {
         ///
         /// 0.  `[signer]`   The vesting account beneficiary.
         /// 1.  `[writable]` The vesting account to mint lSRM from.
-        /// 2.  `[]          The safe account instance.
         /// 3.  `[]`         SPL token program.
         /// 4.  `[]`         The rent sysvar.
         /// ... `[writable]` A variable number of lSRM SPL mints one for each NFT
@@ -105,6 +100,26 @@ pub mod instruction {
         /// 5. `[]`         SPL token program.
         /// 4. `[]`         Clock sysvar.
         WithdrawSrm { amount: u64 },
+        /// Sets the new authority for the safe instance. If set to all zeroes, then
+        /// authority is forever lost.
+        ///
+        /// 0. `[signer]`   The current safe authority.
+        /// 1. `[writable]` The SafeAccount instance.
+        SetAuthority { new_authority: Pubkey },
+        /// Migrate sends all the SRM locked by this safe to a new address. This
+        /// should be used as a temporary measure to ship a v1 of this program,
+        /// allowing new features to be considered and developed. In the future
+        /// the authority should be disabled, or moved to a more robust governance
+        /// mechanism.
+        ///
+        /// Accounts:
+        ///
+        /// 0. `[signer]    The SafeAccount's authority.
+        /// 1. `[writable]` The Safe's SPL account vault from which we are transferring
+        ///                 The SPL token out of.
+        /// 2  `[writable]` The SrmSafe account.
+        /// 3. `[]`         The SPL token program.
+        Migrate,
     }
 }
 
@@ -117,6 +132,5 @@ pub use client_ext::client;
 pub use client_ext::instruction;
 
 pub mod accounts;
-//mod coder;
 pub mod error;
 pub mod pack;

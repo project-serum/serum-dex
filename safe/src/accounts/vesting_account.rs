@@ -1,10 +1,10 @@
 use crate::pack::DynPack;
-use arrayref::{array_mut_ref, array_ref, array_refs, mut_array_refs};
+use arrayref::{array_ref, array_refs, mut_array_refs};
 use byteorder::{ReadBytesExt, WriteBytesExt};
 use solana_client_gen::solana_sdk::program_error::ProgramError;
 use solana_client_gen::solana_sdk::pubkey::Pubkey;
 // TODO: this is in the solana_sdk. Use that version instead.
-use spl_token::pack::{IsInitialized, Pack, Sealed};
+use spl_token::pack::{IsInitialized, Sealed};
 
 #[repr(C)]
 #[derive(Debug)]
@@ -109,7 +109,6 @@ impl DynPack for VestingAccount {
             return Err(ProgramError::Custom(9));
         }
         let slot_size = dynamic_size / 2;
-        let amount_size = slot_size;
 
         if dynamic_size % 8 != 0 {
             return Err(ProgramError::Custom(13));

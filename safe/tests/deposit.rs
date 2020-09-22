@@ -1,16 +1,11 @@
 use rand::rngs::OsRng;
-use serum_safe::accounts::{SafeAccount, SrmVault, VestingAccount};
-use serum_safe::client::{Client, ClientError, RequestOptions};
-use serum_safe::error::{SafeError, SafeErrorCode};
+use serum_safe::accounts::VestingAccount;
 use serum_safe::pack::DynPack;
 use solana_client_gen::solana_sdk;
 use solana_client_gen::solana_sdk::commitment_config::CommitmentConfig;
 use solana_client_gen::solana_sdk::instruction::AccountMeta;
-use solana_client_gen::solana_sdk::pubkey::Pubkey;
-use solana_client_gen::solana_sdk::signature::{Keypair, Signature, Signer};
-use solana_transaction_status::UiTransactionEncoding;
+use solana_client_gen::solana_sdk::signature::{Keypair, Signer};
 use spl_token::pack::Pack;
-use std::error::Error;
 
 mod common;
 
@@ -22,12 +17,11 @@ fn deposit_srm() {
     let common::lifecycle::Initialized {
         client,
         safe_account,
-        safe_authority,
         safe_srm_vault,
         safe_srm_vault_authority,
         depositor,
         depositor_balance_before,
-        srm_mint,
+        ..
     } = common::lifecycle::initialize();
 
     // When.
@@ -46,7 +40,7 @@ fn deposit_srm() {
         let vesting_slots = vec![11, 12, 13, 14, 15];
         let vesting_amounts = vec![1, 2, 3, 4, 5];
         let vesting_account_size = VestingAccount::data_size(vesting_slots.len());
-        let (signature, keypair) = client
+        let (_signature, keypair) = client
             .create_account_with_size_and_deposit_srm(
                 vesting_account_size,
                 &deposit_accounts,

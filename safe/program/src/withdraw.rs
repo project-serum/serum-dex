@@ -3,7 +3,6 @@ use serum_safe::error::{SafeError, SafeErrorCode};
 use serum_safe::pack::DynPack;
 use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::info;
-use solana_sdk::program_error::ProgramError;
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::sysvar::clock::Clock;
 use solana_sdk::sysvar::Sysvar;
@@ -38,7 +37,6 @@ pub fn handler(
                 amount,
                 &clock,
                 safe_spl_vault_account_info,
-                safe_spl_vault_authority_account_info,
                 safe_account_info,
                 spl_program_account_info,
             )?;
@@ -84,7 +82,6 @@ pub fn withdraw_srm_access_control(
     amount: u64,
     clock: &Clock,
     safe_spl_vault_account_info: &AccountInfo,
-    safe_spl_vault_account_authority: &AccountInfo,
     safe_account_info: &AccountInfo,
     spl_program_account_info: &AccountInfo,
 ) -> Result<(), SafeError> {

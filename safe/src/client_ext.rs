@@ -1,15 +1,12 @@
 //! The client_ext module extends the auto-generated program client.
 
-use crate::accounts::{LsrmReceipt, SafeAccount, SrmVault, VestingAccount};
-use serde::{Deserialize, Serialize};
-use solana_client_gen::prelude::*;
+use crate::accounts::{LsrmReceipt, SafeAccount};
 use solana_client_gen::prelude::*;
 use solana_client_gen::solana_sdk;
 use solana_client_gen::solana_sdk::instruction::AccountMeta;
 use solana_client_gen::solana_sdk::pubkey::Pubkey;
 use spl_token::pack::Pack;
 
-#[cfg(feature = "client")]
 solana_client_gen_extension! {
     use solana_client_gen::solana_sdk::signers::Signers;
 
@@ -138,7 +135,7 @@ solana_client_gen_extension! {
             &self,
             // On localnet this maxes out at 2 before the transaction is too large.
             lsrm_count: usize,
-            mut signers: Vec<&Keypair>,
+            signers: Vec<&Keypair>,
             mut accounts: Vec<AccountMeta>,
         ) -> Result<(Signature, Vec<Lsrm>), ClientError> {
             let (tx, mut lsrm_nft_mint_keys, mut lsrm_receipt_keys) = {
@@ -219,7 +216,6 @@ solana_client_gen_extension! {
             for _ in 0..lsrm_count {
                 // The NFT to intialize.
                 let lsrm_nft_mint = Keypair::generate(&mut OsRng);
-                let lsrm_nft_mint_authority = self.program();
                 let create_mint_account_instr = solana_sdk::system_instruction::create_account(
                     &self.payer().pubkey(),
                     &lsrm_nft_mint.pubkey(),

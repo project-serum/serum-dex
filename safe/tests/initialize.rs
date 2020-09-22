@@ -1,16 +1,12 @@
 use rand::rngs::OsRng;
-use serum_safe::accounts::{SafeAccount, SrmVault, VestingAccount};
-use serum_safe::client::{Client, ClientError, RequestOptions, SafeInitialization};
-use serum_safe::error::{SafeError, SafeErrorCode};
+use serum_safe::accounts::SafeAccount;
+use serum_safe::client::SafeInitialization;
+use serum_safe::error::SafeErrorCode;
 use solana_client_gen::solana_sdk;
 use solana_client_gen::solana_sdk::commitment_config::CommitmentConfig;
 use solana_client_gen::solana_sdk::instruction::AccountMeta;
-use solana_client_gen::solana_sdk::pubkey::Pubkey;
-use solana_client_gen::solana_sdk::signature::{Keypair, Signature, Signer};
-use solana_transaction_status::UiTransactionEncoding;
+use solana_client_gen::solana_sdk::signature::{Keypair, Signer};
 use spl_token::pack::Pack;
-use std::error::Error;
-use std::str::FromStr;
 
 mod common;
 
@@ -19,10 +15,8 @@ fn initialized() {
     // Given.
     let common::lifecycle::Genesis {
         client,
-        mint_authority,
         srm_mint,
-        god,
-        god_balance_before,
+				..
     } = common::lifecycle::genesis();
 
     // When.
@@ -32,7 +26,6 @@ fn initialized() {
     let rent_account = AccountMeta::new_readonly(solana_sdk::sysvar::rent::id(), false);
     let accounts = vec![rent_account];
     let SafeInitialization {
-        signature,
         safe_account,
         nonce,
         vault_account,
@@ -86,10 +79,8 @@ fn initialized_already() {
     // Given.
     let common::lifecycle::Genesis {
         client,
-        mint_authority,
         srm_mint,
-        god,
-        god_balance_before,
+				..
     } = common::lifecycle::genesis();
 
     // When
@@ -99,7 +90,6 @@ fn initialized_already() {
     let rent_account = AccountMeta::new_readonly(solana_sdk::sysvar::rent::id(), false);
     let accounts = vec![rent_account.clone()];
     let SafeInitialization {
-        signature,
         safe_account,
         nonce,
         ..

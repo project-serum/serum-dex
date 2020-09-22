@@ -2,7 +2,6 @@ use serum_safe::accounts::{SafeAccount, SrmVault};
 use serum_safe::error::{SafeError, SafeErrorCode};
 use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::info;
-use solana_sdk::program_error::ProgramError;
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::sysvar::rent::Rent;
 use solana_sdk::sysvar::Sysvar;

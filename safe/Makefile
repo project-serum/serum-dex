@@ -24,9 +24,14 @@ BUILD_DIR=../target/bpfel-unknown-unknown/release
 #
 LIB_NAME=serum_safe_program
 
-.PHONY: build deploy test test-new
+.PHONY: build build-client build-program deploy test test-program
 
-build:
+build: build-program build-client
+
+build-client:
+	cargo build --features client,client-ext
+
+build-program:
 	$(BPF_SDK)/rust/build.sh program
 	cp $(BUILD_DIR)/$(LIB_NAME).so $(BUILD_DIR)/$(LIB_NAME)_debug.so
 	$(BPF_SDK)/dependencies/llvm-native/bin/llvm-objcopy --strip-all $(BUILD_DIR)/$(LIB_NAME).so $(BUILD_DIR)/$(LIB_NAME).so
@@ -36,6 +41,10 @@ deploy: build
 	@echo "Deployed program at address $(TEST_PROGRAM_ID)"
 
 test-program:
-	 RUST_BACKTRACE=1 TEST_PROGRAM_ID=$(TEST_PROGRAM_ID) TEST_PAYER_FILEPATH=$(TEST_PAYER_FILEPATH) TEST_CLUSTER_URL=$(TEST_CLUSTER_URL) cargo test --features test,client,client-ext -- --nocapture $(args)
+	RUST_BACKTRACE=1 \
+	TEST_PROGRAM_ID=$(TEST_PROGRAM_ID) \
+	TEST_PAYER_FILEPATH=$(TEST_PAYER_FILEPATH) \
+	TEST_CLUSTER_URL=$(TEST_CLUSTER_URL) \
+	cargo test --features test,client,client-ext -- --nocapture $(args)
 
 test: deploy test-program

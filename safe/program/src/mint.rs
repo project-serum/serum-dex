@@ -1,9 +1,8 @@
-use serum_safe::accounts::{LsrmReceipt, SrmVault, VestingAccount};
+use serum_safe::accounts::{LsrmReceipt, VestingAccount};
 use serum_safe::error::{SafeError, SafeErrorCode};
 use serum_safe::pack::DynPack;
 use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::info;
-use solana_sdk::program_error::ProgramError;
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::sysvar::rent::Rent;
 use solana_sdk::sysvar::Sysvar;
@@ -13,16 +12,15 @@ pub fn handler(program_id: &Pubkey, accounts: &[AccountInfo]) -> Result<(), Safe
     info!("HANDLER: mint_locked_srm");
 
     let accounts_len = accounts.len();
-    if (accounts_len - 5) % 2 != 0 {
+    if (accounts_len - 4) % 2 != 0 {
         return Err(SafeError::ErrorCode(SafeErrorCode::WrongNumberOfAccounts));
     }
-    let lsrm_nft_count = ((accounts_len - 5) / 2) as u64;
+    let lsrm_nft_count = ((accounts_len - 4) / 2) as u64;
 
     let account_info_iter = &mut accounts.iter();
 
     let vesting_account_beneficiary_info = next_account_info(account_info_iter)?;
     let vesting_account_info = next_account_info(account_info_iter)?;
-    let safe_account_info = next_account_info(account_info_iter)?;
     let spl_token_program_account_info = next_account_info(account_info_iter)?;
 
     let rent_account_info = next_account_info(account_info_iter)?;

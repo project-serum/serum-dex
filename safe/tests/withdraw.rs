@@ -1,5 +1,5 @@
 use common::assert::assert_eq_vec;
-use serum_safe::accounts::{SrmVault, VestingAccount};
+use serum_safe::accounts::VestingAccount;
 use serum_safe::error::SafeErrorCode;
 use serum_safe::pack::DynPack;
 use solana_client_gen::solana_sdk::commitment_config::CommitmentConfig;
@@ -136,7 +136,6 @@ fn withdraw_test(params: WithdrawTestParams) {
         vesting_account,
         vesting_account_beneficiary,
         vesting_account_slots,
-        vesting_account_amounts,
         safe_account,
         safe_srm_vault,
         safe_srm_vault_authority,

@@ -6,7 +6,6 @@ use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::info;
 use solana_sdk::program_error::ProgramError;
 use solana_sdk::pubkey::Pubkey;
-use solana_sdk::sysvar::clock::Clock;
 use solana_sdk::sysvar::rent::Rent;
 use solana_sdk::sysvar::Sysvar;
 use spl_token::pack::Pack;
@@ -47,7 +46,6 @@ pub fn handler(
     // check that.
     {
         let len_dst = array_mut_ref![vesting_account_data, 0, 8];
-        let len: u64 = expected_size as u64;
         len_dst.copy_from_slice(&expected_size.to_le_bytes())
     }
 

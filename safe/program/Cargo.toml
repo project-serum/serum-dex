@@ -12,6 +12,7 @@ name = "serum_safe_program"
 [features]
 program = ["serum-safe/program", "solana-sdk/program", "spl-token/program", "spl-token/no-entrypoint"]
 test = ["solana-sdk/default"]
+strict = []
 default = []
 
 [dependencies]

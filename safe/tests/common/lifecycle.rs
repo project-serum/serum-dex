@@ -7,23 +7,20 @@
 
 use crate::common;
 use rand::rngs::OsRng;
-use serum_safe::accounts::{SafeAccount, SrmVault, VestingAccount};
-use serum_safe::client::{Client, ClientError, Lsrm, RequestOptions, SafeInitialization};
-use serum_safe::error::{SafeError, SafeErrorCode};
+use serum_safe::accounts::VestingAccount;
+use serum_safe::client::{Client, Lsrm, SafeInitialization};
 use solana_client_gen::solana_sdk;
 use solana_client_gen::solana_sdk::commitment_config::CommitmentConfig;
 use solana_client_gen::solana_sdk::instruction::AccountMeta;
 use solana_client_gen::solana_sdk::pubkey::Pubkey;
-use solana_client_gen::solana_sdk::signature::{Keypair, Signature, Signer};
+use solana_client_gen::solana_sdk::signature::{Keypair, Signer};
 use solana_client_gen::solana_sdk::sysvar;
-use solana_transaction_status::UiTransactionEncoding;
 use spl_token::pack::Pack;
-use std::error::Error;
-
-pub const SPL_MINT_DECIMALS: u8 = 3;
 
 pub fn genesis() -> Genesis {
     let client = common::client();
+
+    let spl_mint_decimals = 3;
 
     // Setup.
     //
@@ -35,7 +32,7 @@ pub fn genesis() -> Genesis {
         client.payer(),
         &srm_mint,
         &mint_authority.pubkey(),
-        3,
+        spl_mint_decimals,
     )
     .unwrap();
 
@@ -80,10 +77,10 @@ pub struct Genesis {
 pub fn initialize() -> Initialized {
     let Genesis {
         client,
-        mint_authority,
         srm_mint,
         god,
         god_balance_before,
+        ..
     } = genesis();
 
     let depositor = god;
@@ -98,11 +95,9 @@ pub fn initialize() -> Initialized {
         false,
     )];
     let SafeInitialization {
-        signature,
         safe_account,
         vault_account,
         vault_account_authority,
-        nonce,
         ..
     } = client
         .create_all_accounts_and_initialize(
@@ -164,12 +159,11 @@ pub fn deposit_with_schedule(
     let Initialized {
         client,
         safe_account,
-        safe_authority,
         safe_srm_vault,
         safe_srm_vault_authority,
         depositor,
-        depositor_balance_before,
         srm_mint,
+        ..
     } = initialize();
 
     let (
@@ -194,7 +188,7 @@ pub fn deposit_with_schedule(
             .collect::<Vec<u64>>();
         let vesting_account_beneficiary = Keypair::generate(&mut OsRng);
         let vesting_account_size = VestingAccount::data_size(vesting_slots.len());
-        let (signature, keypair) = client
+        let (_signature, keypair) = client
             .create_account_with_size_and_deposit_srm(
                 vesting_account_size,
                 &deposit_accounts,
@@ -254,14 +248,13 @@ pub fn mint_lsrm(
     } = deposit_with_schedule(vesting_slot_offsets, vesting_amounts);
 
     let lsrm = {
-        let mut mint_lsrm_accounts = vec![
+        let mint_lsrm_accounts = vec![
             AccountMeta::new(vesting_account_beneficiary.pubkey(), true),
             AccountMeta::new(vesting_account, false),
-            AccountMeta::new(safe_account, false),
             AccountMeta::new(spl_token::ID, false),
             AccountMeta::new_readonly(sysvar::rent::ID, false),
         ];
-        let mut signers = vec![&vesting_account_beneficiary, client.payer()];
+        let signers = vec![&vesting_account_beneficiary, client.payer()];
         let (_sig, lsrm_nfts) = client
             .create_nfts_and_mint_locked_srm_with_signers(nft_count, signers, mint_lsrm_accounts)
             .unwrap();
@@ -282,6 +275,7 @@ pub fn mint_lsrm(
     }
 }
 
+#[cfg(test)]
 pub struct LsrmMinted {
     pub client: Client,
     pub lsrm: Vec<Lsrm>,

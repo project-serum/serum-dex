@@ -1,17 +1,20 @@
 //! Program entrypoint
 
+#![cfg_attr(feature = "strict", deny(warnings))]
+
 use serum_safe::error::{SafeError, SafeErrorCode};
 use serum_safe::instruction::SrmSafeInstruction;
 use solana_sdk::account_info::AccountInfo;
 use solana_sdk::entrypoint::ProgramResult;
 use solana_sdk::info;
-use solana_sdk::program_error::ProgramError;
 use solana_sdk::pubkey::Pubkey;
 
 mod burn;
 mod deposit;
 mod initialize;
+mod migrate;
 mod mint;
+mod set_authority;
 mod withdraw;
 
 solana_sdk::entrypoint!(process_instruction);
@@ -46,6 +49,10 @@ fn process_instruction(
             withdraw::handler(program_id, accounts, amount)
         }
         SrmSafeInstruction::BurnLockedSrm => burn::handler(program_id, accounts),
+        SrmSafeInstruction::SetAuthority { new_authority } => {
+            set_authority::handler(program_id, accounts, &new_authority)
+        }
+        SrmSafeInstruction::Migrate => migrate::handler(program_id, accounts),
     };
 
     result?;
@@ -61,7 +68,7 @@ mod coder {
     pub fn from_bytes(data: &[u8]) -> Result<SrmSafeInstruction, ()> {
         match data.split_first() {
             None => Err(()),
-            Some((&u08, rest)) => bincode::deserialize(rest).map_err(|_| ()),
+            Some((&0u8, rest)) => bincode::deserialize(rest).map_err(|_| ()),
             Some((_, _rest)) => Err(()),
         }
     }
