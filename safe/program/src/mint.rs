@@ -8,7 +8,10 @@ use solana_sdk::sysvar::rent::Rent;
 use solana_sdk::sysvar::Sysvar;
 use spl_token::pack::Pack;
 
-pub fn handler(program_id: &Pubkey, accounts: &[AccountInfo]) -> Result<(), SafeError> {
+pub fn handler<'a>(
+    program_id: &'a Pubkey,
+    accounts: &'a [AccountInfo<'a>],
+) -> Result<(), SafeError> {
     info!("HANDLER: mint_locked_srm");
 
     let accounts_len = accounts.len();
@@ -24,7 +27,7 @@ pub fn handler(program_id: &Pubkey, accounts: &[AccountInfo]) -> Result<(), Safe
     let spl_token_program_account_info = next_account_info(account_info_iter)?;
 
     let rent_account_info = next_account_info(account_info_iter)?;
-    let rent = &Rent::from_account_info(rent_account_info)?;
+    let rent = Rent::from_account_info(rent_account_info)?;
 
     let mut lsrm_nfts = vec![];
 
@@ -37,46 +40,24 @@ pub fn handler(program_id: &Pubkey, accounts: &[AccountInfo]) -> Result<(), Safe
     VestingAccount::unpack_mut(
         &mut vesting_account_info.try_borrow_mut_data()?,
         &mut |vesting_account: &mut VestingAccount| {
-            access_control(
+            access_control(AccessControlRequest {
                 vesting_account,
                 vesting_account_beneficiary_info,
-                &lsrm_nfts,
+                lsrm_nfts: &lsrm_nfts,
                 lsrm_nft_count,
                 spl_token_program_account_info,
                 rent,
                 rent_account_info,
-            )?;
+            })?;
 
-            for (mint, receipt) in &lsrm_nfts {
-                LsrmReceipt::unpack_unchecked_mut(
-                    &mut receipt.try_borrow_mut_data()?,
-                    &mut |receipt: &mut LsrmReceipt| {
-                        // Initialize the receipt.
-                        {
-                            receipt.initialized = true;
-                            receipt.mint = *mint.key;
-                            receipt.vesting_account = *vesting_account_info.key;
-                            receipt.burned = false;
-                        }
-                        // Initialize the NFT mint.
-                        {
-                            let init_mint_instr = spl_token::instruction::initialize_mint(
-                                &spl_token::ID,
-                                &mint.key,
-                                &program_id.clone(),
-                                None,
-                                0,
-                            )
-                            .unwrap();
-                            solana_sdk::program::invoke(&init_mint_instr, &accounts[..])?;
-                        }
-                        Ok(())
-                    },
-                )?;
-            }
-
-            // Update the vesting account.
-            vesting_account.locked_outstanding += lsrm_nft_count;
+            state_transition(StateTransitionRequest {
+                accounts,
+                lsrm_nfts: &lsrm_nfts,
+                vesting_account_info,
+                program_id,
+                vesting_account,
+                lsrm_nft_count,
+            })?;
 
             Ok(())
         },
@@ -84,22 +65,24 @@ pub fn handler(program_id: &Pubkey, accounts: &[AccountInfo]) -> Result<(), Safe
     .map_err(|e| SafeError::ProgramError(e))
 }
 
-fn access_control(
-    vesting_account: &VestingAccount,
-    vesting_account_beneficiary: &AccountInfo,
-    lsrm_nfts: &[(AccountInfo, &AccountInfo)], // (spl mint, lsrm receipt) pairs
-    lsrm_nft_count: u64,
-    spl_token_program_account_info: &AccountInfo,
-    rent: &Rent,
-    rent_account_info: &AccountInfo,
-) -> Result<(), SafeError> {
+fn access_control<'a, 'b>(req: AccessControlRequest<'a, 'b>) -> Result<(), SafeError> {
+    let AccessControlRequest {
+        vesting_account,
+        vesting_account_beneficiary_info,
+        lsrm_nfts,
+        lsrm_nft_count,
+        spl_token_program_account_info,
+        rent,
+        rent_account_info,
+    } = req;
+
     assert_eq!(*spl_token_program_account_info.key, spl_token::ID);
     assert_eq!(*rent_account_info.key, solana_sdk::sysvar::rent::id());
 
-    if !vesting_account_beneficiary.is_signer {
+    if !vesting_account_beneficiary_info.is_signer {
         return Err(SafeError::ErrorCode(SafeErrorCode::Unauthorized));
     }
-    if *vesting_account_beneficiary.key != vesting_account.beneficiary {
+    if *vesting_account_beneficiary_info.key != vesting_account.beneficiary {
         return Err(SafeError::ErrorCode(SafeErrorCode::Unauthorized));
     }
     if vesting_account.total() - vesting_account.locked_outstanding < lsrm_nft_count {
@@ -134,4 +117,67 @@ fn access_control(
         }
     }
     Ok(())
+}
+
+struct AccessControlRequest<'a, 'b> {
+    vesting_account: &'b VestingAccount,
+    vesting_account_beneficiary_info: &'a AccountInfo<'a>,
+    lsrm_nfts: &'b [(AccountInfo<'a>, &'a AccountInfo<'a>)], // (spl mint, lsrm receipt) pairs
+    lsrm_nft_count: u64,
+    spl_token_program_account_info: &'a AccountInfo<'a>,
+    rent: Rent,
+    rent_account_info: &'a AccountInfo<'a>,
+}
+
+fn state_transition<'a, 'b>(req: StateTransitionRequest<'a, 'b>) -> Result<(), SafeError> {
+    let StateTransitionRequest {
+        accounts,
+        lsrm_nfts,
+        vesting_account_info,
+        program_id,
+        vesting_account,
+        lsrm_nft_count,
+    } = req;
+
+    for (mint, receipt) in lsrm_nfts {
+        LsrmReceipt::unpack_unchecked_mut(
+            &mut receipt.try_borrow_mut_data()?,
+            &mut |receipt: &mut LsrmReceipt| {
+                // Initialize the receipt.
+                {
+                    receipt.initialized = true;
+                    receipt.mint = *mint.key;
+                    receipt.vesting_account = *vesting_account_info.key;
+                    receipt.burned = false;
+                }
+                // Initialize the NFT mint.
+                {
+                    let init_mint_instr = spl_token::instruction::initialize_mint(
+                        &spl_token::ID,
+                        &mint.key,
+                        &program_id.clone(),
+                        None,
+                        0,
+                    )
+                    .unwrap();
+                    solana_sdk::program::invoke(&init_mint_instr, &accounts[..])?;
+                }
+                Ok(())
+            },
+        )?;
+    }
+
+    // Update the vesting account.
+    vesting_account.locked_outstanding += lsrm_nft_count;
+
+    Ok(())
+}
+
+struct StateTransitionRequest<'a, 'b> {
+    accounts: &'a [AccountInfo<'a>],
+    lsrm_nfts: &'b [(AccountInfo<'a>, &'a AccountInfo<'a>)], // (spl mint, lsrm receipt) pairs
+    vesting_account_info: &'a AccountInfo<'a>,
+    program_id: &'a Pubkey,
+    vesting_account: &'b mut VestingAccount,
+    lsrm_nft_count: u64,
 }

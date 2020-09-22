@@ -18,9 +18,9 @@ mod set_authority;
 mod withdraw;
 
 solana_sdk::entrypoint!(process_instruction);
-fn process_instruction(
-    program_id: &Pubkey,
-    accounts: &[AccountInfo],
+fn process_instruction<'a>(
+    program_id: &'a Pubkey,
+    accounts: &'a [AccountInfo<'a>],
     instruction_data: &[u8],
 ) -> ProgramResult {
     info!("INSTRUCTION ENTER");
@@ -50,7 +50,7 @@ fn process_instruction(
         }
         SrmSafeInstruction::BurnLockedSrm => burn::handler(program_id, accounts),
         SrmSafeInstruction::SetAuthority { new_authority } => {
-            set_authority::handler(program_id, accounts, &new_authority)
+            set_authority::handler(program_id, accounts, new_authority)
         }
         SrmSafeInstruction::Migrate => migrate::handler(program_id, accounts),
     };

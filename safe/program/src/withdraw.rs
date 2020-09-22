@@ -8,9 +8,9 @@ use solana_sdk::sysvar::clock::Clock;
 use solana_sdk::sysvar::Sysvar;
 use spl_token::pack::Pack;
 
-pub fn handler(
-    program_id: &Pubkey,
-    accounts: &[AccountInfo],
+pub fn handler<'a>(
+    program_id: &'a Pubkey,
+    accounts: &'a [AccountInfo<'a>],
     amount: u64,
 ) -> Result<(), SafeError> {
     info!("HANDLER: withdraw_srm");
@@ -29,62 +29,46 @@ pub fn handler(
     VestingAccount::unpack_mut(
         &mut vesting_account_info.try_borrow_mut_data()?,
         &mut |vesting_account: &mut VestingAccount| {
-            withdraw_srm_access_control(
+            withdraw_srm_access_control(AccessControlRequest {
                 program_id,
-                &vesting_account_beneficiary_info,
+                vesting_account_beneficiary_info: &vesting_account_beneficiary_info,
                 vesting_account_info,
                 vesting_account,
                 amount,
-                &clock,
+                clock: &clock,
                 safe_spl_vault_account_info,
                 safe_account_info,
                 spl_program_account_info,
-            )?;
+            })?;
 
-            vesting_account.deduct(amount);
-
-            info!("invoking withdrawal token transfer");
-            let withdraw_instruction = spl_token::instruction::transfer(
-                &spl_token::ID,
-                safe_spl_vault_account_info.key,
-                beneficiary_spl_account_info.key,
-                &safe_spl_vault_authority_account_info.key,
-                &[],
+            state_transition(StateTransitionRequest {
+                vesting_account,
                 amount,
-            )?;
+                safe_spl_vault_account_info,
+                safe_spl_vault_authority_account_info,
+                beneficiary_spl_account_info,
+                safe_account_info,
+                spl_program_account_info,
+            })?;
 
-            let data = safe_account_info.try_borrow_data()?;
-            let nonce = &[data[data.len() - 1]];
-            let signer_seeds = SrmVault::signer_seeds(safe_account_info.key, nonce);
-
-            let r = solana_sdk::program::invoke_signed(
-                &withdraw_instruction,
-                &[
-                    safe_spl_vault_account_info.clone(),
-                    beneficiary_spl_account_info.clone(),
-                    safe_spl_vault_authority_account_info.clone(),
-                    spl_program_account_info.clone(),
-                ],
-                &[&signer_seeds],
-            );
-            info!("withdrawal token transfer complete");
-            r
+            Ok(())
         },
     )
     .map_err(|e| SafeError::ProgramError(e))
 }
 
-pub fn withdraw_srm_access_control(
-    program_id: &Pubkey,
-    vesting_account_beneficiary_info: &AccountInfo,
-    vesting_account_info: &AccountInfo,
-    vesting_account: &VestingAccount,
-    amount: u64,
-    clock: &Clock,
-    safe_spl_vault_account_info: &AccountInfo,
-    safe_account_info: &AccountInfo,
-    spl_program_account_info: &AccountInfo,
-) -> Result<(), SafeError> {
+fn withdraw_srm_access_control<'a, 'b>(req: AccessControlRequest<'a, 'b>) -> Result<(), SafeError> {
+    let AccessControlRequest {
+        program_id,
+        vesting_account_beneficiary_info,
+        vesting_account_info,
+        vesting_account,
+        amount,
+        clock,
+        safe_spl_vault_account_info,
+        safe_account_info,
+        spl_program_account_info,
+    } = req;
     assert_eq!(*spl_program_account_info.key, spl_token::ID);
 
     if vesting_account_info.owner != program_id {
@@ -127,4 +111,70 @@ pub fn withdraw_srm_access_control(
     }
     // todo: check beneficiary account is initialized
     Ok(())
+}
+
+struct AccessControlRequest<'a, 'b> {
+    program_id: &'a Pubkey,
+    vesting_account_beneficiary_info: &'a AccountInfo<'a>,
+    vesting_account_info: &'a AccountInfo<'a>,
+    vesting_account: &'b VestingAccount,
+    amount: u64,
+    clock: &'b Clock,
+    safe_spl_vault_account_info: &'a AccountInfo<'a>,
+    safe_account_info: &'a AccountInfo<'a>,
+    spl_program_account_info: &'a AccountInfo<'a>,
+}
+
+fn state_transition<'a, 'b>(req: StateTransitionRequest<'a, 'b>) -> Result<(), SafeError> {
+    let StateTransitionRequest {
+        vesting_account,
+        amount,
+        safe_spl_vault_account_info,
+        safe_spl_vault_authority_account_info,
+        beneficiary_spl_account_info,
+        safe_account_info,
+        spl_program_account_info,
+    } = req;
+
+    vesting_account.deduct(amount);
+
+    info!("invoking withdrawal token transfer");
+
+    let withdraw_instruction = spl_token::instruction::transfer(
+        &spl_token::ID,
+        safe_spl_vault_account_info.key,
+        beneficiary_spl_account_info.key,
+        &safe_spl_vault_authority_account_info.key,
+        &[],
+        amount,
+    )?;
+
+    let data = safe_account_info.try_borrow_data()?;
+    let nonce = &[data[data.len() - 1]];
+    let signer_seeds = SrmVault::signer_seeds(safe_account_info.key, nonce);
+
+    let r = solana_sdk::program::invoke_signed(
+        &withdraw_instruction,
+        &[
+            safe_spl_vault_account_info.clone(),
+            beneficiary_spl_account_info.clone(),
+            safe_spl_vault_authority_account_info.clone(),
+            spl_program_account_info.clone(),
+        ],
+        &[&signer_seeds],
+    )?;
+
+    info!("withdrawal token transfer complete");
+
+    Ok(())
+}
+
+struct StateTransitionRequest<'a, 'b> {
+    vesting_account: &'b mut VestingAccount,
+    amount: u64,
+    safe_spl_vault_account_info: &'a AccountInfo<'a>,
+    beneficiary_spl_account_info: &'a AccountInfo<'a>,
+    safe_spl_vault_authority_account_info: &'a AccountInfo<'a>,
+    safe_account_info: &'a AccountInfo<'a>,
+    spl_program_account_info: &'a AccountInfo<'a>,
 }

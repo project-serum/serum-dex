@@ -186,3 +186,12 @@ pub fn send_txn(client: &RpcClient, txn: &Transaction, _simulate: bool) -> Resul
         },
     )?)
 }
+
+pub fn account_unpacked<T: Pack>(client: &RpcClient, addr: &Pubkey) -> T {
+    let account = client
+        .get_account_with_commitment(addr, CommitmentConfig::recent())
+        .unwrap()
+        .value
+        .unwrap();
+    T::unpack_from_slice(&account.data).unwrap()
+}

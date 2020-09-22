@@ -1,4 +1,5 @@
 use common::assert::assert_eq_vec;
+use common::lifecycle;
 use serum_safe::accounts::VestingAccount;
 use serum_safe::error::SafeErrorCode;
 use serum_safe::pack::DynPack;
@@ -222,7 +223,7 @@ fn withdraw_test(params: WithdrawTestParams) {
 
 // Alisasing LsrmMinted type here because we don't use the `lsrm` field in these
 // tests and so we can avoid making another needless type.
-type StartState = common::lifecycle::LsrmMinted;
+type StartState = lifecycle::LsrmMinted;
 
 fn start_state(
     test_type: TestType,
@@ -231,10 +232,10 @@ fn start_state(
 ) -> StartState {
     match test_type {
         TestType::LsrmMinted(lsrm_count) => {
-            common::lifecycle::mint_lsrm(lsrm_count, vesting_slot_offsets, vesting_amounts)
+            lifecycle::mint_lsrm(lsrm_count, vesting_slot_offsets, vesting_amounts)
         }
         TestType::Normal => {
-            let common::lifecycle::Deposited {
+            let lifecycle::Deposited {
                 client,
                 vesting_account,
                 vesting_account_beneficiary,
@@ -244,8 +245,9 @@ fn start_state(
                 safe_srm_vault,
                 safe_srm_vault_authority,
                 srm_mint,
-            } = common::lifecycle::deposit_with_schedule(vesting_slot_offsets, vesting_amounts);
-            common::lifecycle::LsrmMinted {
+                ..
+            } = lifecycle::deposit_with_schedule(vesting_slot_offsets, vesting_amounts);
+            lifecycle::LsrmMinted {
                 client,
                 vesting_account,
                 vesting_account_beneficiary,

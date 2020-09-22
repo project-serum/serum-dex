@@ -96,9 +96,10 @@ pub mod instruction {
         /// 2. `[writable]` The SRM SPL token account to withdraw to.
         /// 3. `[writable]` The Safe's SPL account vault from which we are transferring
         ///                 ownership of the SRM out of.
-        /// 4  `[]`         The SrmSafe account.
-        /// 5. `[]`         SPL token program.
-        /// 4. `[]`         Clock sysvar.
+        /// 4. `[readonly]` The Safe's vault authority, i.e., the program derived address.
+        /// 5  `[]`         The SrmSafe account.
+        /// 6. `[]`         SPL token program.
+        /// 7. `[]`         Clock sysvar.
         WithdrawSrm { amount: u64 },
         /// Sets the new authority for the safe instance. If set to all zeroes, then
         /// authority is forever lost.
@@ -115,10 +116,12 @@ pub mod instruction {
         /// Accounts:
         ///
         /// 0. `[signer]    The SafeAccount's authority.
-        /// 1. `[writable]` The Safe's SPL account vault from which we are transferring
-        ///                 The SPL token out of.
-        /// 2  `[writable]` The SrmSafe account.
-        /// 3. `[]`         The SPL token program.
+        /// 1  `[writable]` The SrmSafe account.
+        /// 2. `[writable]` The Safe's SPL vault from which we are transferring
+        ///                 the SPL token out of.
+        /// 3. `[readonly]` The Safe's vault authority, i.e., the program derived address.
+        /// 4. `[writable]` The SPL account to receive the new tokens.
+        /// 5. `[]`         The SPL token program.
         Migrate,
     }
 }

@@ -7,9 +7,9 @@ use solana_sdk::sysvar::rent::Rent;
 use solana_sdk::sysvar::Sysvar;
 use spl_token::pack::Pack;
 
-pub fn handler(
-    program_id: &Pubkey,
-    accounts: &[AccountInfo],
+pub fn handler<'a>(
+    program_id: &'a Pubkey,
+    accounts: &'a [AccountInfo<'a>],
     mint: Pubkey,
     authority: Pubkey,
     nonce: u8,
@@ -18,28 +18,27 @@ pub fn handler(
     let account_info_iter = &mut accounts.iter();
     let safe_account_info = next_account_info(account_info_iter)?;
     let safe_account_data_len = safe_account_info.data_len();
-    let rent = &Rent::from_account_info(next_account_info(account_info_iter)?)?;
+    let rent = Rent::from_account_info(next_account_info(account_info_iter)?)?;
 
     let mut safe_account_data = safe_account_info.try_borrow_mut_data()?;
     SafeAccount::unpack_unchecked_mut(
         &mut safe_account_data,
         &mut |safe_account: &mut SafeAccount| {
-            initialize_access_control(
+            access_control(AccessControlRequest {
                 program_id,
                 safe_account,
                 safe_account_info,
                 safe_account_data_len,
                 rent,
                 nonce,
-            )?;
+            })?;
 
-            safe_account.mint = mint;
-            safe_account.is_initialized = true;
-            safe_account.supply = 0;
-            safe_account.authority = authority;
-            safe_account.nonce = nonce;
-            // todo: consider adding the vault to the safe account directly
-            //       if we do that, then check the owner in access control
+            state_transition(StateTransitionRequest {
+                safe_account,
+                mint,
+                authority,
+                nonce,
+            })?;
 
             info!("safe initialization complete");
 
@@ -49,15 +48,18 @@ pub fn handler(
     .map_err(|e| SafeError::ProgramError(e))
 }
 
-fn initialize_access_control(
-    program_id: &Pubkey,
-    safe_account: &SafeAccount,
-    safe_account_info: &AccountInfo,
-    safe_account_data_len: usize,
-    rent: &Rent,
-    nonce: u8,
-) -> Result<(), SafeError> {
+fn access_control<'a, 'b>(req: AccessControlRequest<'a, 'b>) -> Result<(), SafeError> {
     info!("ACCESS CONTROL: initialize");
+
+    let AccessControlRequest {
+        program_id,
+        safe_account,
+        safe_account_info,
+        safe_account_data_len,
+        rent,
+        nonce,
+    } = req;
+
     if safe_account.is_initialized {
         return Err(SafeError::ErrorCode(SafeErrorCode::AlreadyInitialized));
     }
@@ -77,4 +79,39 @@ fn initialize_access_control(
     }
     info!("ACCESS CONTROL: success");
     Ok(())
+}
+
+struct AccessControlRequest<'a, 'b> {
+    program_id: &'a Pubkey,
+    safe_account: &'b SafeAccount,
+    safe_account_info: &'a AccountInfo<'a>,
+    safe_account_data_len: usize,
+    rent: Rent,
+    nonce: u8,
+}
+
+fn state_transition<'a>(req: StateTransitionRequest<'a>) -> Result<(), SafeError> {
+    let StateTransitionRequest {
+        safe_account,
+        mint,
+        authority,
+        nonce,
+    } = req;
+
+    safe_account.mint = mint;
+    safe_account.is_initialized = true;
+    safe_account.supply = 0;
+    safe_account.authority = authority;
+    safe_account.nonce = nonce;
+    // todo: consider adding the vault to the safe account directly
+    //       if we do that, then check the owner in access control
+
+    Ok(())
+}
+
+struct StateTransitionRequest<'a> {
+    safe_account: &'a mut SafeAccount,
+    mint: Pubkey,
+    authority: Pubkey,
+    nonce: u8,
 }

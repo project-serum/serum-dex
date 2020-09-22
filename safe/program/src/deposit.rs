@@ -10,9 +10,9 @@ use solana_sdk::sysvar::rent::Rent;
 use solana_sdk::sysvar::Sysvar;
 use spl_token::pack::Pack;
 
-pub fn handler(
-    program_id: &Pubkey,
-    accounts: &[AccountInfo],
+pub fn handler<'a>(
+    program_id: &'a Pubkey,
+    accounts: &'a [AccountInfo<'a>],
     vesting_account_beneficiary: Pubkey,
     vesting_slots: Vec<u64>,
     vesting_amounts: Vec<u64>,
@@ -27,7 +27,7 @@ pub fn handler(
     let safe_srm_vault_to = next_account_info(account_info_iter)?;
     let safe_account_info = next_account_info(account_info_iter)?;
     let spl_token_program_account_info = next_account_info(account_info_iter)?;
-    let rent = &Rent::from_account_info(next_account_info(account_info_iter)?)?;
+    let rent = Rent::from_account_info(next_account_info(account_info_iter)?)?;
 
     let mut vesting_account_data = vesting_account_info.data.borrow_mut();
     let vesting_account_data_len = vesting_account_data.len();
@@ -55,53 +55,30 @@ pub fn handler(
     VestingAccount::unpack_unchecked_mut(
         &mut vesting_account_data,
         &mut |vesting_account: &mut VestingAccount| {
-            deposit_srm_access_control(
+            access_control(AccessControlRequest {
                 program_id,
                 vesting_account,
                 vesting_account_info,
                 vesting_account_data_len,
-                &safe_account,
+                safe_account: &safe_account,
                 safe_account_info,
                 depositor_from,
                 safe_srm_vault_to,
                 rent,
-            )?;
-            // Update account.
-            vesting_account.safe = safe_account_info.key.clone();
-            vesting_account.beneficiary = vesting_account_beneficiary;
-            vesting_account.initialized = true;
-            vesting_account.slots = vesting_slots.clone();
-            vesting_account.amounts = vesting_amounts.clone();
+            })?;
 
-            let total_vest_amount = vesting_amounts.iter().sum();
+            state_transition(StateTransitionRequest {
+                vesting_account,
+                vesting_account_beneficiary,
+                safe_account_info,
+                vesting_slots: vesting_slots.clone(),
+                vesting_amounts: vesting_amounts.clone(),
+                depositor_from,
+                safe_srm_vault_to,
+                authority_depositor_from,
+                spl_token_program_account_info,
+            })?;
 
-            // Now transfer SPL funds from the depositor, to the
-            // program-controlled-address.
-            info!("invoke SPL token transfer");
-            let transfer_result = {
-                let deposit_instruction = spl_token::instruction::transfer(
-                    &spl_token::ID,
-                    depositor_from.key,
-                    safe_srm_vault_to.key,
-                    authority_depositor_from.key,
-                    &[],
-                    total_vest_amount,
-                )
-                .unwrap();
-                assert_eq!(*spl_token_program_account_info.key, spl_token::ID);
-                solana_sdk::program::invoke_signed(
-                    &deposit_instruction,
-                    &[
-                        depositor_from.clone(),
-                        authority_depositor_from.clone(),
-                        safe_srm_vault_to.clone(),
-                        spl_token_program_account_info.clone(),
-                    ],
-                    &[],
-                )
-            };
-            info!("SPL token transfer complete");
-            transfer_result?;
             Ok(())
         },
     )?;
@@ -110,17 +87,19 @@ pub fn handler(
     Ok(())
 }
 
-fn deposit_srm_access_control(
-    program_id: &Pubkey,
-    vesting_account: &VestingAccount,
-    vesting_account_info: &AccountInfo,
-    vesting_account_data_len: usize,
-    safe_account: &SafeAccount,
-    safe_account_info: &AccountInfo,
-    depositor_from: &AccountInfo,
-    safe_srm_vault_to: &AccountInfo,
-    rent: &Rent,
-) -> Result<(), ProgramError> {
+fn access_control<'a, 'b, 'c>(req: AccessControlRequest<'a, 'b, 'c>) -> Result<(), ProgramError> {
+    let AccessControlRequest {
+        program_id,
+        vesting_account,
+        vesting_account_info,
+        vesting_account_data_len,
+        safe_account,
+        safe_account_info,
+        depositor_from,
+        safe_srm_vault_to,
+        rent,
+    } = req;
+
     if vesting_account.initialized {
         return Err(SafeError::ErrorCode(SafeErrorCode::AlreadyInitialized).into());
     }
@@ -143,4 +122,80 @@ fn deposit_srm_access_control(
         return Err(SafeError::ErrorCode(SafeErrorCode::WrongVault).into());
     }
     Ok(())
+}
+
+struct AccessControlRequest<'a, 'b, 'c> {
+    program_id: &'a Pubkey,
+    vesting_account: &'b VestingAccount,
+    vesting_account_info: &'a AccountInfo<'a>,
+    vesting_account_data_len: usize,
+    safe_account: &'c SafeAccount,
+    safe_account_info: &'a AccountInfo<'a>,
+    depositor_from: &'a AccountInfo<'a>,
+    safe_srm_vault_to: &'a AccountInfo<'a>,
+    rent: Rent,
+}
+
+fn state_transition<'a, 'b>(req: StateTransitionRequest<'a, 'b>) -> Result<(), SafeError> {
+    let StateTransitionRequest {
+        vesting_account,
+        vesting_account_beneficiary,
+        safe_account_info,
+        vesting_slots,
+        vesting_amounts,
+        depositor_from,
+        safe_srm_vault_to,
+        authority_depositor_from,
+        spl_token_program_account_info,
+    } = req;
+
+    // Update account.
+    vesting_account.safe = safe_account_info.key.clone();
+    vesting_account.beneficiary = vesting_account_beneficiary;
+    vesting_account.initialized = true;
+    vesting_account.slots = vesting_slots.clone();
+    vesting_account.amounts = vesting_amounts.clone();
+
+    let total_vest_amount = vesting_amounts.iter().sum();
+
+    // Now transfer SPL funds from the depositor, to the
+    // program-controlled-address.
+    info!("invoke SPL token transfer");
+
+    let deposit_instruction = spl_token::instruction::transfer(
+        &spl_token::ID,
+        depositor_from.key,
+        safe_srm_vault_to.key,
+        authority_depositor_from.key,
+        &[],
+        total_vest_amount,
+    )
+    .unwrap();
+    assert_eq!(*spl_token_program_account_info.key, spl_token::ID);
+    solana_sdk::program::invoke_signed(
+        &deposit_instruction,
+        &[
+            depositor_from.clone(),
+            authority_depositor_from.clone(),
+            safe_srm_vault_to.clone(),
+            spl_token_program_account_info.clone(),
+        ],
+        &[],
+    )?;
+
+    info!("SPL token transfer complete");
+
+    Ok(())
+}
+
+struct StateTransitionRequest<'a, 'b> {
+    vesting_account: &'b mut VestingAccount,
+    vesting_account_beneficiary: Pubkey,
+    safe_account_info: &'a AccountInfo<'a>,
+    vesting_slots: Vec<u64>,
+    vesting_amounts: Vec<u64>,
+    depositor_from: &'a AccountInfo<'a>,
+    safe_srm_vault_to: &'a AccountInfo<'a>,
+    authority_depositor_from: &'a AccountInfo<'a>,
+    spl_token_program_account_info: &'a AccountInfo<'a>,
 }

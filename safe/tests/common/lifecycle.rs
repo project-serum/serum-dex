@@ -163,6 +163,7 @@ pub fn deposit_with_schedule(
         safe_srm_vault_authority,
         depositor,
         srm_mint,
+        safe_authority,
         ..
     } = initialize();
 
@@ -215,6 +216,7 @@ pub fn deposit_with_schedule(
         safe_srm_vault,
         safe_srm_vault_authority,
         srm_mint,
+        safe_authority,
     }
 }
 
@@ -228,6 +230,7 @@ pub struct Deposited {
     pub safe_srm_vault: Keypair,
     pub safe_srm_vault_authority: Pubkey,
     pub srm_mint: Keypair,
+    pub safe_authority: Keypair,
 }
 
 pub fn mint_lsrm(
@@ -245,6 +248,7 @@ pub fn mint_lsrm(
         safe_srm_vault,
         safe_srm_vault_authority,
         srm_mint,
+        ..
     } = deposit_with_schedule(vesting_slot_offsets, vesting_amounts);
 
     let lsrm = {
