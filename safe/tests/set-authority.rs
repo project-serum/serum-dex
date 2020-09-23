@@ -1,11 +1,9 @@
 use common::lifecycle::{self, Initialized};
 use rand::rngs::OsRng;
 use serum_safe::accounts::SafeAccount;
-use solana_client_gen::solana_sdk::commitment_config::CommitmentConfig;
 use solana_client_gen::solana_sdk::instruction::AccountMeta;
 use solana_client_gen::solana_sdk::pubkey::Pubkey;
 use solana_client_gen::solana_sdk::signature::{Keypair, Signer};
-use std::str::FromStr;
 
 mod common;
 
@@ -17,12 +15,8 @@ fn set_authority() {
     let Initialized {
         client,
         safe_account,
-        safe_srm_vault,
-        safe_srm_vault_authority,
         safe_authority,
-        depositor,
-        depositor_balance_before,
-        srm_mint,
+        ..
     } = lifecycle::initialize();
 
     // When.
@@ -56,12 +50,8 @@ fn set_authority_zero() {
     let Initialized {
         client,
         safe_account,
-        safe_srm_vault,
-        safe_srm_vault_authority,
         safe_authority,
-        depositor,
-        depositor_balance_before,
-        srm_mint,
+        ..
     } = lifecycle::initialize();
 
     // When.

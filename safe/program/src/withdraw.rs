@@ -13,7 +13,7 @@ pub fn handler<'a>(
     accounts: &'a [AccountInfo<'a>],
     amount: u64,
 ) -> Result<(), SafeError> {
-    info!("HANDLER: withdraw_srm");
+    info!("handler: withdraw_srm");
 
     let account_info_iter = &mut accounts.iter();
 

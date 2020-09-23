@@ -34,6 +34,9 @@ pub enum SafeErrorCode {
     AlreadyBurned = 21,
     InvalidAccountOwner = 22,
     UnauthorizedReceipt = 23,
+    TokenAccountAlreadyInitialized = 24,
+    TokenAccountOwnerMismatch = 25,
+    InvalidTokenProgram = 26,
     Unknown = 1000,
 }
 

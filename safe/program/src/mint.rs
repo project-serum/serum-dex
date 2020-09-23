@@ -3,14 +3,13 @@ use serum_safe::accounts::{LsrmReceipt, SrmVault, VestingAccount};
 use serum_safe::error::{SafeError, SafeErrorCode};
 use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::info;
-use solana_sdk::instruction::AccountMeta;
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::sysvar::rent::Rent;
 use solana_sdk::sysvar::Sysvar;
 use spl_token::pack::Pack;
 
 pub fn handler<'a>(
-    program_id: &'a Pubkey,
+    _program_id: &'a Pubkey,
     accounts: &'a [AccountInfo<'a>],
     token_account_owner: Pubkey,
 ) -> Result<(), SafeError> {
@@ -60,14 +59,12 @@ pub fn handler<'a>(
                 spl_token_program_account_info,
                 rent,
                 rent_account_info,
-                token_account_owner,
             })?;
 
             state_transition(StateTransitionRequest {
                 accounts,
                 lsrm_nfts: &lsrm_nfts,
                 vesting_account_info,
-                program_id,
                 vesting_account,
                 lsrm_nft_count,
                 token_account_owner,
@@ -92,7 +89,6 @@ fn access_control<'a, 'b>(req: AccessControlRequest<'a, 'b>) -> Result<(), SafeE
         spl_token_program_account_info,
         rent,
         rent_account_info,
-        ..
     } = req;
 
     assert_eq!(*spl_token_program_account_info.key, spl_token::ID);
@@ -109,9 +105,7 @@ fn access_control<'a, 'b>(req: AccessControlRequest<'a, 'b>) -> Result<(), SafeE
     }
 
     // Perform checks on all NFT instances.
-    for nft in lsrm_nfts {
-        let (mint, token_account, receipt) = nft;
-
+    for (mint, token_account, receipt) in lsrm_nfts {
         // NFT mint must be uninitialized.
         let data = mint.try_borrow_data()?;
         let nft_data_len = data.len();
@@ -126,14 +120,24 @@ fn access_control<'a, 'b>(req: AccessControlRequest<'a, 'b>) -> Result<(), SafeE
         if initialized != 0u8 {
             return Err(SafeError::ErrorCode(SafeErrorCode::LsrmReceiptAlreadyInitialized).into());
         }
-        // Both must be rent exempt.
+        // Rent Exemption.
         if !rent.is_exempt(mint.lamports(), nft_data_len) {
             return Err(SafeError::ErrorCode(SafeErrorCode::NotRentExempt).into());
         }
         if !rent.is_exempt(receipt.lamports(), receipt_data_len) {
             return Err(SafeError::ErrorCode(SafeErrorCode::NotRentExempt).into());
         }
-        // TODO: checks on the token_account.
+        if !rent.is_exempt(token_account.lamports(), token_account.try_data_len()?) {
+            return Err(SafeError::ErrorCode(SafeErrorCode::NotRentExempt).into());
+        }
+        // Token account must be uninitialized.
+        let token_account =
+            spl_token::state::Account::unpack_unchecked(&token_account.try_borrow_data()?)?;
+        if token_account.state != spl_token::state::AccountState::Uninitialized {
+            return Err(SafeError::ErrorCode(
+                SafeErrorCode::TokenAccountAlreadyInitialized,
+            ));
+        }
     }
     info!("access-control: success");
 
@@ -149,7 +153,6 @@ struct AccessControlRequest<'a, 'b> {
     spl_token_program_account_info: &'a AccountInfo<'a>,
     rent: Rent,
     rent_account_info: &'a AccountInfo<'a>,
-    token_account_owner: Pubkey,
 }
 
 fn state_transition<'a, 'b>(req: StateTransitionRequest<'a, 'b>) -> Result<(), SafeError> {
@@ -159,7 +162,6 @@ fn state_transition<'a, 'b>(req: StateTransitionRequest<'a, 'b>) -> Result<(), S
         accounts,
         lsrm_nfts,
         vesting_account_info,
-        program_id,
         vesting_account,
         lsrm_nft_count,
         token_account_owner,
@@ -267,7 +269,6 @@ struct StateTransitionRequest<'a, 'b> {
     // (spl mint, spl account, lsrm receipt) pairs
     lsrm_nfts: &'b [(AccountInfo<'a>, &'a AccountInfo<'a>, &'a AccountInfo<'a>)],
     vesting_account_info: &'a AccountInfo<'a>,
-    program_id: &'a Pubkey,
     vesting_account: &'b mut VestingAccount,
     lsrm_nft_count: u64,
     token_account_owner: Pubkey,

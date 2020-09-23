@@ -1,8 +1,6 @@
-use common::lifecycle::{self, Initialized};
+use common::lifecycle;
 use rand::rngs::OsRng;
-use solana_client_gen::solana_sdk::commitment_config::CommitmentConfig;
 use solana_client_gen::solana_sdk::instruction::AccountMeta;
-use solana_client_gen::solana_sdk::pubkey::Pubkey;
 use solana_client_gen::solana_sdk::signature::{Keypair, Signer};
 
 mod common;
@@ -17,15 +15,12 @@ fn migrate() {
     // An initialized safe with deposit.
     let lifecycle::Deposited {
         client,
-        vesting_account,
-        vesting_account_beneficiary,
-        vesting_account_slots,
-        vesting_account_amounts,
         safe_account,
         safe_srm_vault,
         safe_srm_vault_authority,
         srm_mint,
         safe_authority,
+				..
     } = lifecycle::deposit_with_schedule(vec![1, 2, 3, 4, 5], vec![100, 200, 300, 400, 500]);
     // And.
     //

@@ -26,7 +26,6 @@ pub fn handler<'a>(
         token_owner_account_info,
         token_account_info,
         mint_account_info,
-        vesting_account_info,
         receipt_account_info,
         token_program_account_info,
     })?;
@@ -43,8 +42,6 @@ pub fn handler<'a>(
                         token_owner_account_info,
                         token_account_info,
                         mint_account_info,
-                        vesting_account_info,
-                        receipt_account_info,
                         token_program_account_info,
                     })?;
                     Ok(())
@@ -64,7 +61,6 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), SafeError> {
         token_owner_account_info,
         token_account_info,
         mint_account_info,
-        vesting_account_info,
         receipt_account_info,
         token_program_account_info,
     } = req;
@@ -92,6 +88,9 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), SafeError> {
     if receipt.mint != *mint_account_info.key {
         return Err(SafeError::ErrorCode(SafeErrorCode::WrongCoinMint));
     }
+    if *token_program_account_info.key != spl_token::ID {
+        return Err(SafeError::ErrorCode(SafeErrorCode::InvalidTokenProgram));
+    }
 
     info!("access-control: success");
 
@@ -105,8 +104,6 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), SafeError> {
         token_owner_account_info,
         token_account_info,
         mint_account_info,
-        vesting_account_info,
-        receipt_account_info,
         token_program_account_info,
         vesting_account,
         lsrm_receipt,
@@ -159,7 +156,6 @@ struct AccessControlRequest<'a> {
     token_owner_account_info: &'a AccountInfo<'a>,
     token_account_info: &'a AccountInfo<'a>,
     mint_account_info: &'a AccountInfo<'a>,
-    vesting_account_info: &'a AccountInfo<'a>,
     receipt_account_info: &'a AccountInfo<'a>,
     token_program_account_info: &'a AccountInfo<'a>,
 }
@@ -170,7 +166,5 @@ struct StateTransitionRequest<'a, 'b> {
     token_owner_account_info: &'a AccountInfo<'a>,
     token_account_info: &'a AccountInfo<'a>,
     mint_account_info: &'a AccountInfo<'a>,
-    vesting_account_info: &'a AccountInfo<'a>,
-    receipt_account_info: &'a AccountInfo<'a>,
     token_program_account_info: &'a AccountInfo<'a>,
 }

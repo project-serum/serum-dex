@@ -24,7 +24,6 @@ pub fn handler<'a>(
         &mut |safe_account: &mut SafeAccount| {
             access_control(AccessControlRequest {
                 safe_authority_account_info,
-                safe_account_info,
                 safe_account_authority: &safe_account.authority,
             })?;
 
@@ -44,7 +43,6 @@ fn access_control<'a, 'b>(req: AccessControlRequest<'a, 'b>) -> Result<(), SafeE
 
     let AccessControlRequest {
         safe_authority_account_info,
-        safe_account_info,
         safe_account_authority,
     } = req;
     if !safe_authority_account_info.is_signer {
@@ -61,7 +59,6 @@ fn access_control<'a, 'b>(req: AccessControlRequest<'a, 'b>) -> Result<(), SafeE
 
 struct AccessControlRequest<'a, 'b> {
     safe_authority_account_info: &'a AccountInfo<'a>,
-    safe_account_info: &'a AccountInfo<'a>,
     safe_account_authority: &'b Pubkey,
 }
 
