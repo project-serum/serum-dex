@@ -20,7 +20,7 @@ pub enum SafeErrorCode {
     NotOwnedByProgram = 4,
     VestingAccountDataInvalid = 5,
     WrongCoinMint = 6,
-    SafeAccountDataInvalid = 8,
+    SafeDataInvalid = 8,
     NotSignedByAuthority = 11,
     WrongNumberOfAccounts = 12,
     InsufficientBalance = 13,

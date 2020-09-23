@@ -1,6 +1,6 @@
 use common::lifecycle::{self, Initialized};
 use rand::rngs::OsRng;
-use serum_safe::accounts::SafeAccount;
+use serum_safe::accounts::Safe;
 use solana_client_gen::solana_sdk::instruction::AccountMeta;
 use solana_client_gen::solana_sdk::pubkey::Pubkey;
 use solana_client_gen::solana_sdk::signature::{Keypair, Signer};
@@ -14,7 +14,7 @@ fn set_authority() {
     // An initialized safe.
     let Initialized {
         client,
-        safe_account,
+        safe_acc,
         safe_authority,
         ..
     } = lifecycle::initialize();
@@ -25,7 +25,7 @@ fn set_authority() {
     let new_authority = Keypair::generate(&mut OsRng);
     let accounts = [
         AccountMeta::new_readonly(safe_authority.pubkey(), true),
-        AccountMeta::new(safe_account.pubkey(), false),
+        AccountMeta::new(safe_acc.pubkey(), false),
     ];
     let signers = [&safe_authority, client.payer()];
     client
@@ -36,9 +36,9 @@ fn set_authority() {
     //
     // The safe account should be updated.
     {
-        let safe_account: SafeAccount =
-            serum_common::client::rpc::account_unpacked(client.rpc(), &safe_account.pubkey());
-        assert_eq!(safe_account.authority, new_authority.pubkey());
+        let safe_acc: Safe =
+            serum_common::client::rpc::account_unpacked(client.rpc(), &safe_acc.pubkey());
+        assert_eq!(safe_acc.authority, new_authority.pubkey());
     }
 }
 
@@ -49,7 +49,7 @@ fn set_authority_zero() {
     // An initialized safe.
     let Initialized {
         client,
-        safe_account,
+        safe_acc,
         safe_authority,
         ..
     } = lifecycle::initialize();
@@ -60,7 +60,7 @@ fn set_authority_zero() {
     let new_authority = Pubkey::new_from_array([0; 32]);
     let accounts = [
         AccountMeta::new_readonly(safe_authority.pubkey(), true),
-        AccountMeta::new(safe_account.pubkey(), false),
+        AccountMeta::new(safe_acc.pubkey(), false),
     ];
     let signers = [&safe_authority, client.payer()];
     client
@@ -71,8 +71,8 @@ fn set_authority_zero() {
     //
     // The safe account should be updated.
     {
-        let safe_account: SafeAccount =
-            serum_common::client::rpc::account_unpacked(client.rpc(), &safe_account.pubkey());
-        assert_eq!(safe_account.authority, new_authority);
+        let safe_acc: Safe =
+            serum_common::client::rpc::account_unpacked(client.rpc(), &safe_acc.pubkey());
+        assert_eq!(safe_acc.authority, new_authority);
     }
 }

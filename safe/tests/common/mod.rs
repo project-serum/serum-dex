@@ -3,7 +3,7 @@
 
 use serum_common::client::Cluster;
 use serum_safe::client::{Client, RequestOptions};
-use solana_client::rpc_config::RpcSendTransactionConfig;
+use solana_client_gen::solana_client::rpc_config::RpcSendTransactionConfig;
 use solana_client_gen::solana_sdk::commitment_config::CommitmentConfig;
 
 pub mod assert;

@@ -2,7 +2,7 @@ use common::assert::assert_eq_vec;
 use common::lifecycle;
 use rand::rngs::OsRng;
 use serum_common::pack::Pack;
-use serum_safe::accounts::VestingAccount;
+use serum_safe::accounts::Vesting;
 use serum_safe::error::SafeErrorCode;
 use solana_client_gen::solana_sdk::commitment_config::CommitmentConfig;
 use solana_client_gen::solana_sdk::instruction::AccountMeta;
@@ -136,10 +136,10 @@ fn withdraw_test(params: WithdrawTestParams) {
     // A vesting account.
     let StartState {
         client,
-        vesting_account,
-        vesting_account_beneficiary,
-        vesting_account_slots,
-        safe_account,
+        vesting_acc,
+        vesting_acc_beneficiary,
+        vesting_acc_slots,
+        safe_acc,
         safe_srm_vault,
         safe_srm_vault_authority,
         srm_mint,
@@ -148,10 +148,10 @@ fn withdraw_test(params: WithdrawTestParams) {
     // And.
     //
     // An empty SRM SPL token account.
-    let beneficiary_srm_spl_account = serum_common::client::rpc::create_spl_account(
+    let beneficiary_srm_spl_acc = serum_common::client::rpc::create_token_account(
         client.rpc(),
         &srm_mint.pubkey(),
-        &vesting_account_beneficiary.pubkey(),
+        &vesting_acc_beneficiary.pubkey(),
         client.payer(),
     )
     .unwrap();
@@ -160,23 +160,23 @@ fn withdraw_test(params: WithdrawTestParams) {
     //
     // The vesting period passes (or doesn't if set to None).
     if let Some(slot_wait_index) = slot_wait_index {
-        common::blockchain::pass_time(client.rpc(), vesting_account_slots[slot_wait_index]);
+        common::blockchain::pass_time(client.rpc(), vesting_acc_slots[slot_wait_index]);
     }
     // And.
     //
     // I withdraw from the vesting account *to* the empty SPL token account.
     {
         let accounts = [
-            AccountMeta::new_readonly(vesting_account_beneficiary.pubkey(), true),
-            AccountMeta::new(vesting_account, false),
-            AccountMeta::new(beneficiary_srm_spl_account.pubkey(), false),
+            AccountMeta::new_readonly(vesting_acc_beneficiary.pubkey(), true),
+            AccountMeta::new(vesting_acc, false),
+            AccountMeta::new(beneficiary_srm_spl_acc.pubkey(), false),
             AccountMeta::new(safe_srm_vault.pubkey(), false),
             AccountMeta::new_readonly(safe_srm_vault_authority, false),
-            AccountMeta::new(safe_account, false),
+            AccountMeta::new(safe_acc, false),
             AccountMeta::new_readonly(spl_token::ID, false),
             AccountMeta::new_readonly(sysvar::clock::ID, false),
         ];
-        let signers = [&vesting_account_beneficiary, client.payer()];
+        let signers = [&vesting_acc_beneficiary, client.payer()];
         let r = client.withdraw_srm_with_signers(&signers, &accounts, expected_withdraw_amount);
         if error_code.is_some() {
             match r {
@@ -191,11 +191,11 @@ fn withdraw_test(params: WithdrawTestParams) {
     //
     // I should have SRM in my account.
     {
-        let spl_account = {
+        let spl_acc = {
             let account = client
                 .rpc()
                 .get_account_with_commitment(
-                    &beneficiary_srm_spl_account.pubkey(),
+                    &beneficiary_srm_spl_acc.pubkey(),
                     CommitmentConfig::recent(),
                 )
                 .unwrap()
@@ -203,23 +203,23 @@ fn withdraw_test(params: WithdrawTestParams) {
                 .unwrap();
             spl_token::state::Account::unpack_from_slice(&account.data).unwrap()
         };
-        assert_eq!(spl_account.amount, expected_spl_balance);
+        assert_eq!(spl_acc.amount, expected_spl_balance);
     }
 
     // Then.
     //
     // My vesting account amounts should be updated.
     {
-        let vesting_account = {
+        let vesting_acc = {
             let account = client
                 .rpc()
-                .get_account_with_commitment(&vesting_account, CommitmentConfig::recent())
+                .get_account_with_commitment(&vesting_acc, CommitmentConfig::recent())
                 .unwrap()
                 .value
                 .unwrap();
-            VestingAccount::unpack(&account.data).unwrap()
+            Vesting::unpack(&account.data).unwrap()
         };
-        assert_eq_vec(vesting_account.amounts, expected_vesting_amounts);
+        assert_eq_vec(vesting_acc.amounts, expected_vesting_amounts);
     }
 }
 
@@ -239,30 +239,30 @@ fn start_state(
         TestType::Normal => {
             let lifecycle::Deposited {
                 client,
-                vesting_account,
-                vesting_account_beneficiary,
-                vesting_account_slots,
-                vesting_account_amounts,
-                safe_account,
+                vesting_acc,
+                vesting_acc_beneficiary,
+                vesting_acc_slots,
+                vesting_acc_amounts,
+                safe_acc,
                 safe_srm_vault,
                 safe_srm_vault_authority,
                 srm_mint,
                 ..
             } = lifecycle::deposit_with_schedule(vesting_slot_offsets, vesting_amounts);
             // Dummy keypair to stuff into type. Not used.
-            let lsrm_token_account_owner = Keypair::generate(&mut OsRng);
+            let lsrm_token_acc_owner = Keypair::generate(&mut OsRng);
             lifecycle::LsrmMinted {
                 client,
-                vesting_account,
-                vesting_account_beneficiary,
-                vesting_account_slots,
-                vesting_account_amounts,
-                safe_account,
+                vesting_acc,
+                vesting_acc_beneficiary,
+                vesting_acc_slots,
+                vesting_acc_amounts,
+                safe_acc,
                 safe_srm_vault,
                 safe_srm_vault_authority,
                 srm_mint,
                 lsrm: vec![],
-                lsrm_token_account_owner,
+                lsrm_token_acc_owner,
             }
         }
     }

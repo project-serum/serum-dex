@@ -46,8 +46,7 @@ pub fn create_account_rent_exempt(
     Ok(account)
 }
 
-// TODO: rename to create_token-account.
-pub fn create_spl_account(
+pub fn create_token_account(
     client: &RpcClient,
     mint_pubkey: &Pubkey,
     owner_pubkey: &Pubkey,

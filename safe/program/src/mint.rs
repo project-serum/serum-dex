@@ -1,5 +1,5 @@
 use serum_common::pack::Pack;
-use serum_safe::accounts::{LsrmReceipt, SrmVault, VestingAccount};
+use serum_safe::accounts::{LsrmReceipt, TokenVault, Vesting};
 use serum_safe::error::{SafeError, SafeErrorCode};
 use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::info;
@@ -48,9 +48,9 @@ pub fn handler<'a>(
         accounts_len: accounts.len(),
     })?;
 
-    VestingAccount::unpack_mut(
+    Vesting::unpack_mut(
         &mut vesting_acc_info.try_borrow_mut_data()?,
-        &mut |vesting_acc: &mut VestingAccount| {
+        &mut |vesting_acc: &mut Vesting| {
             state_transition(StateTransitionRequest {
                 accounts,
                 lsrm_nfts: &lsrm_nfts,
@@ -62,8 +62,9 @@ pub fn handler<'a>(
             })?;
             Ok(())
         },
-    )
-    .map_err(|e| SafeError::ProgramError(e))
+    )?;
+
+    Ok(())
 }
 
 fn access_control<'a, 'b>(req: AccessControlRequest<'a, 'b>) -> Result<(), SafeError> {
@@ -88,7 +89,7 @@ fn access_control<'a, 'b>(req: AccessControlRequest<'a, 'b>) -> Result<(), SafeE
     if !vesting_acc_beneficiary_info.is_signer {
         return Err(SafeError::ErrorCode(SafeErrorCode::Unauthorized));
     }
-    let vesting_acc = VestingAccount::unpack(&vesting_acc_info.try_borrow_data()?)?;
+    let vesting_acc = Vesting::unpack(&vesting_acc_info.try_borrow_data()?)?;
     if *vesting_acc_beneficiary_info.key != vesting_acc.beneficiary {
         return Err(SafeError::ErrorCode(SafeErrorCode::Unauthorized));
     }
@@ -132,6 +133,7 @@ fn access_control<'a, 'b>(req: AccessControlRequest<'a, 'b>) -> Result<(), SafeE
             ));
         }
     }
+
     info!("access-control: success");
 
     Ok(())
@@ -159,8 +161,8 @@ fn state_transition<'a, 'b>(req: StateTransitionRequest<'a, 'b>) -> Result<(), S
                 {
                     receipt.initialized = true;
                     receipt.mint = *mint.key;
-                    receipt.spl_account = *token_acc.key;
-                    receipt.vesting_account = *vesting_acc_info.key;
+                    receipt.spl_acc = *token_acc.key;
+                    receipt.vesting_acc = *vesting_acc_info.key;
                     receipt.burned = false;
                 }
                 // Initialize the NFT mint.
@@ -200,8 +202,8 @@ fn state_transition<'a, 'b>(req: StateTransitionRequest<'a, 'b>) -> Result<(), S
                     )?;
 
                     let data = safe_acc_info.try_borrow_data()?;
-                    let nonce = &[data[data.len() - 1]];
-                    let signer_seeds = SrmVault::signer_seeds(safe_acc_info.key, nonce);
+                    let nonce = data[data.len() - 1];
+                    let signer_seeds = TokenVault::signer_seeds(safe_acc_info.key, &nonce);
 
                     solana_sdk::program::invoke_signed(
                         &mint_to_instr,
@@ -222,8 +224,8 @@ fn state_transition<'a, 'b>(req: StateTransitionRequest<'a, 'b>) -> Result<(), S
                     )?;
 
                     let data = safe_acc_info.try_borrow_data()?;
-                    let nonce = &[data[data.len() - 1]];
-                    let signer_seeds = SrmVault::signer_seeds(safe_acc_info.key, nonce);
+                    let nonce = data[data.len() - 1];
+                    let signer_seeds = TokenVault::signer_seeds(safe_acc_info.key, &nonce);
 
                     solana_sdk::program::invoke_signed(
                         &set_authority_instr,
@@ -260,7 +262,7 @@ struct StateTransitionRequest<'a, 'b> {
     // (SPL mint, token account, lsrm receipt) pairs.
     lsrm_nfts: &'b [(AccountInfo<'a>, &'a AccountInfo<'a>, &'a AccountInfo<'a>)],
     vesting_acc_info: &'a AccountInfo<'a>,
-    vesting_acc: &'b mut VestingAccount,
+    vesting_acc: &'b mut Vesting,
     token_acc_owner: Pubkey,
     safe_acc_info: &'a AccountInfo<'a>,
     safe_vault_authority_acc_info: &'a AccountInfo<'a>,
@@ -269,6 +271,6 @@ struct StateTransitionRequest<'a, 'b> {
 // The number of accounts that are non-variable in the instruction.
 const FIXED_ACCS: usize = 6;
 // The pair size for accounts that are viariable in this instruction.
-// That is, every lSRM has `dyn_account_pieces` number of accounts
+// That is, every lSRM has `DYN_ACC_PIECES` number of accounts
 // associated with it.
 const DYN_ACC_PIECES: usize = 3;

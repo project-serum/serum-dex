@@ -1,4 +1,4 @@
-use solana_client::rpc_client::RpcClient;
+use solana_client_gen::solana_client::rpc_client::RpcClient;
 
 pub fn pass_time(client: &RpcClient, slot_num: u64) {
     let mut retries = 100;

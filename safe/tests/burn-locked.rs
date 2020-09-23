@@ -1,5 +1,5 @@
 use common::lifecycle::{self, LsrmMinted};
-use serum_safe::accounts::{LsrmReceipt, VestingAccount};
+use serum_safe::accounts::{LsrmReceipt, Vesting};
 use solana_client_gen::solana_sdk::instruction::AccountMeta;
 use solana_client_gen::solana_sdk::signature::Signer;
 
@@ -12,9 +12,9 @@ fn burn_lsrm() {
     // A vesting account with outstanding lSRM.
     let LsrmMinted {
         client,
-        vesting_account,
+        vesting_acc,
         lsrm,
-        lsrm_token_account_owner,
+        lsrm_token_acc_owner,
         ..
     } = lifecycle::mint_lsrm(2, vec![10_000, 20_000, 30_000], vec![10, 20, 30]);
 
@@ -24,14 +24,14 @@ fn burn_lsrm() {
     //
     // I burn my lSRM.
     let accounts = &[
-        AccountMeta::new(lsrm_token_account_owner.pubkey(), true),
-        AccountMeta::new(lsrm1.token_account.pubkey(), false),
+        AccountMeta::new(lsrm_token_acc_owner.pubkey(), true),
+        AccountMeta::new(lsrm1.token_acc.pubkey(), false),
         AccountMeta::new(lsrm1.mint.pubkey(), false),
         AccountMeta::new(lsrm1.receipt, false),
-        AccountMeta::new(vesting_account, false),
+        AccountMeta::new(vesting_acc, false),
         AccountMeta::new_readonly(spl_token::ID, false),
     ];
-    let signers = &[&lsrm_token_account_owner, client.payer()];
+    let signers = &[&lsrm_token_acc_owner, client.payer()];
     client
         .burn_locked_srm_with_signers(signers, accounts)
         .unwrap();
@@ -48,9 +48,9 @@ fn burn_lsrm() {
     //
     // My vesting account should be updated.
     {
-        let vesting_account: VestingAccount =
-            serum_common::client::rpc::account_unpacked(client.rpc(), &vesting_account);
-        assert_eq!(vesting_account.locked_outstanding, 1);
+        let vesting_acc: Vesting =
+            serum_common::client::rpc::account_unpacked(client.rpc(), &vesting_acc);
+        assert_eq!(vesting_acc.locked_outstanding, 1);
     }
     // Then.
     //
@@ -66,7 +66,7 @@ fn burn_lsrm() {
     {
         let account: spl_token::state::Account = serum_common::client::rpc::account_token_unpacked(
             client.rpc(),
-            &lsrm1.token_account.pubkey(),
+            &lsrm1.token_acc.pubkey(),
         );
         assert_eq!(account.amount, 0);
     }

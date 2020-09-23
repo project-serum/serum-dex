@@ -1,5 +1,5 @@
 use serum_common::pack::Pack;
-use serum_safe::accounts::{SafeAccount, SrmVault};
+use serum_safe::accounts::{Safe, TokenVault};
 use serum_safe::error::{SafeError, SafeErrorCode};
 use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::info;
@@ -23,9 +23,9 @@ pub fn handler<'a>(_program_id: &Pubkey, accounts: &'a [AccountInfo<'a>]) -> Res
         safe_authority_acc_info,
     })?;
 
-    SafeAccount::unpack_mut(
+    Safe::unpack_mut(
         &mut safe_acc_info.try_borrow_mut_data()?,
-        &mut |safe_acc: &mut SafeAccount| {
+        &mut |safe_acc: &mut Safe| {
             let safe_spl_vault =
                 spl_token::state::Account::unpack(&safe_spl_vault_acc_info.try_borrow_data()?)?;
             state_transition(StateTransitionRequest {
@@ -40,19 +40,22 @@ pub fn handler<'a>(_program_id: &Pubkey, accounts: &'a [AccountInfo<'a>]) -> Res
 
             Ok(())
         },
-    )
-    .map_err(|e| SafeError::ProgramError(e))
+    )?;
+
+    Ok(())
 }
 
 fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), SafeError> {
     info!("access-control: migrate");
+
     let AccessControlRequest {
         safe_acc_info,
         safe_authority_acc_info,
     } = req;
 
-    let safe_acc = SafeAccount::unpack(&safe_acc_info.try_borrow_data()?)?;
+    let safe_acc = Safe::unpack(&safe_acc_info.try_borrow_data()?)?;
 
+    if !safe_acc.initialized {}
     if !safe_authority_acc_info.is_signer {
         return Err(SafeError::ErrorCode(SafeErrorCode::Unauthorized));
     }
@@ -63,6 +66,7 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), SafeError> {
     // todo
 
     info!("access-control: success");
+
     Ok(())
 }
 
@@ -92,15 +96,14 @@ fn state_transition<'a, 'b>(req: StateTransitionRequest<'a, 'b>) -> Result<(), S
             safe_spl_vault.amount,
         )?;
 
-        let nonce = &[safe_acc.nonce];
-        let signer_seeds = SrmVault::signer_seeds(safe_acc_info.key, nonce);
+        let seeds = TokenVault::signer_seeds(safe_acc_info.key, &safe_acc.nonce);
         let accs = vec![
             safe_spl_vault_acc_info.clone(),
             receiver_spl_acc_info.clone(),
             safe_spl_vault_authority_acc_info.clone(),
             spl_program_acc_info.clone(),
         ];
-        solana_sdk::program::invoke_signed(&withdraw_instruction, &accs, &[&signer_seeds])?;
+        solana_sdk::program::invoke_signed(&withdraw_instruction, &accs, &[&seeds])?;
     }
 
     info!("state-transition: success");
@@ -114,7 +117,7 @@ struct AccessControlRequest<'a> {
 }
 
 struct StateTransitionRequest<'a, 'b> {
-    safe_acc: &'b mut SafeAccount,
+    safe_acc: &'b mut Safe,
     safe_acc_info: &'a AccountInfo<'a>,
     safe_spl_vault: spl_token::state::Account,
     safe_spl_vault_acc_info: &'a AccountInfo<'a>,

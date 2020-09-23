@@ -1,5 +1,5 @@
 use serum_common::pack::Pack;
-use serum_safe::accounts::{LsrmReceipt, VestingAccount};
+use serum_safe::accounts::{LsrmReceipt, Vesting};
 use serum_safe::error::{SafeError, SafeErrorCode};
 use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::info;
@@ -30,14 +30,14 @@ pub fn handler<'a>(
         token_program_acc_info,
     })?;
 
-    VestingAccount::unpack_mut(
+    Vesting::unpack_mut(
         &mut vesting_acc_info.try_borrow_mut_data()?,
-        &mut |vesting_account: &mut VestingAccount| {
+        &mut |vesting_acc: &mut Vesting| {
             LsrmReceipt::unpack_mut(
                 &mut receipt_acc_info.try_borrow_mut_data()?,
                 &mut |lsrm_receipt: &mut LsrmReceipt| {
                     state_transition(StateTransitionRequest {
-                        vesting_account,
+                        vesting_acc,
                         lsrm_receipt,
                         token_owner_acc_info,
                         token_acc_info,
@@ -76,7 +76,7 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), SafeError> {
         return Err(SafeError::ErrorCode(SafeErrorCode::InvalidReceipt));
     }
     let receipt = LsrmReceipt::unpack(&receipt_acc_info.try_borrow_data()?)?;
-    if receipt.spl_account != *token_acc_info.key {
+    if receipt.spl_acc != *token_acc_info.key {
         return Err(SafeError::ErrorCode(SafeErrorCode::UnauthorizedReceipt));
     }
     if !receipt.initialized {
@@ -105,7 +105,7 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), SafeError> {
         token_acc_info,
         mint_acc_info,
         token_program_acc_info,
-        vesting_account,
+        vesting_acc,
         lsrm_receipt,
     } = req;
 
@@ -143,7 +143,7 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), SafeError> {
 
     // Update the vesting account.
     {
-        vesting_account.locked_outstanding -= 1;
+        vesting_acc.locked_outstanding -= 1;
     }
 
     info!("state-transition: success");
@@ -161,7 +161,7 @@ struct AccessControlRequest<'a> {
 }
 
 struct StateTransitionRequest<'a, 'b> {
-    vesting_account: &'b mut VestingAccount,
+    vesting_acc: &'b mut Vesting,
     lsrm_receipt: &'b mut LsrmReceipt,
     token_owner_acc_info: &'a AccountInfo<'a>,
     token_acc_info: &'a AccountInfo<'a>,

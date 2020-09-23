@@ -1,5 +1,5 @@
 use serum_common::pack::Pack;
-use serum_safe::accounts::{SafeAccount, SrmVault, VestingAccount};
+use serum_safe::accounts::{Safe, TokenVault, Vesting};
 use serum_safe::error::{SafeError, SafeErrorCode};
 use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::info;
@@ -37,9 +37,9 @@ pub fn handler<'a>(
         rent_acc_info,
     })?;
 
-    VestingAccount::unpack_mut(
+    Vesting::unpack_mut(
         &mut vesting_acc_info.try_borrow_mut_data()?,
-        &mut |vesting_acc: &mut VestingAccount| {
+        &mut |vesting_acc: &mut Vesting| {
             state_transition(StateTransitionRequest {
                 vesting_slots: vesting_slots.clone(),
                 vesting_amounts: vesting_amounts.clone(),
@@ -74,11 +74,11 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), ProgramError>
     let vesting_data = vesting_acc_info.try_borrow_data()?;
 
     // Check the dynamic data size is correct before unpacking.
-    if vesting_data.len() != VestingAccount::data_size(vesting_slots_len)? as usize {
+    if vesting_data.len() != Vesting::size_dyn(vesting_slots_len)? as usize {
         return Err(SafeError::ErrorCode(SafeErrorCode::VestingAccountDataInvalid).into());
     }
     // Unsafe umpack.
-    let vesting_acc = VestingAccount::unpack(&vesting_data)?;
+    let vesting_acc = Vesting::unpack(&vesting_data)?;
     if vesting_acc.initialized {
         return Err(SafeError::ErrorCode(SafeErrorCode::AlreadyInitialized).into());
     }
@@ -90,15 +90,14 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), ProgramError>
         return Err(SafeError::ErrorCode(SafeErrorCode::NotOwnedByProgram).into());
     }
     // Look at the deposit's SPL account data and check for the mint.
-    let safe_acc = SafeAccount::unpack(&safe_acc_info.try_borrow_data()?)
-        .map_err(|_| SafeError::ErrorCode(SafeErrorCode::SafeAccountDataInvalid))?;
+    let safe_acc = Safe::unpack(&safe_acc_info.try_borrow_data()?)
+        .map_err(|_| SafeError::ErrorCode(SafeErrorCode::SafeDataInvalid))?;
     if safe_acc.mint != Pubkey::new(&depositor_from.try_borrow_data()?[..32]) {
         return Err(SafeError::ErrorCode(SafeErrorCode::WrongCoinMint).into());
     }
     // Look into the safe vault's SPL account data and check for the owner (it should
     // be this program).
-    let nonce = &[safe_acc.nonce];
-    let seeds = SrmVault::signer_seeds(safe_acc_info.key, nonce);
+    let seeds = TokenVault::signer_seeds(safe_acc_info.key, &safe_acc.nonce);
     let expected_authority = Pubkey::create_program_address(&seeds, program_id)?;
     if Pubkey::new(&safe_srm_vault_to.try_borrow_data()?[32..64]) != expected_authority {
         return Err(SafeError::ErrorCode(SafeErrorCode::WrongVault).into());
@@ -176,7 +175,7 @@ struct AccessControlRequest<'a> {
 }
 
 struct StateTransitionRequest<'a, 'b> {
-    vesting_acc: &'b mut VestingAccount,
+    vesting_acc: &'b mut Vesting,
     vesting_acc_beneficiary: Pubkey,
     safe_acc_info: &'a AccountInfo<'a>,
     vesting_slots: Vec<u64>,

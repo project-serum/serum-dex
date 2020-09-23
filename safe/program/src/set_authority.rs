@@ -1,5 +1,5 @@
 use serum_common::pack::Pack;
-use serum_safe::accounts::SafeAccount;
+use serum_safe::accounts::Safe;
 use serum_safe::error::{SafeError, SafeErrorCode};
 use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::info;
@@ -22,9 +22,9 @@ pub fn handler<'a>(
         safe_authority_acc_info,
     })?;
 
-    SafeAccount::unpack_mut(
+    Safe::unpack_mut(
         &mut safe_acc_info.try_borrow_mut_data()?,
-        &mut |safe_acc: &mut SafeAccount| {
+        &mut |safe_acc: &mut Safe| {
             state_transition(StateTransitionRequest {
                 safe_acc,
                 new_authority,
@@ -32,8 +32,9 @@ pub fn handler<'a>(
 
             Ok(())
         },
-    )
-    .map_err(|e| SafeError::ProgramError(e))
+    )?;
+
+    Ok(())
 }
 
 fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), SafeError> {
@@ -44,7 +45,7 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), SafeError> {
         safe_authority_acc_info,
     } = req;
 
-    let safe_acc = SafeAccount::unpack(&safe_acc_info.try_borrow_data()?)?;
+    let safe_acc = Safe::unpack(&safe_acc_info.try_borrow_data()?)?;
     if !safe_authority_acc_info.is_signer {
         return Err(SafeError::ErrorCode(SafeErrorCode::Unauthorized));
     }
@@ -78,6 +79,6 @@ fn state_transition<'a>(req: StateTransitionRequest<'a>) -> Result<(), SafeError
 }
 
 struct StateTransitionRequest<'a> {
-    safe_acc: &'a mut SafeAccount,
+    safe_acc: &'a mut Safe,
     new_authority: Pubkey,
 }

@@ -1,5 +1,5 @@
 use serum_common::pack::Pack;
-use serum_safe::accounts::{SrmVault, VestingAccount};
+use serum_safe::accounts::{TokenVault, Vesting};
 use serum_safe::error::{SafeError, SafeErrorCode};
 use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::info;
@@ -37,9 +37,9 @@ pub fn handler<'a>(
         clock_acc_info,
     })?;
 
-    VestingAccount::unpack_mut(
+    Vesting::unpack_mut(
         &mut vesting_acc_info.try_borrow_mut_data()?,
-        &mut |vesting_acc: &mut VestingAccount| {
+        &mut |vesting_acc: &mut Vesting| {
             state_transition(StateTransitionRequest {
                 amount,
                 vesting_acc,
@@ -77,7 +77,7 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), SafeError> {
     if !vesting_acc_beneficiary_info.is_signer {
         return Err(SafeError::ErrorCode(SafeErrorCode::Unauthorized));
     }
-    let vesting_acc = VestingAccount::unpack(&vesting_acc_info.try_borrow_data()?)?;
+    let vesting_acc = Vesting::unpack(&vesting_acc_info.try_borrow_data()?)?;
     if vesting_acc.beneficiary != *vesting_acc_beneficiary_info.key {
         return Err(SafeError::ErrorCode(SafeErrorCode::Unauthorized));
     }
@@ -100,8 +100,8 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), SafeError> {
         // The SPL account owner must be hte program derived address.
         let expected_owner = {
             let data = safe_acc_info.try_borrow_data()?;
-            let nonce = &[data[data.len() - 1]];
-            let signer_seeds = SrmVault::signer_seeds(safe_acc_info.key, nonce);
+            let nonce = data[data.len() - 1];
+            let signer_seeds = TokenVault::signer_seeds(safe_acc_info.key, &nonce);
 
             Pubkey::create_program_address(&signer_seeds, program_id)
                 .expect("safe initialized with invalid nonce")
@@ -149,8 +149,8 @@ fn state_transition<'a, 'b>(req: StateTransitionRequest<'a, 'b>) -> Result<(), S
         )?;
 
         let data = safe_acc_info.try_borrow_data()?;
-        let nonce = &[data[data.len() - 1]];
-        let signer_seeds = SrmVault::signer_seeds(safe_acc_info.key, nonce);
+        let nonce = data[data.len() - 1];
+        let signer_seeds = TokenVault::signer_seeds(safe_acc_info.key, &nonce);
 
         solana_sdk::program::invoke_signed(
             &withdraw_instruction,
@@ -182,7 +182,7 @@ struct AccessControlRequest<'a> {
 
 struct StateTransitionRequest<'a, 'b> {
     amount: u64,
-    vesting_acc: &'b mut VestingAccount,
+    vesting_acc: &'b mut Vesting,
     safe_spl_vault_acc_info: &'a AccountInfo<'a>,
     beneficiary_spl_acc_info: &'a AccountInfo<'a>,
     safe_spl_vault_authority_acc_info: &'a AccountInfo<'a>,

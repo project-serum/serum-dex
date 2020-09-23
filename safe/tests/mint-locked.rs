@@ -1,6 +1,6 @@
 use common::assert::assert_eq_vec;
 use serum_common::pack::Pack;
-use serum_safe::accounts::{LsrmReceipt, VestingAccount};
+use serum_safe::accounts::{LsrmReceipt, Vesting};
 use solana_client_gen::solana_sdk::commitment_config::CommitmentConfig;
 use solana_client_gen::solana_sdk::instruction::AccountMeta;
 use solana_client_gen::solana_sdk::signature::Signer;
@@ -18,11 +18,11 @@ fn mint_lsrm() {
     // An initialized Serum Safe with deposit.
     let common::lifecycle::Deposited {
         client,
-        vesting_account,
-        vesting_account_beneficiary,
-        vesting_account_slots,
-        vesting_account_amounts,
-        safe_account,
+        vesting_acc,
+        vesting_acc_beneficiary,
+        vesting_acc_slots,
+        vesting_acc_amounts,
+        safe_acc,
         safe_srm_vault_authority,
         ..
     } = common::lifecycle::deposit();
@@ -30,24 +30,24 @@ fn mint_lsrm() {
     // When.
     //
     // I mint locked srm.
-    let nft_token_account_owner = vesting_account_beneficiary.pubkey();
+    let nft_token_acc_owner = vesting_acc_beneficiary.pubkey();
     let nft_count = 2;
     let lsrm_nfts = {
-        let mint_lsrm_accounts = vec![
-            AccountMeta::new(vesting_account_beneficiary.pubkey(), true),
-            AccountMeta::new(vesting_account, false),
-            AccountMeta::new_readonly(safe_account, false),
+        let mint_lsrm_accs = vec![
+            AccountMeta::new(vesting_acc_beneficiary.pubkey(), true),
+            AccountMeta::new(vesting_acc, false),
+            AccountMeta::new_readonly(safe_acc, false),
             AccountMeta::new(safe_srm_vault_authority, false),
             AccountMeta::new(spl_token::ID, false),
             AccountMeta::new_readonly(sysvar::rent::ID, false),
         ];
-        let signers = vec![&vesting_account_beneficiary, client.payer()];
+        let signers = vec![&vesting_acc_beneficiary, client.payer()];
         let (_sig, lsrm_nfts) = client
             .create_nfts_and_mint_locked_srm_with_signers(
                 nft_count,
-                &nft_token_account_owner,
+                &nft_token_acc_owner,
                 signers,
-                mint_lsrm_accounts,
+                mint_lsrm_accs,
             )
             .unwrap();
         lsrm_nfts
@@ -79,15 +79,15 @@ fn mint_lsrm() {
     //
     // The lsrm nft token accounts should be initialized.
     {
-        let token_accounts = lsrm_nfts.iter().map(|lsrm| {
+        let token_accs = lsrm_nfts.iter().map(|lsrm| {
             let account = serum_common::client::rpc::account_token_unpacked::<
                 spl_token::state::Account,
-            >(client.rpc(), &lsrm.token_account.pubkey());
+            >(client.rpc(), &lsrm.token_acc.pubkey());
             (lsrm, account)
         });
-        for (lsrm, ta) in token_accounts {
+        for (lsrm, ta) in token_accs {
             assert_eq!(ta.state, spl_token::state::AccountState::Initialized);
-            assert_eq!(ta.owner, nft_token_account_owner);
+            assert_eq!(ta.owner, nft_token_acc_owner);
             assert_eq!(ta.mint, lsrm.mint.pubkey());
             assert_eq!(ta.amount, 1);
         }
@@ -108,35 +108,35 @@ fn mint_lsrm() {
         for (idx, (receipt, lsrm)) in lsrm_receipts.enumerate() {
             assert!(receipt.initialized);
             assert_eq!(receipt.mint, lsrm_nfts[idx].mint.pubkey());
-            assert_eq!(receipt.vesting_account, vesting_account);
+            assert_eq!(receipt.vesting_acc, vesting_acc);
             assert_eq!(receipt.burned, false);
-            assert_eq!(receipt.spl_account, lsrm.token_account.pubkey());
+            assert_eq!(receipt.spl_acc, lsrm.token_acc.pubkey());
         }
     }
     // Then.
     //
     // The vesting accounts should be updated.
     {
-        let updated_vesting_account = {
+        let updated_vesting_acc = {
             let account = client
                 .rpc()
-                .get_account_with_commitment(&vesting_account, CommitmentConfig::recent())
+                .get_account_with_commitment(&vesting_acc, CommitmentConfig::recent())
                 .unwrap()
                 .value
                 .unwrap();
-            VestingAccount::unpack(&account.data).unwrap()
+            Vesting::unpack(&account.data).unwrap()
         };
 
         // The field we care about.
-        assert_eq!(updated_vesting_account.locked_outstanding, nft_count as u64);
+        assert_eq!(updated_vesting_acc.locked_outstanding, nft_count as u64);
         // Sanity check the rest.
-        assert_eq!(updated_vesting_account.safe, safe_account);
+        assert_eq!(updated_vesting_acc.safe, safe_acc);
         assert_eq!(
-            updated_vesting_account.beneficiary,
-            vesting_account_beneficiary.pubkey()
+            updated_vesting_acc.beneficiary,
+            vesting_acc_beneficiary.pubkey()
         );
-        assert_eq!(updated_vesting_account.initialized, true);
-        assert_eq_vec(updated_vesting_account.slots, vesting_account_slots);
-        assert_eq_vec(updated_vesting_account.amounts, vesting_account_amounts);
+        assert_eq!(updated_vesting_acc.initialized, true);
+        assert_eq_vec(updated_vesting_acc.slots, vesting_acc_slots);
+        assert_eq_vec(updated_vesting_acc.amounts, vesting_acc_amounts);
     }
 }

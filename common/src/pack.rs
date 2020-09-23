@@ -3,7 +3,7 @@ use solana_sdk::program_error::ProgramError;
 pub trait Pack<'a>: serde::Serialize + serde::Deserialize<'a> + Default {
     fn pack(src: Self, dst: &mut [u8]) -> Result<(), ProgramError>;
     fn unpack(src: &[u8]) -> Result<Self, ProgramError>;
-    fn size() -> Result<u64, ProgramError>;
+    fn size(&self) -> Result<u64, ProgramError>;
 
     fn unpack_mut<F, U>(input: &mut [u8], f: &mut F) -> Result<U, ProgramError>
     where
@@ -30,9 +30,8 @@ macro_rules! packable {
                 serum_common::pack::from_bytes::<$my_struct>(src)
                     .map_err(|_| ProgramError::InvalidAccountData)
             }
-            fn size() -> Result<u64, ProgramError> {
-                let d: $my_struct = Default::default();
-                serum_common::pack::bytes_size(&d)
+            fn size(&self) -> Result<u64, ProgramError> {
+                serum_common::pack::bytes_size(&self)
             }
         }
     };

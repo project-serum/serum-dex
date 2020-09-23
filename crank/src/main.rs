@@ -11,7 +11,7 @@ use safe_transmute::{
     transmute_one_pedantic, try_copy,
 };
 use serum_common::client::rpc::{
-    create_and_init_mint, create_spl_account, mint_to_new_account, send_txn,
+    create_and_init_mint, create_token_account, mint_to_new_account, send_txn,
 };
 use serum_common::client::Cluster;
 use serum_dex::instruction::{MarketInstruction, NewOrderInstruction};
@@ -976,10 +976,10 @@ fn list_market(
     } = listing_keys;
 
     println!("Creating coin vault...");
-    let coin_vault = create_spl_account(client, coin_mint, &vault_signer_pk, payer)?;
+    let coin_vault = create_token_account(client, coin_mint, &vault_signer_pk, payer)?;
 
     println!("Creating pc vault...");
-    let pc_vault = create_spl_account(client, pc_mint, &listing_keys.vault_signer_pk, payer)?;
+    let pc_vault = create_token_account(client, pc_mint, &listing_keys.vault_signer_pk, payer)?;
 
     let init_market_instruction = serum_dex::instruction::initialize_market(
         &market_key.pubkey(),

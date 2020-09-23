@@ -15,18 +15,18 @@ fn migrate() {
     // An initialized safe with deposit.
     let lifecycle::Deposited {
         client,
-        safe_account,
+        safe_acc,
         safe_srm_vault,
         safe_srm_vault_authority,
         srm_mint,
         safe_authority,
-				..
+        ..
     } = lifecycle::deposit_with_schedule(vec![1, 2, 3, 4, 5], vec![100, 200, 300, 400, 500]);
     // And.
     //
     // An SPL account to transfer to.
     let recipient_owner = Keypair::generate(&mut OsRng);
-    let receiver_spl_account = serum_common::client::rpc::create_spl_account(
+    let receiver_token_acc = serum_common::client::rpc::create_token_account(
         client.rpc(),
         &srm_mint.pubkey(),
         &recipient_owner.pubkey(),
@@ -39,10 +39,10 @@ fn migrate() {
     // I migrate thh safe.
     let accounts = [
         AccountMeta::new_readonly(safe_authority.pubkey(), true),
-        AccountMeta::new(safe_account, false),
+        AccountMeta::new(safe_acc, false),
         AccountMeta::new(safe_srm_vault.pubkey(), false),
         AccountMeta::new_readonly(safe_srm_vault_authority, false),
-        AccountMeta::new(receiver_spl_account.pubkey(), false),
+        AccountMeta::new(receiver_token_acc.pubkey(), false),
         AccountMeta::new_readonly(spl_token::ID, false),
     ];
     let signers = [&safe_authority, client.payer()];
@@ -53,17 +53,21 @@ fn migrate() {
     // The safe's vault should be drained.
     {
         let safe_vault: spl_token::state::Account =
-            serum_common::client::rpc::account_token_unpacked(client.rpc(), &safe_srm_vault.pubkey());
+            serum_common::client::rpc::account_token_unpacked(
+                client.rpc(),
+                &safe_srm_vault.pubkey(),
+            );
         assert_eq!(safe_vault.amount, 0);
     }
     // Then.
     //
     // The receipient should have all the funds.
     {
-        let recipient: spl_token::state::Account = serum_common::client::rpc::account_token_unpacked(
-            client.rpc(),
-            &receiver_spl_account.pubkey(),
-        );
+        let recipient: spl_token::state::Account =
+            serum_common::client::rpc::account_token_unpacked(
+                client.rpc(),
+                &receiver_token_acc.pubkey(),
+            );
         assert_eq!(recipient.amount, 100 + 200 + 300 + 400 + 500);
     }
 
@@ -72,6 +76,6 @@ fn migrate() {
     // The safe account should be updated.
     {
         // todo: add a check here if we want to place a marker for migration
-        //       on the SafeAccount state.
+        //       on the Safe state.
     }
 }

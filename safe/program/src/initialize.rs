@@ -1,5 +1,5 @@
 use serum_common::pack::Pack;
-use serum_safe::accounts::{SafeAccount, SrmVault};
+use serum_safe::accounts::{Safe, TokenVault};
 use serum_safe::error::{SafeError, SafeErrorCode};
 use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::info;
@@ -28,9 +28,9 @@ pub fn handler<'a>(
         nonce,
     })?;
 
-    SafeAccount::unpack_mut(
+    Safe::unpack_mut(
         &mut safe_acc_info.try_borrow_mut_data()?,
-        &mut |safe: &mut SafeAccount| {
+        &mut |safe: &mut Safe| {
             state_transition(StateTransitionRequest {
                 safe,
                 mint,
@@ -54,7 +54,7 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), SafeError> {
     } = req;
 
     let safe_data = safe_acc_info.try_borrow_data()?;
-    let safe = SafeAccount::unpack(&safe_data)?;
+    let safe = Safe::unpack(&safe_data)?;
     if safe.initialized {
         return Err(SafeError::ErrorCode(SafeErrorCode::AlreadyInitialized));
     }
@@ -66,14 +66,16 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), SafeError> {
         return Err(SafeError::ErrorCode(SafeErrorCode::NotOwnedByProgram));
     }
     if Pubkey::create_program_address(
-        &SrmVault::signer_seeds(safe_acc_info.key, &[nonce]),
+        &TokenVault::signer_seeds(safe_acc_info.key, &nonce),
         program_id,
     )
     .is_err()
     {
         return Err(SafeError::ErrorCode(SafeErrorCode::InvalidVaultNonce));
     }
+
     info!("access-control: success");
+
     Ok(())
 }
 
@@ -89,7 +91,6 @@ fn state_transition<'a>(req: StateTransitionRequest<'a>) -> Result<(), SafeError
 
     safe.mint = mint;
     safe.initialized = true;
-    safe.supply = 0;
     safe.authority = authority;
     safe.nonce = nonce;
 
@@ -106,7 +107,7 @@ struct AccessControlRequest<'a> {
 }
 
 struct StateTransitionRequest<'a> {
-    safe: &'a mut SafeAccount,
+    safe: &'a mut Safe,
     mint: Pubkey,
     authority: Pubkey,
     nonce: u8,
