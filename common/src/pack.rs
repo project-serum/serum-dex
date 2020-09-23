@@ -58,6 +58,10 @@ pub trait Pack<'a>: serde::Serialize + serde::Deserialize<'a> {
 
 /// A convenience macro to easily implement `Pack` for any type that implements
 /// serde's Serialize, Deserialize traits.
+///
+/// When using this, one should consider the performance impact of using
+/// Serde and the associated serializer when targeting BPF. The state of this
+/// is not entirely clear as of now.
 #[macro_export]
 macro_rules! packable {
     ($my_struct:ty) => {
