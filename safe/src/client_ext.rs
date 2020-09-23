@@ -1,11 +1,12 @@
 //! The client_ext module extends the auto-generated program client.
 
 use crate::accounts::{LsrmReceipt, SafeAccount};
+use serum_common::pack::Pack;
 use solana_client_gen::prelude::*;
 use solana_client_gen::solana_sdk;
 use solana_client_gen::solana_sdk::instruction::AccountMeta;
 use solana_client_gen::solana_sdk::pubkey::Pubkey;
-use spl_token::pack::Pack;
+use spl_token::pack::Pack as TokenPack;
 
 // TODO: Use deterministic derived addresses for all accounts associated with the program.
 //       This will allow users to query on chain data with nothing but the program address
@@ -63,13 +64,13 @@ solana_client_gen_extension! {
                 let create_safe_account_instr = {
                     let lamports = self
                         .rpc()
-                        .get_minimum_balance_for_rent_exemption(SafeAccount::SIZE)
+                        .get_minimum_balance_for_rent_exemption(SafeAccount::size().unwrap() as usize)
                         .map_err(|e| ClientError::RpcError(e))?;
                     system_instruction::create_account(
                         &self.payer().pubkey(),
                         &safe_account.pubkey(),
                         lamports,
-                        SafeAccount::SIZE as u64,
+                        SafeAccount::size().unwrap(),
                         self.program(),
                     )
                 };
@@ -234,7 +235,7 @@ solana_client_gen_extension! {
                 let kp = serum_common::client::rpc::create_account_rent_exempt(
                     self.rpc(),
                     &self.payer(),
-                    LsrmReceipt::SIZE,
+                    LsrmReceipt::size().unwrap() as usize,
                     &self.program(),
                 ).map_err(|e| ClientError::RawError(e.to_string()))?;
 

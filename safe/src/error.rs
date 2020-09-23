@@ -37,6 +37,8 @@ pub enum SafeErrorCode {
     TokenAccountAlreadyInitialized = 24,
     TokenAccountOwnerMismatch = 25,
     InvalidTokenProgram = 26,
+    InvalidSerialization = 27,
+    SizeNotAvailable = 28,
     Unknown = 1000,
 }
 

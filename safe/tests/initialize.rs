@@ -6,7 +6,8 @@ use solana_client_gen::solana_sdk;
 use solana_client_gen::solana_sdk::commitment_config::CommitmentConfig;
 use solana_client_gen::solana_sdk::instruction::AccountMeta;
 use solana_client_gen::solana_sdk::signature::{Keypair, Signer};
-use spl_token::pack::Pack;
+use spl_token::pack::Pack as TokenPack;
+use serum_common::pack::Pack;
 
 mod common;
 
@@ -43,12 +44,12 @@ fn initialized() {
             .unwrap()
             .value
             .unwrap();
-        let safe_account = SafeAccount::unpack_from_slice(&account.data).unwrap();
+        let safe_account = SafeAccount::unpack(&account.data).unwrap();
         assert_eq!(&account.owner, client.program());
-        assert_eq!(account.data.len(), SafeAccount::SIZE);
+        assert_eq!(account.data.len(), SafeAccount::size().unwrap() as usize);
         assert_eq!(safe_account.authority, safe_authority.pubkey());
         assert_eq!(safe_account.supply, 0);
-        assert_eq!(safe_account.is_initialized, true);
+        assert_eq!(safe_account.initialized, true);
         assert_eq!(safe_account.nonce, nonce);
     }
     // Then.

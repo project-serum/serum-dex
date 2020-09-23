@@ -41,7 +41,7 @@ fn burn_lsrm() {
     // The NFT mint supply should be zero.
     {
         let mint: spl_token::state::Mint =
-            serum_common::client::rpc::account_unpacked(client.rpc(), &lsrm1.mint.pubkey());
+            serum_common::client::rpc::account_token_unpacked(client.rpc(), &lsrm1.mint.pubkey());
         assert_eq!(mint.supply, 0);
     }
     // Then.
@@ -49,7 +49,7 @@ fn burn_lsrm() {
     // My vesting account should be updated.
     {
         let vesting_account: VestingAccount =
-            serum_common::client::rpc::account_dyn_unpacked(client.rpc(), &vesting_account);
+            serum_common::client::rpc::account_unpacked(client.rpc(), &vesting_account);
         assert_eq!(vesting_account.locked_outstanding, 1);
     }
     // Then.
@@ -64,7 +64,7 @@ fn burn_lsrm() {
     //
     // I should no longer have lSRM in my account.
     {
-        let account: spl_token::state::Account = serum_common::client::rpc::account_unpacked(
+        let account: spl_token::state::Account = serum_common::client::rpc::account_token_unpacked(
             client.rpc(),
             &lsrm1.token_account.pubkey(),
         );

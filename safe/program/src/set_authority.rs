@@ -1,9 +1,9 @@
+use serum_common::pack::Pack;
 use serum_safe::accounts::SafeAccount;
 use serum_safe::error::{SafeError, SafeErrorCode};
 use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::info;
 use solana_sdk::pubkey::Pubkey;
-use spl_token::pack::Pack;
 
 pub fn handler<'a>(
     _program_id: &Pubkey,

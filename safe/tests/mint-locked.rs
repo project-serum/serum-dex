@@ -1,12 +1,12 @@
 use common::assert::assert_eq_vec;
-use serum_common::pack::DynPack;
+use serum_common::pack::Pack;
 use serum_safe::accounts::{LsrmReceipt, VestingAccount};
 use solana_client_gen::solana_sdk::commitment_config::CommitmentConfig;
 use solana_client_gen::solana_sdk::instruction::AccountMeta;
 use solana_client_gen::solana_sdk::signature::Signer;
 use solana_client_gen::solana_sdk::sysvar;
 use spl_token::option::COption;
-use spl_token::pack::Pack;
+use spl_token::pack::Pack as TokenUnpack;
 use spl_token::state::Mint;
 
 mod common;
@@ -80,10 +80,9 @@ fn mint_lsrm() {
     // The lsrm nft token accounts should be initialized.
     {
         let token_accounts = lsrm_nfts.iter().map(|lsrm| {
-            let account = serum_common::client::rpc::account_unpacked::<spl_token::state::Account>(
-                client.rpc(),
-                &lsrm.token_account.pubkey(),
-            );
+            let account = serum_common::client::rpc::account_token_unpacked::<
+                spl_token::state::Account,
+            >(client.rpc(), &lsrm.token_account.pubkey());
             (lsrm, account)
         });
         for (lsrm, ta) in token_accounts {

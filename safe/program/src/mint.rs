@@ -1,4 +1,4 @@
-use serum_common::pack::DynPack;
+use serum_common::pack::Pack;
 use serum_safe::accounts::{LsrmReceipt, SrmVault, VestingAccount};
 use serum_safe::error::{SafeError, SafeErrorCode};
 use solana_sdk::account_info::{next_account_info, AccountInfo};
@@ -6,7 +6,7 @@ use solana_sdk::info;
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::sysvar::rent::Rent;
 use solana_sdk::sysvar::Sysvar;
-use spl_token::pack::Pack;
+use spl_token::pack::Pack as TokenPack;
 
 pub fn handler<'a>(
     _program_id: &'a Pubkey,
@@ -152,7 +152,7 @@ fn state_transition<'a, 'b>(req: StateTransitionRequest<'a, 'b>) -> Result<(), S
 
     // Initialize all receipts, mints, and token accounts.
     for (mint, token_acc, receipt) in lsrm_nfts {
-        LsrmReceipt::unpack_unchecked_mut(
+        LsrmReceipt::unpack_mut(
             &mut receipt.try_borrow_mut_data()?,
             &mut |receipt: &mut LsrmReceipt| {
                 // Initialize the receipt.

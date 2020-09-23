@@ -1,3 +1,4 @@
+use serum_common::pack::Pack;
 use serum_safe::accounts::{SafeAccount, SrmVault};
 use serum_safe::error::{SafeError, SafeErrorCode};
 use solana_sdk::account_info::{next_account_info, AccountInfo};
@@ -5,7 +6,6 @@ use solana_sdk::info;
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::sysvar::rent::Rent;
 use solana_sdk::sysvar::Sysvar;
-use spl_token::pack::Pack;
 
 pub fn handler<'a>(
     program_id: &'a Pubkey,
@@ -28,7 +28,7 @@ pub fn handler<'a>(
         nonce,
     })?;
 
-    SafeAccount::unpack_unchecked_mut(
+    SafeAccount::unpack_mut(
         &mut safe_acc_info.try_borrow_mut_data()?,
         &mut |safe: &mut SafeAccount| {
             state_transition(StateTransitionRequest {
@@ -54,8 +54,8 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), SafeError> {
     } = req;
 
     let safe_data = safe_acc_info.try_borrow_data()?;
-    let safe = SafeAccount::unpack_unchecked(&safe_data)?;
-    if safe.is_initialized {
+    let safe = SafeAccount::unpack(&safe_data)?;
+    if safe.initialized {
         return Err(SafeError::ErrorCode(SafeErrorCode::AlreadyInitialized));
     }
     let rent = Rent::from_account_info(rent_acc_info)?;
@@ -88,7 +88,7 @@ fn state_transition<'a>(req: StateTransitionRequest<'a>) -> Result<(), SafeError
     } = req;
 
     safe.mint = mint;
-    safe.is_initialized = true;
+    safe.initialized = true;
     safe.supply = 0;
     safe.authority = authority;
     safe.nonce = nonce;

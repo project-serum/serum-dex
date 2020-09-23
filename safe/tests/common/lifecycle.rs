@@ -15,7 +15,7 @@ use solana_client_gen::solana_sdk::instruction::AccountMeta;
 use solana_client_gen::solana_sdk::pubkey::Pubkey;
 use solana_client_gen::solana_sdk::signature::{Keypair, Signer};
 use solana_client_gen::solana_sdk::sysvar;
-use spl_token::pack::Pack;
+use spl_token::pack::Pack as TokenPack;
 
 pub fn genesis() -> Genesis {
     let client = common::client();
@@ -188,7 +188,7 @@ pub fn deposit_with_schedule(
             .map(|offset| current_slot + offset)
             .collect::<Vec<u64>>();
         let vesting_account_beneficiary = Keypair::generate(&mut OsRng);
-        let vesting_account_size = VestingAccount::data_size(vesting_slots.len());
+        let vesting_account_size = VestingAccount::data_size(vesting_slots.len()).unwrap() as usize;
         let (_signature, keypair) = client
             .create_account_with_size_and_deposit_srm(
                 vesting_account_size,
@@ -279,7 +279,7 @@ pub fn mint_lsrm(
     // Sanity check we have 2 lSRM outstanding.
     {
         let vesting_account: VestingAccount =
-            serum_common::client::rpc::account_dyn_unpacked(client.rpc(), &vesting_account);
+            serum_common::client::rpc::account_unpacked(client.rpc(), &vesting_account);
         assert_eq!(vesting_account.locked_outstanding, nft_count as u64);
     }
 

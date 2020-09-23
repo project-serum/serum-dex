@@ -1,12 +1,11 @@
 use common::assert::assert_eq_vec;
 use rand::rngs::OsRng;
-use serum_common::pack::DynPack;
+use serum_common::pack::Pack;
 use serum_safe::accounts::VestingAccount;
 use solana_client_gen::solana_sdk;
 use solana_client_gen::solana_sdk::commitment_config::CommitmentConfig;
 use solana_client_gen::solana_sdk::instruction::AccountMeta;
 use solana_client_gen::solana_sdk::signature::{Keypair, Signer};
-use spl_token::pack::Pack;
 
 mod common;
 
@@ -40,7 +39,7 @@ fn deposit_srm() {
         let vesting_account_beneficiary = Keypair::generate(&mut OsRng);
         let vesting_slots = vec![11, 12, 13, 14, 15];
         let vesting_amounts = vec![1, 2, 3, 4, 5];
-        let vesting_account_size = VestingAccount::data_size(vesting_slots.len());
+        let vesting_account_size = VestingAccount::data_size(vesting_slots.len()).unwrap() as usize;
         let (_signature, keypair) = client
             .create_account_with_size_and_deposit_srm(
                 vesting_account_size,
@@ -89,7 +88,7 @@ fn deposit_srm() {
     // The depositor's SPL token account has funds reduced.
     {
         let depositor_spl_account: spl_token::state::Account =
-            serum_common::client::rpc::account_unpacked(client.rpc(), &depositor.pubkey());
+            serum_common::client::rpc::account_token_unpacked(client.rpc(), &depositor.pubkey());
         let expected_balance = depositor_balance_before - expected_amounts.iter().sum::<u64>();
         assert_eq!(depositor_spl_account.amount, expected_balance);
     }
@@ -98,7 +97,10 @@ fn deposit_srm() {
     // The program-owned SPL token vault has funds increased.
     {
         let safe_vault_spl_account: spl_token::state::Account =
-            serum_common::client::rpc::account_unpacked(client.rpc(), &safe_srm_vault.pubkey());
+            serum_common::client::rpc::account_token_unpacked(
+                client.rpc(),
+                &safe_srm_vault.pubkey(),
+            );
         let expected_balance = expected_amounts.iter().sum::<u64>();
         assert_eq!(safe_vault_spl_account.amount, expected_balance);
         // Sanity check the owner of the vault account.

@@ -24,7 +24,7 @@ fn process_instruction<'a>(
     instruction_data: &[u8],
 ) -> ProgramResult {
     info!("process-instruction");
-    let instruction: SrmSafeInstruction = coder::from_bytes(instruction_data)
+    let instruction: SrmSafeInstruction = serum_common::pack::from_bytes(instruction_data)
         .map_err(|_| SafeError::ErrorCode(SafeErrorCode::WrongSerialization))?;
 
     let result = match instruction {
@@ -62,16 +62,4 @@ fn process_instruction<'a>(
     info!("process-instruction success");
 
     Ok(())
-}
-
-// TODO: remove this once Solana updates their rust version.
-mod coder {
-    use super::SrmSafeInstruction;
-    pub fn from_bytes(data: &[u8]) -> Result<SrmSafeInstruction, ()> {
-        match data.split_first() {
-            None => Err(()),
-            Some((&0u8, rest)) => bincode::deserialize(rest).map_err(|_| ()),
-            Some((_, _rest)) => Err(()),
-        }
-    }
 }

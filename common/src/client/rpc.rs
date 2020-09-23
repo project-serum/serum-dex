@@ -1,15 +1,15 @@
-use crate::pack::DynPack;
+use crate::pack::Pack;
 use anyhow::Result;
 use rand::rngs::OsRng;
-use solana_client_gen::solana_client::rpc_client::RpcClient;
-use solana_client_gen::solana_client::rpc_config::RpcSendTransactionConfig;
-use solana_client_gen::solana_sdk;
-use solana_client_gen::solana_sdk::commitment_config::CommitmentConfig;
-use solana_client_gen::solana_sdk::pubkey::Pubkey;
-use solana_client_gen::solana_sdk::signature::{Keypair, Signature, Signer};
-use solana_client_gen::solana_sdk::transaction::Transaction;
+use solana_client::rpc_client::RpcClient;
+use solana_client::rpc_config::RpcSendTransactionConfig;
+use solana_sdk;
+use solana_sdk::commitment_config::CommitmentConfig;
+use solana_sdk::pubkey::Pubkey;
+use solana_sdk::signature::{Keypair, Signature, Signer};
+use solana_sdk::transaction::Transaction;
 use spl_token::instruction as token_instruction;
-use spl_token::pack::Pack;
+use spl_token::pack::Pack as TokenPack;
 
 pub fn create_account_rent_exempt(
     client: &RpcClient,
@@ -189,7 +189,7 @@ pub fn send_txn(client: &RpcClient, txn: &Transaction, _simulate: bool) -> Resul
     )?)
 }
 
-pub fn account_unpacked<T: Pack>(client: &RpcClient, addr: &Pubkey) -> T {
+pub fn account_token_unpacked<T: TokenPack>(client: &RpcClient, addr: &Pubkey) -> T {
     let account = client
         .get_account_with_commitment(addr, CommitmentConfig::recent())
         .unwrap()
@@ -198,11 +198,11 @@ pub fn account_unpacked<T: Pack>(client: &RpcClient, addr: &Pubkey) -> T {
     T::unpack_from_slice(&account.data).unwrap()
 }
 
-pub fn account_dyn_unpacked<T: DynPack>(client: &RpcClient, addr: &Pubkey) -> T {
+pub fn account_unpacked<'a, T: Pack<'a>>(client: &RpcClient, addr: &Pubkey) -> T {
     let account = client
         .get_account_with_commitment(addr, CommitmentConfig::recent())
         .unwrap()
         .value
         .unwrap();
-    T::unpack_unchecked(&account.data).unwrap()
+    T::unpack(&account.data).unwrap()
 }

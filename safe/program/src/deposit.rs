@@ -1,4 +1,4 @@
-use serum_common::pack::DynPack;
+use serum_common::pack::Pack;
 use serum_safe::accounts::{SafeAccount, SrmVault, VestingAccount};
 use serum_safe::error::{SafeError, SafeErrorCode};
 use solana_sdk::account_info::{next_account_info, AccountInfo};
@@ -7,7 +7,6 @@ use solana_sdk::program_error::ProgramError;
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::sysvar::rent::Rent;
 use solana_sdk::sysvar::Sysvar;
-use spl_token::pack::Pack;
 
 pub fn handler<'a>(
     program_id: &'a Pubkey,
@@ -38,7 +37,7 @@ pub fn handler<'a>(
         rent_acc_info,
     })?;
 
-    VestingAccount::unpack_unchecked_mut(
+    VestingAccount::unpack_mut(
         &mut vesting_acc_info.try_borrow_mut_data()?,
         &mut |vesting_acc: &mut VestingAccount| {
             state_transition(StateTransitionRequest {
@@ -75,11 +74,11 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), ProgramError>
     let vesting_data = vesting_acc_info.try_borrow_data()?;
 
     // Check the dynamic data size is correct before unpacking.
-    if vesting_data.len() != VestingAccount::data_size(vesting_slots_len) {
+    if vesting_data.len() != VestingAccount::data_size(vesting_slots_len)? as usize {
         return Err(SafeError::ErrorCode(SafeErrorCode::VestingAccountDataInvalid).into());
     }
     // Unsafe umpack.
-    let vesting_acc = VestingAccount::unpack_unchecked(&vesting_data)?;
+    let vesting_acc = VestingAccount::unpack(&vesting_data)?;
     if vesting_acc.initialized {
         return Err(SafeError::ErrorCode(SafeErrorCode::AlreadyInitialized).into());
     }

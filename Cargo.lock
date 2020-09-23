@@ -1825,8 +1825,11 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "arrayref",
+ "bincode",
  "rand",
- "solana-client-gen",
+ "serde",
+ "solana-client",
+ "solana-sdk",
  "spl-token",
 ]
 

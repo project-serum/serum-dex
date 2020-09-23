@@ -1,7 +1,7 @@
 use common::assert::assert_eq_vec;
 use common::lifecycle;
 use rand::rngs::OsRng;
-use serum_common::pack::DynPack;
+use serum_common::pack::Pack;
 use serum_safe::accounts::VestingAccount;
 use serum_safe::error::SafeErrorCode;
 use solana_client_gen::solana_sdk::commitment_config::CommitmentConfig;
@@ -9,7 +9,7 @@ use solana_client_gen::solana_sdk::instruction::AccountMeta;
 use solana_client_gen::solana_sdk::signature::Keypair;
 use solana_client_gen::solana_sdk::signature::Signer;
 use solana_client_gen::solana_sdk::sysvar;
-use spl_token::pack::Pack;
+use spl_token::pack::Pack as TokenPack;
 
 mod common;
 

@@ -1,10 +1,10 @@
-use serum_common::pack::DynPack;
+use serum_common::pack::Pack;
 use serum_safe::accounts::{LsrmReceipt, VestingAccount};
 use serum_safe::error::{SafeError, SafeErrorCode};
 use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::info;
 use solana_sdk::pubkey::Pubkey;
-use spl_token::pack::Pack;
+use spl_token::pack::Pack as TokenPack;
 
 pub fn handler<'a>(
     program_id: &'a Pubkey,
