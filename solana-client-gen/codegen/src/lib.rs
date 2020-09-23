@@ -684,15 +684,12 @@ fn enum_to_methods(
                 pub struct _DefaultCoder;
                 impl _DefaultCoder {
                     pub fn to_bytes(i: #instruction_mod_ident::#instruction_enum_ident) -> Vec<u8> {
-                        bincode::serialize(&(0u8, i))
+                        serum_common::pack::to_bytes(&i)
                             .expect("instruction must be serializable")
                     }
-                    pub fn from_bytes(data: &[u8]) -> Result<Vec<u8>, ()> {
-                        match data.split_first() {
-                            None => Err(()),
-                            Some((&0u8, rest)) => bincode::deserialize(rest).map_err(|_| ()),
-                            Some((_, _rest)) => Err(()),
-                        }
+                    pub fn from_bytes(data: &[u8]) -> Result<#instruction_mod_ident::#instruction_enum_ident, ()> {
+                        serum_common::pack::from_bytes(data)
+                            .map_err(|_| ())
                     }
                 }
             }
