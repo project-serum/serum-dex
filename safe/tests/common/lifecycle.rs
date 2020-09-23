@@ -167,12 +167,7 @@ pub fn deposit_with_schedule(
         ..
     } = initialize();
 
-    let (
-        vesting_acc,
-        vesting_acc_beneficiary,
-        vesting_acc_slots,
-        vesting_acc_amounts,
-    ) = {
+    let (vesting_acc, vesting_acc_beneficiary, vesting_acc_slots, vesting_acc_amounts) = {
         let deposit_accs = [
             AccountMeta::new(depositor.pubkey(), false),
             // Authority of the depositing SPL account.
@@ -190,7 +185,7 @@ pub fn deposit_with_schedule(
         let vesting_acc_beneficiary = Keypair::generate(&mut OsRng);
         let vesting_acc_size = Vesting::size_dyn(vesting_slots.len()).unwrap() as usize;
         let (_signature, keypair) = client
-            .create_account_with_size_and_deposit_srm(
+            .create_account_with_size_and_deposit(
                 vesting_acc_size,
                 &deposit_accs,
                 vesting_acc_beneficiary.pubkey(),
@@ -252,8 +247,7 @@ pub fn mint_lsrm(
     } = deposit_with_schedule(vesting_slot_offsets, vesting_amounts);
 
     // Just have the beneficiary key be the owner of all the lSRM.
-    let lsrm_token_acc_owner =
-        Keypair::from_bytes(&vesting_acc_beneficiary.to_bytes()).unwrap();
+    let lsrm_token_acc_owner = Keypair::from_bytes(&vesting_acc_beneficiary.to_bytes()).unwrap();
 
     let lsrm = {
         let mint_lsrm_accs = vec![
@@ -266,7 +260,7 @@ pub fn mint_lsrm(
         ];
         let signers = vec![&vesting_acc_beneficiary, client.payer()];
         let (_sig, lsrm_nfts) = client
-            .create_nfts_and_mint_locked_srm_with_signers(
+            .create_nfts_and_mint_locked_with_signers(
                 nft_count,
                 &lsrm_token_acc_owner.pubkey(),
                 signers,

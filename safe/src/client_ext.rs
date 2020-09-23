@@ -136,7 +136,7 @@ solana_client_gen_extension! {
         /// * system::create_account for the safe's lSRM receipt
         ///
         /// And *after* executing those for all NFTs, finally executes the
-        /// MintLockedSrm instruction on the Safe program.
+        /// MintLocked instruction on the Safe program.
         ///
         /// The motivation here is that, given an lSRM NFT mint, the program needs to
         /// know if it should acknowledge the mint by printing a new receipt
@@ -152,7 +152,7 @@ solana_client_gen_extension! {
         /// mint instruction.
         ///
         /// The lSRM receipt instructions are added in for convenience.
-        pub fn create_nfts_and_mint_locked_srm_with_signers(
+        pub fn create_nfts_and_mint_locked_with_signers(
             &self,
             // On localnet this maxes out at 2 before the transaction is too large.
             lsrm_count: usize,
@@ -189,7 +189,7 @@ solana_client_gen_extension! {
                 }
 
                 // Add the mint_lsrm instruction.
-                let mint_lsrm_instr = super::instruction::mint_locked_srm(
+                let mint_lsrm_instr = super::instruction::mint_locked(
                     *self.program(),
                     &accounts,
                     *lsrm_nft_token_acc_owner,
@@ -297,7 +297,7 @@ solana_client_gen_extension! {
                 instructions.push(create_mint_acc_instr);
                 instructions.push(create_token_acc_instr);
 
-                // Push the accounts for the eventual mint_locked_srm instruction.
+                // Push the accounts for the eventual mint_locked instruction.
                 accounts.push(AccountMeta::new(lsrm_nft_mint.pubkey(), true));
                 accounts.push(AccountMeta::new(lsrm_nft_token_acc.pubkey(), true));
                 accounts.push(AccountMeta::new(receipt.pubkey(), false));

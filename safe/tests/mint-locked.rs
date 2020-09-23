@@ -12,7 +12,7 @@ use spl_token::state::Mint;
 mod common;
 
 #[test]
-fn mint_lsrm() {
+fn mint() {
     // Given.
     //
     // An initialized Serum Safe with deposit.
@@ -43,7 +43,7 @@ fn mint_lsrm() {
         ];
         let signers = vec![&vesting_acc_beneficiary, client.payer()];
         let (_sig, lsrm_nfts) = client
-            .create_nfts_and_mint_locked_srm_with_signers(
+            .create_nfts_and_mint_locked_with_signers(
                 nft_count,
                 &nft_token_acc_owner,
                 signers,

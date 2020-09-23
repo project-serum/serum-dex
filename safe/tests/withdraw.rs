@@ -85,7 +85,7 @@ fn withdraw_without_vesting() {
 //
 // Should receive the SRM.
 #[test]
-fn withdraw_some_when_locked_srm_outstanding() {
+fn withdraw_some_when_locked_outstanding() {
     withdraw_test(WithdrawTestParams {
         test_type: TestType::LsrmMinted(2),
         vesting_slot_offsets: vec![1, 100_000, 200_000],
@@ -107,7 +107,7 @@ fn withdraw_some_when_locked_srm_outstanding() {
 //
 // Should not receive anything.
 #[test]
-fn withdraw_all_when_locked_srm_outstanding() {
+fn withdraw_all_when_locked_outstanding() {
     withdraw_test(WithdrawTestParams {
         test_type: TestType::LsrmMinted(2),
         vesting_slot_offsets: vec![1, 100_000, 200_000],
@@ -177,7 +177,7 @@ fn withdraw_test(params: WithdrawTestParams) {
             AccountMeta::new_readonly(sysvar::clock::ID, false),
         ];
         let signers = [&vesting_acc_beneficiary, client.payer()];
-        let r = client.withdraw_srm_with_signers(&signers, &accounts, expected_withdraw_amount);
+        let r = client.withdraw_with_signers(&signers, &accounts, expected_withdraw_amount);
         if error_code.is_some() {
             match r {
                 Ok(_) => panic!("expected error code from withdrawal"),

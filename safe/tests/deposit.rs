@@ -41,7 +41,7 @@ fn deposit_srm() {
         let vesting_amounts = vec![1, 2, 3, 4, 5];
         let vesting_acc_size = Vesting::size_dyn(vesting_slots.len()).unwrap() as usize;
         let (_signature, keypair) = client
-            .create_account_with_size_and_deposit_srm(
+            .create_account_with_size_and_deposit(
                 vesting_acc_size,
                 &deposit_accs,
                 vesting_acc_beneficiary.pubkey(),

@@ -1,6 +1,6 @@
 use solana_sdk::program_error::ProgramError;
 
-pub trait Pack<'a>: serde::Serialize + serde::Deserialize<'a> + Default {
+pub trait Pack<'a>: serde::Serialize + serde::Deserialize<'a> {
     fn pack(src: Self, dst: &mut [u8]) -> Result<(), ProgramError>;
     fn unpack(src: &[u8]) -> Result<Self, ProgramError>;
     fn size(&self) -> Result<u64, ProgramError>;

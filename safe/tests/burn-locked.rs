@@ -6,7 +6,7 @@ use solana_client_gen::solana_sdk::signature::Signer;
 mod common;
 
 #[test]
-fn burn_lsrm() {
+fn burn() {
     // Given.
     //
     // A vesting account with outstanding lSRM.
@@ -32,9 +32,7 @@ fn burn_lsrm() {
         AccountMeta::new_readonly(spl_token::ID, false),
     ];
     let signers = &[&lsrm_token_acc_owner, client.payer()];
-    client
-        .burn_locked_srm_with_signers(signers, accounts)
-        .unwrap();
+    client.burn_locked_with_signers(signers, accounts).unwrap();
 
     // Then.
     //
