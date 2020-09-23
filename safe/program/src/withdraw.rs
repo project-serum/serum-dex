@@ -15,40 +15,39 @@ pub fn handler<'a>(
 ) -> Result<(), SafeError> {
     info!("handler: withdraw_srm");
 
-    let account_info_iter = &mut accounts.iter();
+    let acc_infos = &mut accounts.iter();
 
-    let vesting_account_beneficiary_info = next_account_info(account_info_iter)?;
-    let vesting_account_info = next_account_info(account_info_iter)?;
-    let beneficiary_spl_account_info = next_account_info(account_info_iter)?;
-    let safe_spl_vault_account_info = next_account_info(account_info_iter)?;
-    let safe_spl_vault_authority_account_info = next_account_info(account_info_iter)?;
-    let safe_account_info = next_account_info(account_info_iter)?;
-    let spl_program_account_info = next_account_info(account_info_iter)?;
-    let clock = Clock::from_account_info(next_account_info(account_info_iter)?)?;
+    let vesting_acc_beneficiary_info = next_account_info(acc_infos)?;
+    let vesting_acc_info = next_account_info(acc_infos)?;
+    let beneficiary_spl_acc_info = next_account_info(acc_infos)?;
+    let safe_spl_vault_acc_info = next_account_info(acc_infos)?;
+    let safe_spl_vault_authority_acc_info = next_account_info(acc_infos)?;
+    let safe_acc_info = next_account_info(acc_infos)?;
+    let spl_program_acc_info = next_account_info(acc_infos)?;
+    let clock_acc_info = next_account_info(acc_infos)?;
+
+    access_control(AccessControlRequest {
+        program_id,
+        amount,
+        vesting_acc_beneficiary_info,
+        vesting_acc_info,
+        safe_spl_vault_acc_info,
+        safe_acc_info,
+        spl_program_acc_info,
+        clock_acc_info,
+    })?;
 
     VestingAccount::unpack_mut(
-        &mut vesting_account_info.try_borrow_mut_data()?,
-        &mut |vesting_account: &mut VestingAccount| {
-            access_control(AccessControlRequest {
-                program_id,
-                vesting_account_beneficiary_info: &vesting_account_beneficiary_info,
-                vesting_account_info,
-                vesting_account,
-                amount,
-                clock: &clock,
-                safe_spl_vault_account_info,
-                safe_account_info,
-                spl_program_account_info,
-            })?;
-
+        &mut vesting_acc_info.try_borrow_mut_data()?,
+        &mut |vesting_acc: &mut VestingAccount| {
             state_transition(StateTransitionRequest {
-                vesting_account,
                 amount,
-                safe_spl_vault_account_info,
-                safe_spl_vault_authority_account_info,
-                beneficiary_spl_account_info,
-                safe_account_info,
-                spl_program_account_info,
+                vesting_acc,
+                safe_spl_vault_acc_info,
+                safe_spl_vault_authority_acc_info,
+                beneficiary_spl_acc_info,
+                safe_acc_info,
+                spl_program_acc_info,
             })?;
 
             Ok(())
@@ -57,40 +56,41 @@ pub fn handler<'a>(
     .map_err(|e| SafeError::ProgramError(e))
 }
 
-fn access_control<'a, 'b>(req: AccessControlRequest<'a, 'b>) -> Result<(), SafeError> {
+fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), SafeError> {
     info!("access-control: withdraw");
 
     let AccessControlRequest {
         program_id,
-        vesting_account_beneficiary_info,
-        vesting_account_info,
-        vesting_account,
         amount,
-        clock,
-        safe_spl_vault_account_info,
-        safe_account_info,
-        spl_program_account_info,
+        vesting_acc_beneficiary_info,
+        vesting_acc_info,
+        safe_spl_vault_acc_info,
+        safe_acc_info,
+        spl_program_acc_info,
+        clock_acc_info,
     } = req;
-    assert_eq!(*spl_program_account_info.key, spl_token::ID);
+    assert_eq!(*spl_program_acc_info.key, spl_token::ID);
 
-    if vesting_account_info.owner != program_id {
+    if vesting_acc_info.owner != program_id {
         return Err(SafeError::ErrorCode(SafeErrorCode::InvalidAccount));
     }
-    if !vesting_account_beneficiary_info.is_signer {
+    if !vesting_acc_beneficiary_info.is_signer {
         return Err(SafeError::ErrorCode(SafeErrorCode::Unauthorized));
     }
-    if vesting_account.beneficiary != *vesting_account_beneficiary_info.key {
+    let vesting_acc = VestingAccount::unpack(&vesting_acc_info.try_borrow_data()?)?;
+    if vesting_acc.beneficiary != *vesting_acc_beneficiary_info.key {
         return Err(SafeError::ErrorCode(SafeErrorCode::Unauthorized));
     }
-    if amount > vesting_account.available_for_withdrawal(clock.slot) {
+    let clock = Clock::from_account_info(clock_acc_info)?;
+    if amount > vesting_acc.available_for_withdrawal(clock.slot) {
         return Err(SafeError::ErrorCode(SafeErrorCode::InsufficientBalance));
     }
 
     // Validate the vault spl account.
     {
-        let spl_vault_data = safe_spl_vault_account_info.try_borrow_data()?;
+        let spl_vault_data = safe_spl_vault_acc_info.try_borrow_data()?;
 
-        assert_eq!(*safe_spl_vault_account_info.owner, spl_token::ID);
+        assert_eq!(*safe_spl_vault_acc_info.owner, spl_token::ID);
         assert_eq!(spl_vault_data.len(), spl_token::state::Account::LEN);
 
         // AccountState must be initialized.
@@ -99,9 +99,9 @@ fn access_control<'a, 'b>(req: AccessControlRequest<'a, 'b>) -> Result<(), SafeE
         }
         // The SPL account owner must be hte program derived address.
         let expected_owner = {
-            let data = safe_account_info.try_borrow_data()?;
+            let data = safe_acc_info.try_borrow_data()?;
             let nonce = &[data[data.len() - 1]];
-            let signer_seeds = SrmVault::signer_seeds(safe_account_info.key, nonce);
+            let signer_seeds = SrmVault::signer_seeds(safe_acc_info.key, nonce);
 
             Pubkey::create_program_address(&signer_seeds, program_id)
                 .expect("safe initialized with invalid nonce")
@@ -113,74 +113,79 @@ fn access_control<'a, 'b>(req: AccessControlRequest<'a, 'b>) -> Result<(), SafeE
     }
     // todo: check beneficiary account is initialized
     info!("access-control: success");
-    Ok(())
-}
 
-struct AccessControlRequest<'a, 'b> {
-    program_id: &'a Pubkey,
-    vesting_account_beneficiary_info: &'a AccountInfo<'a>,
-    vesting_account_info: &'a AccountInfo<'a>,
-    vesting_account: &'b VestingAccount,
-    amount: u64,
-    clock: &'b Clock,
-    safe_spl_vault_account_info: &'a AccountInfo<'a>,
-    safe_account_info: &'a AccountInfo<'a>,
-    spl_program_account_info: &'a AccountInfo<'a>,
+    Ok(())
 }
 
 fn state_transition<'a, 'b>(req: StateTransitionRequest<'a, 'b>) -> Result<(), SafeError> {
     info!("state-transition: withdraw");
 
     let StateTransitionRequest {
-        vesting_account,
+        vesting_acc,
         amount,
-        safe_spl_vault_account_info,
-        safe_spl_vault_authority_account_info,
-        beneficiary_spl_account_info,
-        safe_account_info,
-        spl_program_account_info,
+        safe_spl_vault_acc_info,
+        safe_spl_vault_authority_acc_info,
+        beneficiary_spl_acc_info,
+        safe_acc_info,
+        spl_program_acc_info,
     } = req;
 
-    vesting_account.deduct(amount);
+    // Remove the withdrawn token from the vesting account.
+    {
+        vesting_acc.deduct(amount);
+    }
 
-    info!("invoking withdrawal token transfer");
+    // Withdraw token from vault to the user address.
+    {
+        info!("invoking withdrawal token transfer");
 
-    let withdraw_instruction = spl_token::instruction::transfer(
-        &spl_token::ID,
-        safe_spl_vault_account_info.key,
-        beneficiary_spl_account_info.key,
-        &safe_spl_vault_authority_account_info.key,
-        &[],
-        amount,
-    )?;
+        let withdraw_instruction = spl_token::instruction::transfer(
+            &spl_token::ID,
+            safe_spl_vault_acc_info.key,
+            beneficiary_spl_acc_info.key,
+            &safe_spl_vault_authority_acc_info.key,
+            &[],
+            amount,
+        )?;
 
-    let data = safe_account_info.try_borrow_data()?;
-    let nonce = &[data[data.len() - 1]];
-    let signer_seeds = SrmVault::signer_seeds(safe_account_info.key, nonce);
+        let data = safe_acc_info.try_borrow_data()?;
+        let nonce = &[data[data.len() - 1]];
+        let signer_seeds = SrmVault::signer_seeds(safe_acc_info.key, nonce);
 
-    solana_sdk::program::invoke_signed(
-        &withdraw_instruction,
-        &[
-            safe_spl_vault_account_info.clone(),
-            beneficiary_spl_account_info.clone(),
-            safe_spl_vault_authority_account_info.clone(),
-            spl_program_account_info.clone(),
-        ],
-        &[&signer_seeds],
-    )?;
+        solana_sdk::program::invoke_signed(
+            &withdraw_instruction,
+            &[
+                safe_spl_vault_acc_info.clone(),
+                beneficiary_spl_acc_info.clone(),
+                safe_spl_vault_authority_acc_info.clone(),
+                spl_program_acc_info.clone(),
+            ],
+            &[&signer_seeds],
+        )?;
+    }
 
-    info!("withdrawal token transfer complete");
     info!("state-transition: success");
 
     Ok(())
 }
 
-struct StateTransitionRequest<'a, 'b> {
-    vesting_account: &'b mut VestingAccount,
+struct AccessControlRequest<'a> {
+    program_id: &'a Pubkey,
     amount: u64,
-    safe_spl_vault_account_info: &'a AccountInfo<'a>,
-    beneficiary_spl_account_info: &'a AccountInfo<'a>,
-    safe_spl_vault_authority_account_info: &'a AccountInfo<'a>,
-    safe_account_info: &'a AccountInfo<'a>,
-    spl_program_account_info: &'a AccountInfo<'a>,
+    vesting_acc_beneficiary_info: &'a AccountInfo<'a>,
+    vesting_acc_info: &'a AccountInfo<'a>,
+    clock_acc_info: &'a AccountInfo<'a>,
+    safe_spl_vault_acc_info: &'a AccountInfo<'a>,
+    safe_acc_info: &'a AccountInfo<'a>,
+    spl_program_acc_info: &'a AccountInfo<'a>,
+}
+
+struct StateTransitionRequest<'a, 'b> {
+    amount: u64,
+    vesting_acc: &'b mut VestingAccount,
+    safe_spl_vault_acc_info: &'a AccountInfo<'a>,
+    beneficiary_spl_acc_info: &'a AccountInfo<'a>,
+    safe_spl_vault_authority_acc_info: &'a AccountInfo<'a>,
+    safe_acc_info: &'a AccountInfo<'a>,
+    spl_program_acc_info: &'a AccountInfo<'a>,
 }

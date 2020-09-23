@@ -276,6 +276,13 @@ pub fn mint_lsrm(
         lsrm_nfts
     };
 
+    // Sanity check we have 2 lSRM outstanding.
+    {
+        let vesting_account: VestingAccount =
+            serum_common::client::rpc::account_dyn_unpacked(client.rpc(), &vesting_account);
+        assert_eq!(vesting_account.locked_outstanding, nft_count as u64);
+    }
+
     LsrmMinted {
         client,
         vesting_account,

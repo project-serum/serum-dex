@@ -15,14 +15,8 @@ fn burn_lsrm() {
         vesting_account,
         lsrm,
         lsrm_token_account_owner,
-				..
+        ..
     } = lifecycle::mint_lsrm(2, vec![10_000, 20_000, 30_000], vec![10, 20, 30]);
-    // Sanity check we have 2 lSRM outstanding (this isn't necessary).
-    {
-        let vesting_account: VestingAccount =
-            serum_common::client::rpc::account_dyn_unpacked(client.rpc(), &vesting_account);
-        assert_eq!(vesting_account.locked_outstanding, 2);
-    }
 
     let lsrm1 = &lsrm[0];
 

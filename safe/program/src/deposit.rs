@@ -1,4 +1,3 @@
-use arrayref::array_mut_ref;
 use serum_common::pack::DynPack;
 use serum_safe::accounts::{SafeAccount, SrmVault, VestingAccount};
 use serum_safe::error::{SafeError, SafeErrorCode};
@@ -13,72 +12,46 @@ use spl_token::pack::Pack;
 pub fn handler<'a>(
     program_id: &'a Pubkey,
     accounts: &'a [AccountInfo<'a>],
-    vesting_account_beneficiary: Pubkey,
+    vesting_acc_beneficiary: Pubkey,
     vesting_slots: Vec<u64>,
     vesting_amounts: Vec<u64>,
 ) -> Result<(), SafeError> {
     info!("handler: deposit_srm");
 
-    let account_info_iter = &mut accounts.iter();
+    let acc_infos = &mut accounts.iter();
 
-    let vesting_account_info = next_account_info(account_info_iter)?;
-    let depositor_from = next_account_info(account_info_iter)?;
-    let authority_depositor_from = next_account_info(account_info_iter)?;
-    let safe_srm_vault_to = next_account_info(account_info_iter)?;
-    let safe_account_info = next_account_info(account_info_iter)?;
-    let spl_token_program_account_info = next_account_info(account_info_iter)?;
-    let rent = Rent::from_account_info(next_account_info(account_info_iter)?)?;
+    let vesting_acc_info = next_account_info(acc_infos)?;
+    let depositor_from = next_account_info(acc_infos)?;
+    let authority_depositor_from = next_account_info(acc_infos)?;
+    let safe_srm_vault_to = next_account_info(acc_infos)?;
+    let safe_acc_info = next_account_info(acc_infos)?;
+    let spl_token_program_acc_info = next_account_info(acc_infos)?;
+    let rent_acc_info = next_account_info(acc_infos)?;
 
-    let mut vesting_account_data = vesting_account_info.data.borrow_mut();
-    let vesting_account_data_len = vesting_account_data.len();
-
-    if vesting_account_data[VestingAccount::initialized_index()] == 1 {
-        return Err(SafeError::ErrorCode(SafeErrorCode::AlreadyInitialized).into());
-    }
-
-    // Check the dynamic data size is correct.
-    let expected_size = VestingAccount::data_size(vesting_slots.len());
-    if vesting_account_data.len() != expected_size {
-        return Err(SafeError::ErrorCode(SafeErrorCode::VestingAccountDataInvalid).into());
-    }
-
-    // Inject the size into the first 8 bytes, since the dynamic unpacker will
-    // check that.
-    {
-        let len_dst = array_mut_ref![vesting_account_data, 0, 8];
-        len_dst.copy_from_slice(&expected_size.to_le_bytes())
-    }
-
-    let safe_account = SafeAccount::unpack(&safe_account_info.try_borrow_data()?)
-        .map_err(|_| SafeError::ErrorCode(SafeErrorCode::SafeAccountDataInvalid))?;
+    access_control(AccessControlRequest {
+        vesting_slots_len: vesting_slots.len(),
+        program_id,
+        vesting_acc_info,
+        safe_acc_info,
+        depositor_from,
+        safe_srm_vault_to,
+        rent_acc_info,
+    })?;
 
     VestingAccount::unpack_unchecked_mut(
-        &mut vesting_account_data,
-        &mut |vesting_account: &mut VestingAccount| {
-            access_control(AccessControlRequest {
-                program_id,
-                vesting_account,
-                vesting_account_info,
-                vesting_account_data_len,
-                safe_account: &safe_account,
-                safe_account_info,
-                depositor_from,
-                safe_srm_vault_to,
-                rent,
-            })?;
-
+        &mut vesting_acc_info.try_borrow_mut_data()?,
+        &mut |vesting_acc: &mut VestingAccount| {
             state_transition(StateTransitionRequest {
-                vesting_account,
-                vesting_account_beneficiary,
-                safe_account_info,
                 vesting_slots: vesting_slots.clone(),
                 vesting_amounts: vesting_amounts.clone(),
+                vesting_acc,
+                vesting_acc_beneficiary,
+                safe_acc_info,
                 depositor_from,
                 safe_srm_vault_to,
                 authority_depositor_from,
-                spl_token_program_account_info,
+                spl_token_program_acc_info,
             })?;
-
             Ok(())
         },
     )?;
@@ -86,38 +59,47 @@ pub fn handler<'a>(
     Ok(())
 }
 
-fn access_control<'a, 'b, 'c>(req: AccessControlRequest<'a, 'b, 'c>) -> Result<(), ProgramError> {
+fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), ProgramError> {
     info!("access-control: deposit");
 
     let AccessControlRequest {
         program_id,
-        vesting_account,
-        vesting_account_info,
-        vesting_account_data_len,
-        safe_account,
-        safe_account_info,
+        vesting_acc_info,
+        safe_acc_info,
         depositor_from,
         safe_srm_vault_to,
-        rent,
+        rent_acc_info,
+        vesting_slots_len,
     } = req;
 
-    if vesting_account.initialized {
+    let vesting_data = vesting_acc_info.try_borrow_data()?;
+
+    // Check the dynamic data size is correct before unpacking.
+    if vesting_data.len() != VestingAccount::data_size(vesting_slots_len) {
+        return Err(SafeError::ErrorCode(SafeErrorCode::VestingAccountDataInvalid).into());
+    }
+    // Unsafe umpack.
+    let vesting_acc = VestingAccount::unpack_unchecked(&vesting_data)?;
+    if vesting_acc.initialized {
         return Err(SafeError::ErrorCode(SafeErrorCode::AlreadyInitialized).into());
     }
-    if !rent.is_exempt(vesting_account_info.lamports(), vesting_account_data_len) {
+    let rent = Rent::from_account_info(rent_acc_info)?;
+    if !rent.is_exempt(vesting_acc_info.lamports(), vesting_data.len()) {
         return Err(SafeError::ErrorCode(SafeErrorCode::NotRentExempt).into());
     }
-    if vesting_account_info.owner != program_id {
+    if vesting_acc_info.owner != program_id {
         return Err(SafeError::ErrorCode(SafeErrorCode::NotOwnedByProgram).into());
     }
     // Look at the deposit's SPL account data and check for the mint.
-    if safe_account.mint != Pubkey::new(&depositor_from.try_borrow_data()?[..32]) {
+    let safe_acc = SafeAccount::unpack(&safe_acc_info.try_borrow_data()?)
+        .map_err(|_| SafeError::ErrorCode(SafeErrorCode::SafeAccountDataInvalid))?;
+    if safe_acc.mint != Pubkey::new(&depositor_from.try_borrow_data()?[..32]) {
         return Err(SafeError::ErrorCode(SafeErrorCode::WrongCoinMint).into());
     }
     // Look into the safe vault's SPL account data and check for the owner (it should
     // be this program).
-    let nonce = &[safe_account.nonce];
-    let seeds = SrmVault::signer_seeds(safe_account_info.key, nonce);
+    let nonce = &[safe_acc.nonce];
+    let seeds = SrmVault::signer_seeds(safe_acc_info.key, nonce);
     let expected_authority = Pubkey::create_program_address(&seeds, program_id)?;
     if Pubkey::new(&safe_srm_vault_to.try_borrow_data()?[32..64]) != expected_authority {
         return Err(SafeError::ErrorCode(SafeErrorCode::WrongVault).into());
@@ -128,81 +110,80 @@ fn access_control<'a, 'b, 'c>(req: AccessControlRequest<'a, 'b, 'c>) -> Result<(
     Ok(())
 }
 
-struct AccessControlRequest<'a, 'b, 'c> {
-    program_id: &'a Pubkey,
-    vesting_account: &'b VestingAccount,
-    vesting_account_info: &'a AccountInfo<'a>,
-    vesting_account_data_len: usize,
-    safe_account: &'c SafeAccount,
-    safe_account_info: &'a AccountInfo<'a>,
-    depositor_from: &'a AccountInfo<'a>,
-    safe_srm_vault_to: &'a AccountInfo<'a>,
-    rent: Rent,
-}
-
 fn state_transition<'a, 'b>(req: StateTransitionRequest<'a, 'b>) -> Result<(), SafeError> {
     info!("state-transition: deposit");
 
     let StateTransitionRequest {
-        vesting_account,
-        vesting_account_beneficiary,
-        safe_account_info,
+        vesting_acc,
+        vesting_acc_beneficiary,
+        safe_acc_info,
         vesting_slots,
         vesting_amounts,
         depositor_from,
         safe_srm_vault_to,
         authority_depositor_from,
-        spl_token_program_account_info,
+        spl_token_program_acc_info,
     } = req;
 
     // Update account.
-    vesting_account.safe = safe_account_info.key.clone();
-    vesting_account.beneficiary = vesting_account_beneficiary;
-    vesting_account.initialized = true;
-    vesting_account.slots = vesting_slots.clone();
-    vesting_account.amounts = vesting_amounts.clone();
+    vesting_acc.safe = safe_acc_info.key.clone();
+    vesting_acc.beneficiary = vesting_acc_beneficiary;
+    vesting_acc.initialized = true;
+    vesting_acc.slots = vesting_slots.clone();
+    vesting_acc.amounts = vesting_amounts.clone();
 
     let total_vest_amount = vesting_amounts.iter().sum();
 
     // Now transfer SPL funds from the depositor, to the
     // program-controlled-address.
-    info!("invoke SPL token transfer");
+    {
+        info!("invoke SPL token transfer");
 
-    let deposit_instruction = spl_token::instruction::transfer(
-        &spl_token::ID,
-        depositor_from.key,
-        safe_srm_vault_to.key,
-        authority_depositor_from.key,
-        &[],
-        total_vest_amount,
-    )
-    .unwrap();
-    assert_eq!(*spl_token_program_account_info.key, spl_token::ID);
-    solana_sdk::program::invoke_signed(
-        &deposit_instruction,
-        &[
-            depositor_from.clone(),
-            authority_depositor_from.clone(),
-            safe_srm_vault_to.clone(),
-            spl_token_program_account_info.clone(),
-        ],
-        &[],
-    )?;
+        let deposit_instruction = spl_token::instruction::transfer(
+            &spl_token::ID,
+            depositor_from.key,
+            safe_srm_vault_to.key,
+            authority_depositor_from.key,
+            &[],
+            total_vest_amount,
+        )
+        .unwrap();
+        assert_eq!(*spl_token_program_acc_info.key, spl_token::ID);
+        solana_sdk::program::invoke_signed(
+            &deposit_instruction,
+            &[
+                depositor_from.clone(),
+                authority_depositor_from.clone(),
+                safe_srm_vault_to.clone(),
+                spl_token_program_acc_info.clone(),
+            ],
+            &[],
+        )?;
+    }
 
-    info!("SPL token transfer complete");
     info!("state-transition: complete");
 
     Ok(())
 }
 
+struct AccessControlRequest<'a> {
+    program_id: &'a Pubkey,
+    vesting_acc_info: &'a AccountInfo<'a>,
+    safe_acc_info: &'a AccountInfo<'a>,
+    depositor_from: &'a AccountInfo<'a>,
+    safe_srm_vault_to: &'a AccountInfo<'a>,
+    rent_acc_info: &'a AccountInfo<'a>,
+    vesting_slots_len: usize,
+}
+
 struct StateTransitionRequest<'a, 'b> {
-    vesting_account: &'b mut VestingAccount,
-    vesting_account_beneficiary: Pubkey,
-    safe_account_info: &'a AccountInfo<'a>,
+    vesting_acc: &'b mut VestingAccount,
+    vesting_acc_beneficiary: Pubkey,
+    safe_acc_info: &'a AccountInfo<'a>,
     vesting_slots: Vec<u64>,
     vesting_amounts: Vec<u64>,
     depositor_from: &'a AccountInfo<'a>,
     safe_srm_vault_to: &'a AccountInfo<'a>,
     authority_depositor_from: &'a AccountInfo<'a>,
-    spl_token_program_account_info: &'a AccountInfo<'a>,
+    spl_token_program_acc_info: &'a AccountInfo<'a>,
 }

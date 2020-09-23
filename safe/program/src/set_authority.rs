@@ -12,23 +12,21 @@ pub fn handler<'a>(
 ) -> Result<(), SafeError> {
     info!("handler: set_authority");
 
-    let account_info_iter = &mut accounts.iter();
+    let acc_infos = &mut accounts.iter();
 
-    let safe_authority_account_info = next_account_info(account_info_iter)?;
-    let safe_account_info = next_account_info(account_info_iter)?;
+    let safe_authority_acc_info = next_account_info(acc_infos)?;
+    let safe_acc_info = next_account_info(acc_infos)?;
 
-    let mut safe_account_data = safe_account_info.try_borrow_mut_data()?;
+    access_control(AccessControlRequest {
+        safe_acc_info,
+        safe_authority_acc_info,
+    })?;
 
     SafeAccount::unpack_mut(
-        &mut safe_account_data,
-        &mut |safe_account: &mut SafeAccount| {
-            access_control(AccessControlRequest {
-                safe_authority_account_info,
-                safe_account_authority: &safe_account.authority,
-            })?;
-
+        &mut safe_acc_info.try_borrow_mut_data()?,
+        &mut |safe_acc: &mut SafeAccount| {
             state_transition(StateTransitionRequest {
-                safe_account,
+                safe_acc,
                 new_authority,
             })?;
 
@@ -38,17 +36,19 @@ pub fn handler<'a>(
     .map_err(|e| SafeError::ProgramError(e))
 }
 
-fn access_control<'a, 'b>(req: AccessControlRequest<'a, 'b>) -> Result<(), SafeError> {
+fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), SafeError> {
     info!("access-control: set-authority");
 
     let AccessControlRequest {
-        safe_authority_account_info,
-        safe_account_authority,
+        safe_acc_info,
+        safe_authority_acc_info,
     } = req;
-    if !safe_authority_account_info.is_signer {
+
+    let safe_acc = SafeAccount::unpack(&safe_acc_info.try_borrow_data()?)?;
+    if !safe_authority_acc_info.is_signer {
         return Err(SafeError::ErrorCode(SafeErrorCode::Unauthorized));
     }
-    if safe_account_authority != safe_authority_account_info.key {
+    if safe_acc.authority != *safe_authority_acc_info.key {
         return Err(SafeError::ErrorCode(SafeErrorCode::Unauthorized));
     }
 
@@ -57,20 +57,20 @@ fn access_control<'a, 'b>(req: AccessControlRequest<'a, 'b>) -> Result<(), SafeE
     Ok(())
 }
 
-struct AccessControlRequest<'a, 'b> {
-    safe_authority_account_info: &'a AccountInfo<'a>,
-    safe_account_authority: &'b Pubkey,
+struct AccessControlRequest<'a> {
+    safe_acc_info: &'a AccountInfo<'a>,
+    safe_authority_acc_info: &'a AccountInfo<'a>,
 }
 
 fn state_transition<'a>(req: StateTransitionRequest<'a>) -> Result<(), SafeError> {
     info!("state-transition: set-authority");
 
     let StateTransitionRequest {
-        safe_account,
+        safe_acc,
         new_authority,
     } = req;
 
-    safe_account.authority = new_authority;
+    safe_acc.authority = new_authority;
 
     info!("state-transition: success");
 
@@ -78,6 +78,6 @@ fn state_transition<'a>(req: StateTransitionRequest<'a>) -> Result<(), SafeError
 }
 
 struct StateTransitionRequest<'a> {
-    safe_account: &'a mut SafeAccount,
+    safe_acc: &'a mut SafeAccount,
     new_authority: Pubkey,
 }

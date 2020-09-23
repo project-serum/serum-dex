@@ -1,3 +1,4 @@
+use common::assert::assert_eq_vec;
 use rand::rngs::OsRng;
 use serum_common::pack::DynPack;
 use serum_safe::accounts::VestingAccount;
@@ -80,52 +81,24 @@ fn deposit_srm() {
         assert_eq!(vesting_account.safe, safe_account.pubkey());
         assert_eq!(vesting_account.beneficiary, expected_beneficiary.pubkey());
         assert_eq!(vesting_account.initialized, true);
-        let matching = vesting_account
-            .slots
-            .iter()
-            .zip(&expected_slots)
-            .filter(|&(a, b)| a == b)
-            .count();
-        assert_eq!(vesting_account.slots.len(), matching);
-        assert_eq!(vesting_account.slots.len(), expected_slots.len());
-        let matching = vesting_account
-            .amounts
-            .iter()
-            .zip(&expected_amounts)
-            .filter(|&(a, b)| a == b)
-            .count();
-        assert_eq!(vesting_account.amounts.len(), matching);
-        assert_eq!(vesting_account.amounts.len(), expected_slots.len());
+        assert_eq_vec(vesting_account.slots, expected_slots.clone());
+        assert_eq_vec(vesting_account.amounts, expected_amounts.clone());
     }
     // Then.
     //
     // The depositor's SPL token account has funds reduced.
     {
-        let depositor_spl_account = {
-            let account = client
-                .rpc()
-                .get_account_with_commitment(&depositor.pubkey(), CommitmentConfig::recent())
-                .unwrap()
-                .value
-                .unwrap();
-            spl_token::state::Account::unpack_from_slice(&account.data).unwrap()
-        };
+        let depositor_spl_account: spl_token::state::Account =
+            serum_common::client::rpc::account_unpacked(client.rpc(), &depositor.pubkey());
         let expected_balance = depositor_balance_before - expected_amounts.iter().sum::<u64>();
-        assert_eq!(depositor_spl_account.amount, expected_balance,);
+        assert_eq!(depositor_spl_account.amount, expected_balance);
     }
     // Then.
     //
     // The program-owned SPL token vault has funds increased.
     {
-        let safe_vault_spl_account = {
-            let account = client
-                .rpc()
-                .get_account_with_commitment(&safe_srm_vault.pubkey(), CommitmentConfig::recent())
-                .unwrap()
-                .value
-                .unwrap();
-            spl_token::state::Account::unpack_from_slice(&account.data).unwrap()
-        };
+        let safe_vault_spl_account: spl_token::state::Account =
+            serum_common::client::rpc::account_unpacked(client.rpc(), &safe_srm_vault.pubkey());
         let expected_balance = expected_amounts.iter().sum::<u64>();
         assert_eq!(safe_vault_spl_account.amount, expected_balance);
         // Sanity check the owner of the vault account.

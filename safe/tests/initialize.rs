@@ -117,18 +117,3 @@ fn initialized_already() {
         }
     };
 }
-
-#[test]
-fn initialized_not_rent_exempt() {
-    // TODO: nice to have.
-    //
-    // Test initialization with a non rent exempt safe account.
-}
-
-#[test]
-fn initialized_program_not_safe_account_owner() {
-    // TODO: nice to have.
-    //
-    // Test initialization with a safe account that's not owned
-    // by the program.
-}

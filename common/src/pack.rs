@@ -21,6 +21,15 @@ pub trait DynPack: Sealed {
     where
         Self: IsInitialized,
     {
+        if input.len() < 8 {
+            return Err(ProgramError::InvalidAccountData);
+        }
+        let size_bytes_input = array_ref![input, 0, 8];
+        let size_input = u64::from_le_bytes(*size_bytes_input);
+        if input.len() as u64 != size_input {
+            return Err(ProgramError::InvalidAccountData);
+        }
+
         let value = Self::unpack_unchecked(input)?;
         if value.is_initialized() {
             Ok(value)
@@ -29,18 +38,8 @@ pub trait DynPack: Sealed {
         }
     }
 
-    /// Unpack from slice without checking if initialized
+    /// Unpack from slice without checking if initialized.
     fn unpack_unchecked(input: &[u8]) -> Result<Self, ProgramError> {
-        if input.len() < 8 {
-            return Err(ProgramError::InvalidAccountData);
-        }
-        let size_bytes_input = array_ref![input, 0, 8];
-        let size_input = u64::from_le_bytes(*size_bytes_input);
-
-        if input.len() as u64 != size_input {
-            return Err(ProgramError::InvalidAccountData);
-        }
-
         Ok(Self::unpack_from_slice(&input[8..])?)
     }
 
