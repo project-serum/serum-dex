@@ -1,10 +1,12 @@
 use common::assert::assert_eq_vec;
 use common::lifecycle;
+use rand::rngs::OsRng;
 use serum_common::pack::DynPack;
 use serum_safe::accounts::VestingAccount;
 use serum_safe::error::SafeErrorCode;
 use solana_client_gen::solana_sdk::commitment_config::CommitmentConfig;
 use solana_client_gen::solana_sdk::instruction::AccountMeta;
+use solana_client_gen::solana_sdk::signature::Keypair;
 use solana_client_gen::solana_sdk::signature::Signer;
 use solana_client_gen::solana_sdk::sysvar;
 use spl_token::pack::Pack;
@@ -247,6 +249,8 @@ fn start_state(
                 srm_mint,
                 ..
             } = lifecycle::deposit_with_schedule(vesting_slot_offsets, vesting_amounts);
+            // Dummy keypair to stuff into type. Not used.
+            let lsrm_token_account_owner = Keypair::generate(&mut OsRng);
             lifecycle::LsrmMinted {
                 client,
                 vesting_account,
@@ -258,6 +262,7 @@ fn start_state(
                 safe_srm_vault_authority,
                 srm_mint,
                 lsrm: vec![],
+                lsrm_token_account_owner,
             }
         }
     }

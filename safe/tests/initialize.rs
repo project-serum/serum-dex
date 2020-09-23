@@ -14,9 +14,7 @@ mod common;
 fn initialized() {
     // Given.
     let common::lifecycle::Genesis {
-        client,
-        srm_mint,
-				..
+        client, srm_mint, ..
     } = common::lifecycle::genesis();
 
     // When.
@@ -78,9 +76,7 @@ fn initialized() {
 fn initialized_already() {
     // Given.
     let common::lifecycle::Genesis {
-        client,
-        srm_mint,
-				..
+        client, srm_mint, ..
     } = common::lifecycle::genesis();
 
     // When

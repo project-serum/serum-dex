@@ -104,13 +104,14 @@ fn mint_lsrm() {
                 .unwrap()
                 .value
                 .unwrap();
-            LsrmReceipt::unpack(&account.data).unwrap()
+            (LsrmReceipt::unpack(&account.data).unwrap(), lsrm)
         });
-        for (idx, receipt) in lsrm_receipts.enumerate() {
+        for (idx, (receipt, lsrm)) in lsrm_receipts.enumerate() {
             assert!(receipt.initialized);
             assert_eq!(receipt.mint, lsrm_nfts[idx].mint.pubkey());
             assert_eq!(receipt.vesting_account, vesting_account);
             assert_eq!(receipt.burned, false);
+            assert_eq!(receipt.spl_account, lsrm.token_account.pubkey());
         }
     }
     // Then.

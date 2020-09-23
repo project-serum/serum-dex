@@ -251,6 +251,10 @@ pub fn mint_lsrm(
         ..
     } = deposit_with_schedule(vesting_slot_offsets, vesting_amounts);
 
+    // Just have the beneficiary key be the owner of all the lSRM.
+    let lsrm_token_account_owner =
+        Keypair::from_bytes(&vesting_account_beneficiary.to_bytes()).unwrap();
+
     let lsrm = {
         let mint_lsrm_accounts = vec![
             AccountMeta::new(vesting_account_beneficiary.pubkey(), true),
@@ -264,7 +268,7 @@ pub fn mint_lsrm(
         let (_sig, lsrm_nfts) = client
             .create_nfts_and_mint_locked_srm_with_signers(
                 nft_count,
-                &vesting_account_beneficiary.pubkey(),
+                &lsrm_token_account_owner.pubkey(),
                 signers,
                 mint_lsrm_accounts,
             )
@@ -283,6 +287,7 @@ pub fn mint_lsrm(
         safe_srm_vault,
         safe_srm_vault_authority,
         lsrm,
+        lsrm_token_account_owner,
     }
 }
 
@@ -297,4 +302,6 @@ pub struct LsrmMinted {
     pub safe_srm_vault: Keypair,
     pub safe_srm_vault_authority: Pubkey,
     pub srm_mint: Keypair,
+    // Owner of all the token accounts owning NFTs.
+    pub lsrm_token_account_owner: Keypair,
 }

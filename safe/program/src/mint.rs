@@ -176,6 +176,7 @@ fn state_transition<'a, 'b>(req: StateTransitionRequest<'a, 'b>) -> Result<(), S
                 {
                     receipt.initialized = true;
                     receipt.mint = *mint.key;
+                    receipt.spl_account = *token_account.key;
                     receipt.vesting_account = *vesting_account_info.key;
                     receipt.burned = false;
                 }

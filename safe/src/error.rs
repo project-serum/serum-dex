@@ -30,9 +30,11 @@ pub enum SafeErrorCode {
     InvalidAccount = 17,
     WrongVault = 18,
     InvalidVaultNonce = 19,
+    InvalidReceipt = 20,
+    AlreadyBurned = 21,
+    InvalidAccountOwner = 22,
+    UnauthorizedReceipt = 23,
     Unknown = 1000,
-    Unknown2 = 1001,
-    Unknown3 = 1002,
 }
 
 impl std::fmt::Display for SafeErrorCode {

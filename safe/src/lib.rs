@@ -89,10 +89,12 @@ pub mod instruction {
         ///
         /// Accounts:
         ///
-        /// 0. `[signer]`   The SPL token account holding the lSRM NFT.
-        /// 0. `[writable]` The SPL Mint representing the lSRM NFT.
-        /// 1. `[writable]` The vesting account owning the lSRM.
-        /// 2. `[writable]` The lSRM receipt proving validity of the lSRM.
+        /// 0. `[signer]`   The owner of the SPL token account holding the lSRM NFT.
+        /// 1. `[writable]` The SPL token account holding the lSRM NFT.
+        /// 2. `[writable]` The SPL Mint representing the lSRM NFT.
+        /// 3. `[writable]` The lSRM receipt proving validity of the lSRM.
+        /// 4. `[writable]` The vesting account owning the lSRM.
+        /// 5. `[]`         The SPL token program.
         ///
         BurnLockedSrm,
         /// WithdrawSrm withdraws the given amount from the given vesting account.
@@ -109,8 +111,7 @@ pub mod instruction {
         /// 6. `[]`         SPL token program.
         /// 7. `[]`         Clock sysvar.
         WithdrawSrm { amount: u64 },
-        /// Sets the new authority for the safe instance. If set to all zeroes, then
-        /// authority is forever lost.
+        /// Sets the new authority for the safe instance.
         ///
         /// 0. `[signer]`   The current safe authority.
         /// 1. `[writable]` The SafeAccount instance.
