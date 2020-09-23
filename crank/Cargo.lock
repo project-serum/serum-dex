@@ -352,6 +352,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "codegen"
+version = "0.1.0"
+dependencies = [
+ "heck",
+ "proc-macro2 0.4.30",
+ "proc-quote",
+ "syn 0.15.44",
+]
+
+[[package]]
 name = "console"
 version = "0.11.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -416,7 +426,7 @@ dependencies = [
  "log 0.4.11",
  "rand 0.7.3",
  "safe-transmute",
- "serum-common-client",
+ "serum-common",
  "serum_dex",
  "slog-scope",
  "slog-stdlog",
@@ -1712,6 +1722,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "proc-quote"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fa612543f23fda013e1e6ce30b5285a9d313c6e582e57b4ceca74eb5b85685b5"
+dependencies = [
+ "proc-macro-hack",
+ "proc-macro2 0.4.30",
+ "proc-quote-impl",
+ "quote 0.6.13",
+ "syn 0.15.44",
+]
+
+[[package]]
+name = "proc-quote-impl"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f785f0f8cd00b7945efc3f3bdf8205eb06af5aacec598d83e67f41dc8d101fda"
+dependencies = [
+ "proc-macro-hack",
+ "proc-macro2 0.4.30",
+ "quote 0.6.13",
+]
+
+[[package]]
 name = "quick-error"
 version = "1.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2168,13 +2202,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "serum-common-client"
+name = "serum-common"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "arrayref",
  "rand 0.7.3",
- "solana-client",
- "solana-sdk",
+ "solana-client-gen",
  "spl-token",
 ]
 
@@ -2414,6 +2448,19 @@ dependencies = [
  "thiserror",
  "tungstenite 0.10.1",
  "url 2.1.1",
+]
+
+[[package]]
+name = "solana-client-gen"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "codegen",
+ "rand 0.7.3",
+ "serde",
+ "solana-client",
+ "solana-sdk",
+ "thiserror",
 ]
 
 [[package]]

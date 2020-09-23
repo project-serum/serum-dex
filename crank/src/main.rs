@@ -10,10 +10,10 @@ use safe_transmute::{
     transmute_many, transmute_many_pedantic, transmute_many_permissive, transmute_one,
     transmute_one_pedantic, try_copy,
 };
-use serum_common_client::rpc::{
+use serum_common::client::rpc::{
     create_and_init_mint, create_spl_account, mint_to_new_account, send_txn,
 };
-use serum_common_client::Cluster;
+use serum_common::client::Cluster;
 use serum_dex::instruction::{MarketInstruction, NewOrderInstruction};
 use serum_dex::matching::{OrderType, Side};
 use serum_dex::state::gen_vault_signer_key;

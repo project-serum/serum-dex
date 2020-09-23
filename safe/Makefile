@@ -16,6 +16,10 @@ TEST_CLUSTER_URL="http://localhost:8899"
 #
 TEST_PROGRAM_ID=""
 #
+# Default options used for the solana cli.
+#
+SOL_OPTIONS=--url $(TEST_CLUSTER_URL) --keypair $(TEST_PAYER_FILEPATH)
+#
 # Path to the BPF sdk to build solana programs.
 #
 BPF_SDK=$(shell pwd)/../bin/bpf-sdk
@@ -55,7 +59,7 @@ build-program:
 	$(BPF_SDK)/dependencies/llvm-native/bin/llvm-objcopy --strip-all $(BUILD_DIR)/$(LIB_NAME).so $(BUILD_DIR)/$(LIB_NAME).so
 
 deploy: build
-	$(eval TEST_PROGRAM_ID=$(shell solana deploy $(BUILD_DIR)/$(LIB_NAME).so | jq .programId -r))
+	$(eval TEST_PROGRAM_ID=$(shell solana deploy $(SOL_OPTIONS) $(BUILD_DIR)/$(LIB_NAME).so | jq .programId -r))
 	@echo "Deployed program at address $(TEST_PROGRAM_ID)"
 
 test-program:
@@ -74,4 +78,4 @@ test-unit:
 
 init:
 	yes | solana-keygen new --outfile $(TEST_PAYER_FILEPATH)
-	yes | solana airdrop --url $(TEST_CLUSTER_URL) --keypair $(TEST_PAYER_FILEPATH) 100
+	yes | solana airdrop $(SOL_OPTIONS) 100
