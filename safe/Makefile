@@ -75,7 +75,8 @@ test: deploy test-program
 init-test: init test
 
 test-unit:
-	cargo test --lib --features test,client,client-ext
+	RUST_BACKTRACE=1 \
+	cargo test --lib --features test,client,client-ext -- --nocapture $(args)
 
 init:
 	yes | solana-keygen new --outfile $(TEST_PAYER_FILEPATH)

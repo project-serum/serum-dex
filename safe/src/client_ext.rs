@@ -86,11 +86,11 @@ solana_client_gen_extension! {
 
                 let mut accounts = accounts.to_vec();
                 accounts.insert(0, AccountMeta::new(safe_acc.pubkey(), false));
+                accounts.insert(1, AccountMeta::new_readonly(*srm_mint, false));
 
                 let initialize_instr = super::instruction::initialize(
                     *self.program(),
                     &accounts,
-                    *srm_mint,
                     *safe_authority,
                     nonce,
                 );

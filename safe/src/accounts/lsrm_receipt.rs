@@ -2,7 +2,7 @@ use solana_client_gen::solana_sdk::pubkey::Pubkey;
 
 /// LsrmReceipt is a program owned account. It's existence is a
 /// proof of validity for an individual lSRM token.
-#[derive(Default, serde::Serialize, serde::Deserialize)]
+#[derive(Default, Debug, serde::Serialize, serde::Deserialize)]
 pub struct LsrmReceipt {
     /// True iff the receipt has been authorized by the program.
     pub initialized: bool,

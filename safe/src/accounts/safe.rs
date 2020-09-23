@@ -21,10 +21,11 @@ serum_common::packable!(Safe);
 mod tests {
     use super::*;
     use rand::rngs::OsRng;
+    use solana_client_gen::solana_sdk::program_error::ProgramError;
     use solana_client_gen::solana_sdk::signature::{Keypair, Signer};
 
     #[test]
-    fn safe_pack_unpack() {
+    fn pack_unpack() {
         let mint = Keypair::generate(&mut OsRng).pubkey();
         let authority = Keypair::generate(&mut OsRng).pubkey();
         let initialized = true;
@@ -45,5 +46,38 @@ mod tests {
         assert_eq!(new_safe.authority, authority);
         assert_eq!(new_safe.initialized, initialized);
         assert_eq!(new_safe.nonce, 33);
+    }
+
+    #[test]
+    fn unpack_too_small() {
+        let size = Safe::default().size().unwrap() - 10;
+        let data = vec![0; size as usize];
+        let result = Safe::unpack(&data);
+        match result {
+            Ok(_) => panic!("expect error"),
+            Err(e) => assert_eq!(e, ProgramError::InvalidAccountData),
+        }
+    }
+
+    #[test]
+    fn unpack_too_large() {
+        let size = Safe::default().size().unwrap() + 10;
+        let data = vec![0; size as usize];
+        let result = Safe::unpack(&data);
+        match result {
+            Ok(_) => panic!("expect error"),
+            Err(e) => assert_eq!(e, ProgramError::InvalidAccountData),
+        }
+    }
+
+    #[test]
+    fn unpack_zeroes_size() {
+        let og_size = Safe::default().size().unwrap();
+        let zero_data = vec![0; og_size as usize];
+        let r = Safe::unpack_unchecked(&zero_data).unwrap();
+        assert_eq!(r.mint, Pubkey::new(&[0; 32]));
+        assert_eq!(r.initialized, false);
+        assert_eq!(r.authority, Pubkey::new(&[0; 32]));
+        assert_eq!(r.nonce, 0);
     }
 }

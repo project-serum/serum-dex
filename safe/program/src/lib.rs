@@ -29,11 +29,9 @@ fn process_instruction<'a>(
         .map_err(|_| SafeError::ErrorCode(SafeErrorCode::WrongSerialization))?;
 
     let result = match instruction {
-        SafeInstruction::Initialize {
-            mint,
-            authority,
-            nonce,
-        } => initialize::handler(program_id, accounts, mint, authority, nonce),
+        SafeInstruction::Initialize { authority, nonce } => {
+            initialize::handler(program_id, accounts, authority, nonce)
+        }
         SafeInstruction::Deposit {
             vesting_account_beneficiary,
             vesting_slots,

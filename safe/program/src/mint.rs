@@ -13,7 +13,7 @@ pub fn handler<'a>(
     accounts: &'a [AccountInfo<'a>],
     token_acc_owner: Pubkey,
 ) -> Result<(), SafeError> {
-    info!("handler: mint_locked_srm");
+    info!("handler: mint_locked");
 
     let acc_infos = &mut accounts.iter();
 

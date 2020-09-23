@@ -1829,6 +1829,7 @@ dependencies = [
  "rand",
  "serde",
  "solana-client",
+ "solana-client-gen",
  "solana-sdk",
  "spl-token",
 ]

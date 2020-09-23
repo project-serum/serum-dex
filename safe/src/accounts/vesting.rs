@@ -74,8 +74,8 @@ impl Vesting {
     /// `slot_account` vesting periods.
     pub fn size_dyn(slot_count: usize) -> Result<u64, SafeError> {
         let mut d: Vesting = Default::default();
-        d.slots = vec![0; slot_count];
-        d.amounts = vec![0; slot_count];
+        d.slots = vec![0u64; slot_count];
+        d.amounts = vec![0u64; slot_count];
         Ok(d.size()?)
     }
 }
@@ -97,7 +97,7 @@ mod tests {
         let slots = vec![5, 6, 7, 8];
         let initialized = true;
         let locked_outstanding = 99;
-        let vesting_account = Vesting {
+        let vesting_acc = Vesting {
             safe,
             beneficiary,
             initialized,
@@ -109,7 +109,7 @@ mod tests {
         // When I pack it into a slice.
         let mut dst = vec![];
         dst.resize(Vesting::size_dyn(slots.len()).unwrap() as usize, 0u8);
-        Vesting::pack(vesting_account, &mut dst).unwrap();
+        Vesting::pack(vesting_acc, &mut dst).unwrap();
 
         // Then I can unpack it from a slice.
         let va = Vesting::unpack(&dst).unwrap();
@@ -128,7 +128,6 @@ mod tests {
         assert_eq!(va.amounts.len(), match_amounts);
         let match_slots = va.slots.iter().zip(&slots).filter(|&(a, b)| a == b).count();
         assert_eq!(va.amounts.len(), match_slots);
-
         assert_eq!(va.initialized, initialized);
     }
 
@@ -140,7 +139,7 @@ mod tests {
         let slots = vec![5, 6, 7, 8];
         let initialized = true;
         let locked_outstanding = 0;
-        let vesting_account = Vesting {
+        let vesting_acc = Vesting {
             safe,
             beneficiary,
             initialized,
@@ -148,10 +147,36 @@ mod tests {
             amounts: amounts.clone(),
             slots: slots.clone(),
         };
-        assert_eq!(0, vesting_account.available_for_withdrawal(4));
-        assert_eq!(1, vesting_account.available_for_withdrawal(5));
-        assert_eq!(3, vesting_account.available_for_withdrawal(6));
-        assert_eq!(10, vesting_account.available_for_withdrawal(8));
-        assert_eq!(10, vesting_account.available_for_withdrawal(100));
+        assert_eq!(0, vesting_acc.available_for_withdrawal(4));
+        assert_eq!(1, vesting_acc.available_for_withdrawal(5));
+        assert_eq!(3, vesting_acc.available_for_withdrawal(6));
+        assert_eq!(10, vesting_acc.available_for_withdrawal(8));
+        assert_eq!(10, vesting_acc.available_for_withdrawal(100));
+    }
+
+    #[test]
+    fn unpack_zeroes_size() {
+        let og_size = Vesting::size_dyn(5).unwrap();
+        let zero_data = vec![0; og_size as usize];
+        let r = Vesting::unpack(&zero_data);
+        match r {
+            Ok(_) => panic!("expect error"),
+            Err(e) => assert_eq!(e, ProgramError::InvalidAccountData),
+        }
+    }
+
+    #[test]
+    fn unpack_unchecked_zeroes_size() {
+        let og_size = Vesting::size_dyn(5).unwrap();
+        let zero_data = vec![0; og_size as usize];
+        let r = Vesting::unpack_unchecked(&zero_data).unwrap();
+        assert_eq!(r.initialized, false);
+        assert_eq!(r.safe, Pubkey::new(&[0; 32]));
+        assert_eq!(r.beneficiary, Pubkey::new(&[0; 32]));
+        assert_eq!(r.locked_outstanding, 0);
+        // Notice how we lose information here when deserializing from
+        // all zeroes.
+        assert_eq!(r.slots.len(), 0);
+        assert_eq!(r.amounts.len(), 0);
     }
 }

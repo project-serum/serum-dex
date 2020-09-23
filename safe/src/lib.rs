@@ -18,11 +18,9 @@ pub mod instruction {
         /// Accounts:
         ///
         /// 0. `[writable]` Safe to initialize.
-        /// 1. `[]`         Rent sysvar
+        /// 1. `[]`         Mint of the SPL token controlled by the safe.
+        /// 2. `[]`         Rent sysvar
         Initialize {
-            /// The mint of the SPL token controlled by the safe, e.g., the SRM
-            /// mint.
-            mint: Pubkey,
             /// The priviledged account.
             authority: Pubkey,
             /// The nonce to use to create the Safe's derived-program address,

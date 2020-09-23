@@ -39,6 +39,9 @@ pub enum SafeErrorCode {
     InvalidTokenProgram = 26,
     InvalidSerialization = 27,
     SizeNotAvailable = 28,
+		UnitializedTokenMint = 29,
+		InvalidVestingSlots = 30,
+		InvalidVestingAmounts = 31,
     Unknown = 1000,
 }
 

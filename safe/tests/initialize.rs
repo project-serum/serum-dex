@@ -97,14 +97,13 @@ fn initialized_already() {
     // And
     //
     // I try to initialize it for second time.
-    let accounts_again = vec![AccountMeta::new(safe_acc.pubkey(), false), rent_acc];
+    let accounts_again = vec![
+        AccountMeta::new(safe_acc.pubkey(), false),
+        AccountMeta::new_readonly(srm_mint.pubkey(), false),
+        rent_acc,
+    ];
     let new_safe_authority = Keypair::generate(&mut OsRng);
-    match client.initialize(
-        &accounts_again,
-        srm_mint.pubkey(),
-        new_safe_authority.pubkey(),
-        nonce,
-    ) {
+    match client.initialize(&accounts_again, new_safe_authority.pubkey(), nonce) {
         Ok(_) => panic!("transaction should fail"),
         Err(e) => {
             // Then.

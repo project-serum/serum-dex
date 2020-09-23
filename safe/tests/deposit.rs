@@ -10,7 +10,7 @@ use solana_client_gen::solana_sdk::signature::{Keypair, Signer};
 mod common;
 
 #[test]
-fn deposit_srm() {
+fn deposit() {
     // Given.
     //
     // An initialized safe.
@@ -40,6 +40,7 @@ fn deposit_srm() {
         let vesting_slots = vec![11, 12, 13, 14, 15];
         let vesting_amounts = vec![1, 2, 3, 4, 5];
         let vesting_acc_size = Vesting::size_dyn(vesting_slots.len()).unwrap() as usize;
+        println!("EXPECTED_SIZE vesting_acc_size {:?}", vesting_acc_size);
         let (_signature, keypair) = client
             .create_account_with_size_and_deposit(
                 vesting_acc_size,
