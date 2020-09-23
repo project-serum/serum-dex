@@ -67,7 +67,7 @@ pub fn solana_client_gen(
     // Now recreate the highest level instruction `mod`, but with our new
     // instruction_methods inside.
     let new_instruction_mod = {
-        let mod_ident = instruction_mod.clone().ident;
+        let mod_ident = instruction_mod.ident;
 
         // Third (and final) pass:
         //
@@ -362,7 +362,7 @@ fn enum_to_methods(
                 syn::Fields::Named(fields) => fields
                     .named
                     .iter()
-                    .filter_map(|field| {
+                    .map(|field| {
                         let field_ident =
                             field.ident.clone().expect("field identifier not found");
                         let field_ty = field.ty.clone();
@@ -372,7 +372,7 @@ fn enum_to_methods(
                         let method_arg_ident = quote! {
                             #field_ident
                         };
-                        Some((method_arg, method_arg_ident))
+                        (method_arg, method_arg_ident)
                     })
                     .unzip(),
                 syn::Fields::Unit =>  (vec![], vec![]),
@@ -415,7 +415,7 @@ fn enum_to_methods(
                         // Serialize.
                         let data = #coder_struct::to_bytes(instruction);
                         Instruction {
-                            program_id: program_id,
+                            program_id,
                             data,
                             accounts: accounts.to_vec(),
                         }
@@ -485,7 +485,7 @@ fn enum_to_methods(
                                     let lamports = self
                                         .rpc()
                                         .get_minimum_balance_for_rent_exemption(#account_data_size)
-                                        .map_err(|e| ClientError::RpcError(e))?;
+                                        .map_err(ClientError::RpcError)?;
                                     system_instruction::create_account(
                                         &self.payer().pubkey(),    // The from account on the tx.
                                         &new_account.pubkey(),     // Account to create.
@@ -532,7 +532,7 @@ fn enum_to_methods(
                                         self.opts.commitment,
                                         self.opts.tx,
                                     )
-                                    .map_err(|e| ClientError::RpcError(e))
+                                    .map_err(ClientError::RpcError)
                                     .map(|sig| (sig, new_account))
                             }
                         },
@@ -547,7 +547,7 @@ fn enum_to_methods(
                                     let lamports = self
                                         .rpc()
                                         .get_minimum_balance_for_rent_exemption(account_data_size)
-                                        .map_err(|e| ClientError::RpcError(e))?;
+                                        .map_err(ClientError::RpcError)?;
                                     system_instruction::create_account(
                                         &self.payer().pubkey(),    // The from account on the tx.
                                         &new_account.pubkey(),     // Account to create.
@@ -594,7 +594,7 @@ fn enum_to_methods(
                                         self.opts.commitment,
                                         self.opts.tx,
                                     )
-                                    .map_err(|e| ClientError::RpcError(e))
+                                    .map_err(ClientError::RpcError)
                                     .map(|sig| (sig, new_account))
                             }
                         }
@@ -624,7 +624,7 @@ fn enum_to_methods(
                     let (recent_hash, _fee_calc) = self
                         .rpc
                         .get_recent_blockhash()
-                        .map_err(|e| ClientError::RpcError(e))?;
+                        .map_err(ClientError::RpcError)?;
                     let txn = Transaction::new_signed_with_payer(
                         &instructions,
                         Some(&self.payer.pubkey()),
@@ -638,7 +638,7 @@ fn enum_to_methods(
                             self.opts.commitment,
                             self.opts.tx,
                         )
-                        .map_err(|e| ClientError::RpcError(e))
+                        .map_err(ClientError::RpcError)
                 }
 
                 #create_account_client_method
@@ -709,7 +709,7 @@ fn enum_to_methods(
 // SIZE is used to determine the size of the account's data field,
 // which is needed upon account creation.
 fn parse_create_account_attribute(attr: syn::Attribute) -> CreateAccountDataSize {
-    let group: proc_macro2::Group = match attr.tts.clone().into_iter().next() {
+    let group: proc_macro2::Group = match attr.tts.into_iter().next() {
         None => panic!("must be group deliminated"),
         Some(group) => match group {
             proc_macro2::TokenTree::Group(group) => group,
@@ -750,24 +750,24 @@ fn strip_cfg_attrs(mut instruction_enum: syn::ItemEnum) -> syn::ItemEnum {
         variant.attrs = variant
             .attrs
             .iter_mut()
-            .filter_map(|attr| match attr.path.is_ident("cfg_attr") {
+            .map(|attr| match attr.path.is_ident("cfg_attr") {
                 true => {
                     // Assert the format is of the form:
                     // #[cfg_attr(<feature>, create_account(<input>))].
                     let mut tokens = attr.tts.to_string();
                     tokens.retain(|c| !c.is_whitespace());
-                    assert!(tokens.starts_with("("));
-                    assert!(tokens.ends_with(")"));
+                    assert!(tokens.starts_with('('));
+                    assert!(tokens.ends_with(')'));
                     tokens.remove(0);
                     tokens.remove(tokens.len() - 1);
                     let parts = tokens
-                        .split(",")
+                        .split(',')
                         .map(|s| s.to_string())
                         .collect::<Vec<String>>();
                     assert_eq!(parts.len(), 2);
                     let create_account = &parts[1];
                     assert!(create_account.starts_with("create_account("));
-                    assert!(create_account.ends_with(")"));
+                    assert!(create_account.ends_with(')'));
 
                     // Now create the new attribute #[create_account(<input>)].
                     let create_account_attr = format!("#[{}]", create_account);
@@ -777,9 +777,9 @@ fn strip_cfg_attrs(mut instruction_enum: syn::ItemEnum) -> syn::ItemEnum {
                     let parser = syn::Attribute::parse_outer;
 
                     let new_attr = &parser.parse(stream).unwrap()[0];
-                    Some(new_attr.clone())
+                    new_attr.clone()
                 }
-                false => Some(attr.clone()),
+                false => attr.clone(),
             })
             .collect();
     }
