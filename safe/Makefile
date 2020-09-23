@@ -39,7 +39,8 @@ LIB_NAME=serum_safe_program
 	test \
 	test-program \
 	test-integration \
-	test-unit
+	test-unit \
+	clippy
 
 build: build-program build-client
 
@@ -79,3 +80,6 @@ test-unit:
 init:
 	yes | solana-keygen new --outfile $(TEST_PAYER_FILEPATH)
 	yes | solana airdrop $(SOL_OPTIONS) 100
+
+clippy:
+	cargo clippy --features client,client-ext

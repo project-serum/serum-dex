@@ -74,7 +74,7 @@ solana_client_gen_extension! {
                         .get_minimum_balance_for_rent_exemption(
                             Safe::default().size().unwrap() as usize
                         )
-                        .map_err(|e| ClientError::RpcError(e))?;
+                        .map_err(ClientError::RpcError)?;
                     system_instruction::create_account(
                         &self.payer().pubkey(),
                         &safe_acc.pubkey(),
@@ -119,7 +119,7 @@ solana_client_gen_extension! {
                     self.opts.commitment,
                     self.opts.tx,
                 )
-                .map_err(|e| ClientError::RpcError(e))
+                .map_err(ClientError::RpcError)
                 .map(|sig| SafeInitialization {
                     signature: sig,
                     safe_acc,
@@ -178,7 +178,6 @@ solana_client_gen_extension! {
                     lsrm_nft_mint_keys,
                     lsrm_nft_token_acc_keys,
                 ) = self.create_nfts_instructions_and_keys(
-                    lsrm_count,
                     &mut accounts,
                     &lsrm_receipt_keys,
                 )?;
@@ -215,7 +214,7 @@ solana_client_gen_extension! {
                     self.opts.commitment,
                     self.opts.tx,
                 )
-                .map_err(|e| ClientError::RpcError(e))
+                .map_err(ClientError::RpcError)
                 .map(|sig| {
                     // Format a nice return value.
                     let mut lsrm_nfts = vec![];
@@ -259,7 +258,6 @@ solana_client_gen_extension! {
         // Returns the instructions and keys for the created accounts.
         fn create_nfts_instructions_and_keys(
             &self,
-            lsrm_count: usize,
             accounts: &mut Vec<AccountMeta>,
             lsrm_receipt_keys: &[Keypair],
         ) -> Result<(Vec<Instruction>, Vec<Keypair>, Vec<Keypair>), ClientError>  {
@@ -274,7 +272,7 @@ solana_client_gen_extension! {
             let lamports_token_acc = self.rpc().get_minimum_balance_for_rent_exemption(
                 spl_token::state::Account::LEN,
             )?;
-            for k in 0..lsrm_count {
+            for receipt in lsrm_receipt_keys {
                 // The NFT Mint to intialize.
                 let lsrm_nft_mint = Keypair::generate(&mut OsRng);
                 let create_mint_acc_instr = solana_sdk::system_instruction::create_account(
@@ -302,7 +300,7 @@ solana_client_gen_extension! {
                 // Push the accounts for the eventual mint_locked_srm instruction.
                 accounts.push(AccountMeta::new(lsrm_nft_mint.pubkey(), true));
                 accounts.push(AccountMeta::new(lsrm_nft_token_acc.pubkey(), true));
-                accounts.push(AccountMeta::new(lsrm_receipt_keys[k].pubkey(), false));
+                accounts.push(AccountMeta::new(receipt.pubkey(), false));
 
                 // Save the keys for return.
                 lsrm_nft_mint_keys.push(lsrm_nft_mint);

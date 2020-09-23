@@ -1,5 +1,6 @@
 use crate::error::SafeError;
 use solana_client_gen::solana_sdk::pubkey::Pubkey;
+use std::cmp::Ordering;
 
 /// The Vesting account represents a single deposit of a token
 /// available for withdrawal over a period of time determined by
@@ -41,7 +42,7 @@ impl Vesting {
     pub fn vested_amount(&self, slot: u64) -> u64 {
         self.slots
             .iter()
-            .filter_map(|s| if *s <= slot { Some(s) } else { None })
+            .filter(|s| **s <= slot)
             .enumerate()
             .map(|(idx, _slot)| self.amounts[idx])
             .sum()
@@ -51,16 +52,20 @@ impl Vesting {
     /// vesting slots.
     pub fn deduct(&mut self, mut amount: u64) {
         for k in 0..self.amounts.len() {
-            if amount < self.amounts[k] {
-                self.amounts[k] -= amount;
-                return;
-            } else if amount == self.amounts[k] {
-                self.amounts[k] = 0;
-                return;
-            } else {
-                let old = self.amounts[k];
-                self.amounts[k] = 0;
-                amount -= old;
+            match amount.cmp(&self.amounts[k]) {
+                Ordering::Less => {
+                    self.amounts[k] -= amount;
+                    return;
+                }
+                Ordering::Equal => {
+                    self.amounts[k] = 0;
+                    return;
+                }
+                Ordering::Greater => {
+                    let old = self.amounts[k];
+                    self.amounts[k] = 0;
+                    amount -= old;
+                }
             }
         }
     }
@@ -71,7 +76,7 @@ impl Vesting {
         let mut d: Vesting = Default::default();
         d.slots = vec![0; slot_count];
         d.amounts = vec![0; slot_count];
-				Ok(d.size()?)
+        Ok(d.size()?)
     }
 }
 
