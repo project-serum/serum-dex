@@ -81,18 +81,17 @@ pub mod instruction {
         ///
         /// Accounts:
         ///
-        /// 0.  `[signer]`   Vesting account beneficiary.
-        /// 1.  `[writable]` Vesting account to mint lSRM from.
-        /// 2.  `[]`         Safe instance.
-        /// 3.  `[]`         Safe's vault authority, a program derived address.
-        /// 4.  `[]`         SPL token program.
-        /// 5.  `[]`         Rent sysvar.
-        /// ... `[writable]` Variable number of token mints, one for each NFT
-        ///                  instance. The mint must *not* be initialized.
-        /// ... `[writable]` Variable number of token accounts associated with
-        ///                  each NFT mint.
-        /// ... `[writable]` Variable number of NFT receipts each owned by this
-        ///                  program and must *not* be initialized.
+        /// 0. `[signer]`   Vesting account beneficiary.
+        /// 1. `[writable]` Vesting account to mint lSRM from.
+        /// 2. `[]`         Safe instance.
+        /// 3. `[]`         Safe's vault authority, a program derived address.
+        /// 4. `[]`         SPL token program.
+        /// 5. `[]`         Rent sysvar.
+        /// 6. `[writable]` Token mint representing the NFT. The mint must
+        ///                 *not* be initialized.
+        /// 7  `[writable]` Token account associated with the mint, uninitialized.
+        /// 8  `[writable]` Mint receipt. Owned by this program and *not*
+        ///                 initialized.
         ///
         /// Note that the trailing "variable" accounts are all "zipped"
         /// together. That is, they must be ordered in groups of three, each

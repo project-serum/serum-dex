@@ -158,7 +158,7 @@ solana_client_gen_extension! {
             lsrm_count: usize,
             lsrm_nft_token_acc_owner: &Pubkey,
             signers: Vec<&Keypair>,
-            mut accounts: Vec<AccountMeta>,
+            accounts: Vec<AccountMeta>,
         ) -> Result<(Signature, Vec<Lsrm>), ClientError> {
             // Create the lsrm-receipt accounts (in separate transactions).
             let mut lsrm_receipt_keys = self.create_lsrm_receipts(lsrm_count)?;
