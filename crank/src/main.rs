@@ -1,8 +1,8 @@
 #![allow(unused)]
 use anyhow::{format_err, Result};
 use clap::Clap;
-use rand::prelude::*;
 use log::{error, info, warn};
+use rand::prelude::*;
 use rand::rngs::OsRng;
 use safe_transmute::{
     guard::{PermissiveGuard, SingleManyGuard, SingleValueGuard},
@@ -10,6 +10,10 @@ use safe_transmute::{
     transmute_many, transmute_many_pedantic, transmute_many_permissive, transmute_one,
     transmute_one_pedantic, try_copy,
 };
+use serum_common::client::rpc::{
+    create_and_init_mint, create_token_account, mint_to_new_account, send_txn,
+};
+use serum_common::client::Cluster;
 use serum_dex::instruction::{MarketInstruction, NewOrderInstructionV1};
 use serum_dex::matching::{OrderType, Side};
 use serum_dex::state::gen_vault_signer_key;
@@ -38,55 +42,15 @@ use std::str::FromStr;
 use std::{thread, time};
 use warp::Filter;
 
-use std::sync::mpsc::{Sender, Receiver};
 use sloggers::file::FileLoggerBuilder;
 use sloggers::types::Severity;
 use sloggers::Build;
+use std::sync::mpsc::{Receiver, Sender};
 
 use debug_print::debug_println;
 
 pub fn with_logging<F: FnOnce()>(to: &str, fnc: F) {
     fnc();
-}
-
-#[derive(Debug)]
-enum Cluster {
-    Testnet,
-    Mainnet,
-    VipMainnet,
-    Devnet,
-    Localnet,
-    Debug,
-}
-
-impl FromStr for Cluster {
-    type Err = anyhow::Error;
-    fn from_str(s: &str) -> Result<Cluster> {
-        match s.to_lowercase().as_str() {
-            "t" | "testnet" => Ok(Cluster::Testnet),
-            "m" | "mainnet" => Ok(Cluster::Mainnet),
-            "v" | "vipmainnet" => Ok(Cluster::VipMainnet),
-            "d" | "devnet" => Ok(Cluster::Devnet),
-            "l" | "localnet" => Ok(Cluster::Localnet),
-            "g" | "debug" => Ok(Cluster::Debug),
-            _ => Err(anyhow::Error::msg(
-                "Cluster must be one of [testnet, mainnet, devnet]\n",
-            )),
-        }
-    }
-}
-
-impl Cluster {
-    fn url(&self) -> &'static str {
-        match self {
-            Cluster::Devnet => "https://devnet.solana.com",
-            Cluster::Testnet => "https://testnet.solana.com",
-            Cluster::Mainnet => "https://api.mainnet-beta.solana.com",
-            Cluster::VipMainnet => "https://vip-api.mainnet-beta.solana.com",
-            Cluster::Localnet => "http://127.0.0.1:8899",
-            Cluster::Debug => "http://34.90.18.145:8899",
-        }
-    }
 }
 
 fn read_keypair_file(s: &str) -> Result<Keypair> {
@@ -248,7 +212,7 @@ fn main() -> Result<()> {
         } => {
             let payer = read_keypair_file(&payer)?;
             let mint = read_keypair_file(&mint)?;
-            genesis(&client, &payer, &mint, &owner_pubkey, decimals)?;
+            create_and_init_mint(&client, &payer, &mint, &owner_pubkey, decimals)?;
         }
         Command::Mint {
             payer,
@@ -328,10 +292,7 @@ fn main() -> Result<()> {
         } => {
             let client = opts.client();
             let mut runtime = tokio::runtime::Runtime::new().unwrap();
-            runtime.block_on(read_queue_length_loop(client,
-                    dex_program_id,
-                    market,
-                    port));
+            runtime.block_on(read_queue_length_loop(client, dex_program_id, market, port));
         }
         Command::PrintEventQueue {
             ref dex_program_id,
@@ -405,18 +366,6 @@ fn main() -> Result<()> {
         }
     }
     Ok(())
-}
-
-fn send_txn(client: &RpcClient, txn: &Transaction, simulate: bool) -> Result<Signature> {
-    use solana_sdk::commitment_config::CommitmentLevel;
-    Ok(client.send_and_confirm_transaction_with_spinner_and_config(
-        txn,
-        CommitmentConfig::single(),
-        RpcSendTransactionConfig {
-            skip_preflight: true,
-            preflight_commitment: None,
-        },
-    )?)
 }
 
 #[derive(Debug)]
@@ -778,11 +727,11 @@ fn consume_events(
 fn whole_shebang(client: &RpcClient, program_id: &Pubkey, payer: &Keypair) -> Result<()> {
     let coin_mint = Keypair::generate(&mut OsRng);
     debug_println!("Coin mint: {}", coin_mint.pubkey());
-    genesis(client, payer, &coin_mint, &payer.pubkey(), 3)?;
+    create_and_init_mint(client, payer, &coin_mint, &payer.pubkey(), 3)?;
 
     let pc_mint = Keypair::generate(&mut OsRng);
     debug_println!("Pc mint: {}", pc_mint.pubkey());
-    genesis(client, payer, &pc_mint, &payer.pubkey(), 3)?;
+    create_and_init_mint(client, payer, &pc_mint, &payer.pubkey(), 3)?;
 
     let market_keys = list_market(
         client,
@@ -1023,10 +972,10 @@ fn list_market(
     } = listing_keys;
 
     debug_println!("Creating coin vault...");
-    let coin_vault = create_account(client, coin_mint, &vault_signer_pk, payer)?;
+    let coin_vault = create_token_account(client, coin_mint, &vault_signer_pk, payer)?;
 
     debug_println!("Creating pc vault...");
-    let pc_vault = create_account(client, pc_mint, &listing_keys.vault_signer_pk, payer)?;
+    let pc_vault = create_token_account(client, pc_mint, &listing_keys.vault_signer_pk, payer)?;
 
     let init_market_instruction = serum_dex::instruction::initialize_market(
         &market_key.pubkey(),
@@ -1271,57 +1220,6 @@ fn mint_to_existing_account(
     Ok(())
 }
 
-fn mint_to_new_account(
-    client: &RpcClient,
-    payer: &Keypair,
-    minting_key: &Keypair,
-    mint: &Pubkey,
-    quantity: u64,
-) -> Result<Keypair> {
-    let recip_keypair = Keypair::generate(&mut OsRng);
-
-    let lamports = client.get_minimum_balance_for_rent_exemption(spl_token::state::Account::LEN)?;
-
-    let signers = vec![payer, minting_key, &recip_keypair];
-
-    let create_recip_instr = solana_sdk::system_instruction::create_account(
-        &payer.pubkey(),
-        &recip_keypair.pubkey(),
-        lamports,
-        spl_token::state::Account::LEN as u64,
-        &spl_token::ID,
-    );
-
-    let init_recip_instr = token_instruction::initialize_account(
-        &spl_token::ID,
-        &recip_keypair.pubkey(),
-        mint,
-        &payer.pubkey(),
-    )?;
-
-    let mint_tokens_instr = token_instruction::mint_to(
-        &spl_token::ID,
-        mint,
-        &recip_keypair.pubkey(),
-        &minting_key.pubkey(),
-        &[],
-        quantity,
-    )?;
-
-    let instructions = vec![create_recip_instr, init_recip_instr, mint_tokens_instr];
-
-    let (recent_hash, _fee_calc) = client.get_recent_blockhash()?;
-    let txn = Transaction::new_signed_with_payer(
-        &instructions,
-        Some(&payer.pubkey()),
-        &signers,
-        recent_hash,
-    );
-
-    send_txn(client, &txn, false)?;
-    Ok(recip_keypair)
-}
-
 fn initialize_token_account(client: &RpcClient, mint: &Pubkey, owner: &Keypair) -> Result<Keypair> {
     let recip_keypair = Keypair::generate(&mut OsRng);
     let lamports = client.get_minimum_balance_for_rent_exemption(spl_token::state::Account::LEN)?;
@@ -1351,45 +1249,6 @@ fn initialize_token_account(client: &RpcClient, mint: &Pubkey, owner: &Keypair) 
     Ok(recip_keypair)
 }
 
-fn genesis(
-    client: &RpcClient,
-    payer_keypair: &Keypair,
-    mint_keypair: &Keypair,
-    owner_pubkey: &Pubkey,
-    decimals: u8,
-) -> Result<()> {
-    let signers = vec![payer_keypair, mint_keypair];
-
-    let lamports = client.get_minimum_balance_for_rent_exemption(spl_token::state::Mint::LEN)?;
-
-    let create_mint_account_instruction = solana_sdk::system_instruction::create_account(
-        &payer_keypair.pubkey(),
-        &mint_keypair.pubkey(),
-        lamports,
-        spl_token::state::Mint::LEN as u64,
-        &spl_token::ID,
-    );
-    let initialize_mint_instruction = token_instruction::initialize_mint(
-        &spl_token::ID,
-        &mint_keypair.pubkey(),
-        owner_pubkey,
-        None,
-        decimals,
-    )?;
-    let instructions = vec![create_mint_account_instruction, initialize_mint_instruction];
-
-    let (recent_hash, _fee_calc) = client.get_recent_blockhash()?;
-    let txn = Transaction::new_signed_with_payer(
-        &instructions,
-        Some(&payer_keypair.pubkey()),
-        &signers,
-        recent_hash,
-    );
-
-    send_txn(client, &txn, false)?;
-    Ok(())
-}
-
 enum MonitorEvent {
     NumEvents(usize),
     NewConn(std::net::TcpStream),
@@ -1402,22 +1261,20 @@ async fn read_queue_length_loop(
     port: u16,
 ) -> Result<()> {
     let client = std::sync::Arc::new(client);
-    let get_data = warp::path("length")
-        .map(move || {
-            let client = client.clone();
-            let market_keys = get_keys_for_market(&client, &program_id, &market).unwrap();
-            let event_q_data = client
-                .get_account_with_commitment(&market_keys.event_q, CommitmentConfig::recent()).unwrap()
-                .value
-                .expect("Failed to retrieve account")
-                .data;
-            let inner: Cow<[u64]> = remove_dex_account_padding(&event_q_data).unwrap();
-            let (header, seg0, seg1) = parse_event_queue(&inner).unwrap();
-            let len = seg0.len() + seg1.len();
-            format!("{{ \"length\": {}  }}", len)
+    let get_data = warp::path("length").map(move || {
+        let client = client.clone();
+        let market_keys = get_keys_for_market(&client, &program_id, &market).unwrap();
+        let event_q_data = client
+            .get_account_with_commitment(&market_keys.event_q, CommitmentConfig::recent())
+            .unwrap()
+            .value
+            .expect("Failed to retrieve account")
+            .data;
+        let inner: Cow<[u64]> = remove_dex_account_padding(&event_q_data).unwrap();
+        let (header, seg0, seg1) = parse_event_queue(&inner).unwrap();
+        let len = seg0.len() + seg1.len();
+        format!("{{ \"length\": {}  }}", len)
     });
 
-    Ok(warp::serve(get_data)
-        .run(([127, 0, 0, 1], port))
-        .await)
+    Ok(warp::serve(get_data).run(([127, 0, 0, 1], port)).await)
 }

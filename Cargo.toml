@@ -1,8 +1,11 @@
 [workspace]
 members = [
-        "solana-client-gen",
+    "solana-client-gen",
+    "common",
+    "safe",
+    "safe/program",
 ]
 exclude = [
-        "dex",
-        "crank",
+    "dex",
+    "crank",
 ]
