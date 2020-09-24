@@ -1,7 +1,8 @@
 [package]
 name = "solana-client-gen"
 version = "0.1.0"
-authors = ["armaniferrante <armaniferrante@gmail.com>"]
+description = "Macro generating clients for Solana programs"
+repository = "https://github.com/project-serum/serum-dex"
 edition = "2018"
 
 [features]
