@@ -7,7 +7,7 @@ use solana_sdk::pubkey::Pubkey;
 use std::convert::Into;
 
 pub fn handler<'a>(
-    _program_id: &Pubkey,
+    program_id: &'a Pubkey,
     accounts: &'a [AccountInfo<'a>],
     new_authority: Pubkey,
 ) -> Result<(), SafeError> {
@@ -19,6 +19,7 @@ pub fn handler<'a>(
     let safe_acc_info = next_account_info(acc_infos)?;
 
     access_control(AccessControlRequest {
+        program_id,
         safe_acc_info,
         safe_authority_acc_info,
     })?;
@@ -41,16 +42,31 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), SafeError> {
     info!("access-control: set-authority");
 
     let AccessControlRequest {
+        program_id,
         safe_acc_info,
         safe_authority_acc_info,
     } = req;
 
-    let safe_acc = Safe::unpack(&safe_acc_info.try_borrow_data()?)?;
-    if !safe_authority_acc_info.is_signer {
-        return Err(SafeErrorCode::Unauthorized)?;
+    // Safe authority authorization.
+    {
+        if !safe_authority_acc_info.is_signer {
+            return Err(SafeErrorCode::Unauthorized)?;
+        }
     }
-    if safe_acc.authority != *safe_authority_acc_info.key {
-        return Err(SafeErrorCode::Unauthorized)?;
+
+    // Safe.
+    {
+        let safe_acc = Safe::unpack(&safe_acc_info.try_borrow_data()?)?;
+        // Match the safe to the authority.
+        if safe_acc.authority != *safe_authority_acc_info.key {
+            return Err(SafeErrorCode::Unauthorized)?;
+        }
+        if !safe_acc.initialized {
+            return Err(SafeErrorCode::NotInitialized)?;
+        }
+        if safe_acc_info.owner != program_id {
+            return Err(SafeErrorCode::InvalidAccountOwner)?;
+        }
     }
 
     info!("access-control: success");
@@ -59,6 +75,7 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), SafeError> {
 }
 
 struct AccessControlRequest<'a> {
+    program_id: &'a Pubkey,
     safe_acc_info: &'a AccountInfo<'a>,
     safe_authority_acc_info: &'a AccountInfo<'a>,
 }

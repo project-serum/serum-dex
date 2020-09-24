@@ -8,7 +8,7 @@
 use crate::common;
 use rand::rngs::OsRng;
 use serum_safe::accounts::Vesting;
-use serum_safe::client::{Client, Lsrm, SafeInitialization};
+use serum_safe::client::{Client, ClientMint, SafeInitialization};
 use solana_client_gen::solana_sdk;
 use solana_client_gen::solana_sdk::commitment_config::CommitmentConfig;
 use solana_client_gen::solana_sdk::instruction::AccountMeta;
@@ -246,7 +246,7 @@ pub fn mint_lsrm(
         ..
     } = deposit_with_schedule(vesting_slot_offsets, vesting_amounts);
 
-    // Just have the beneficiary key be the owner of all the lSRM.
+    // Let the beneficiary be the owner for the NFTs.
     let lsrm_token_acc_owner = Keypair::from_bytes(&vesting_acc_beneficiary.to_bytes()).unwrap();
 
     let lsrm = {
@@ -294,7 +294,7 @@ pub fn mint_lsrm(
 
 pub struct LsrmMinted {
     pub client: Client,
-    pub lsrm: Vec<Lsrm>,
+    pub lsrm: Vec<ClientMint>,
     pub vesting_acc: Pubkey,
     pub vesting_acc_beneficiary: Keypair,
     pub vesting_acc_slots: Vec<u64>,
@@ -303,6 +303,6 @@ pub struct LsrmMinted {
     pub safe_srm_vault: Keypair,
     pub safe_srm_vault_authority: Pubkey,
     pub srm_mint: Keypair,
-    // Owner of all the token accounts owning NFTs.
+    // Authority/owner of all the token accounts holding lSRM NFTs.
     pub lsrm_token_acc_owner: Keypair,
 }

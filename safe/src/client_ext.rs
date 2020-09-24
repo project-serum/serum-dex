@@ -131,25 +131,25 @@ solana_client_gen_extension! {
 
         /// Creates a multi instruction transaction to mint NFT tokens backed
         /// by Safe vesting accounts. For each `mint_count` number NFTs to mint,
-        /// the transaction executes:
+        /// the transaction executes three instructions:
         ///
         /// * system::create_account for the token mint representing the NFT
         /// * system::create_account for the token account holding the NFT.
         /// * safe::mint which takes the accounts from the previous instructions
         ///   to issue the mint.
         ///
-        /// The motivation here is that, given an lSRM NFT mint, the program needs to
-        /// know if it should acknowledge the mint by printing a new receipt
-        /// (by setting the initialization flag).
+        /// The motivation here is that, given an lSRM NFT mint, the program
+        /// needs to know if it should acknowledge the mint by printing a new
+        /// receipt (by setting the initialization flag).
         ///
         /// It can do this by either having a mapping in storage and checking
         /// it when the mint instruction is run, or, it can *only* print receipts
         /// for NFT mints that are not yet initialized (and initialize the mint
         /// itself).
         ///
-        /// However, inorder to safely initialize a mint, we must have the mint's
-        /// create account instruction run in the same transaction as the initialize
-        /// mint instruction.
+        /// However, inorder to safely initialize a mint, we must have the
+        /// mint's create account instruction run in the same transaction as the
+        /// initialize mint instruction.
         ///
         /// The lSRM receipt instructions are sent as transactions immediately
         /// before the mint transaction, because otherwise the Solana
@@ -160,59 +160,54 @@ solana_client_gen_extension! {
             nft_token_acc_owner: &Pubkey,
             signers: Vec<&Keypair>,
             accounts: Vec<AccountMeta>,
-        ) -> Result<(Signature, Vec<Lsrm>), ClientError> {
+        ) -> Result<(Signature, Vec<ClientMint>), ClientError> {
             // Create the receipt accounts (in separate transactions because
             // we will go over the transaction size limit).
-            let mut receipt_keys = self.send_create_receipts(mint_count)?;
+            let receipt_keys = self.send_create_receipts(mint_count)?;
+
+            // The metadata required for each nft for return.
+            let mut nfts = vec![];
 
             // Build the transaction.
-            let (
-                tx,
-                mut nft_mint_keys,
-                mut nft_token_acc_keys,
-            ) = {
+            let tx = {
                 // Rescope lifetime to this block.
                 let mut signers = signers;
 
+                // All instructions for this transaction.
                 let mut instructions = vec![];
-                let mut nft_mint_keys = vec![];
-                let mut nft_token_acc_keys = vec![];
 
                 // Build and collect a batch of instructions and account keys
                 // for each NFT we want to mint.
-                {
-                    let batches = receipt_keys
-                        .iter()
-                        .map(|receipt|  {
-                            self.mint_instructions(
-                                nft_token_acc_owner,
-                                accounts.clone(),
-                                receipt,
-                            )
-                        });
-                    for b in batches {
-                        let (instr_batch, mint_key, token_key) = b?;
-                        instructions.extend_from_slice(&instr_batch);
-                        nft_mint_keys.push(mint_key);
-                        nft_token_acc_keys.push(token_key);
-                    }
+                for r_key in receipt_keys {
+                    let (instr_batch, mint, token_acc) =
+                        self.mint_instructions(
+                            nft_token_acc_owner,
+                            accounts.clone(),
+                            &r_key,
+                        )?;
+                    instructions.extend_from_slice(&instr_batch);
+                    nfts.push(ClientMint {
+                        mint,
+                        token_acc,
+                        receipt: r_key.pubkey(),
+                        token_acc_owner: nft_token_acc_owner.clone(),
+                    });
                 }
 
                 // Collect signers on the entire tx.
-                for k in 0..nft_mint_keys.len() {
-                    signers.push(&nft_mint_keys[k]);
-                    signers.push(&nft_token_acc_keys[k]);
+                for k in 0..nfts.len() {
+                    signers.push(&nfts[k].mint);
+                    signers.push(&nfts[k].token_acc);
                 }
 
                 // Create the tx.
                 let (recent_hash, _fee_calc) = self.rpc().get_recent_blockhash()?;
-                let tx = Transaction::new_signed_with_payer(
+                Transaction::new_signed_with_payer(
                     &instructions,
                     Some(&self.payer().pubkey()),
                     &signers,
                     recent_hash,
-                );
-                (tx, nft_mint_keys, nft_token_acc_keys)
+                )
             };
 
             // Execute it.
@@ -224,21 +219,7 @@ solana_client_gen_extension! {
                     self.opts.tx,
                 )
                 .map_err(ClientError::RpcError)
-                .map(|sig| {
-                    // Format a nice return value.
-                    let mut lsrm_nfts = vec![];
-                    for _ in 0..nft_mint_keys.len() {
-                        let mint = nft_mint_keys.pop().unwrap();
-                        let token_acc = nft_token_acc_keys.pop().unwrap();
-                        let receipt = receipt_keys.pop().unwrap();
-                        lsrm_nfts.push(Lsrm {
-                            mint,
-                            token_acc,
-                            receipt: receipt.pubkey(),
-                        });
-                    }
-                    (sig, lsrm_nfts)
-                })
+                .map(|sig| (sig, nfts))
         }
 
         // TODO: Batch the account create instructions to minimize RPCs.
@@ -325,15 +306,18 @@ solana_client_gen_extension! {
         }
     }
 
-    /// Lsrm defines the required keys to redeem and otherwise use lSRM.
-    pub struct Lsrm {
+    /// ClientMint defines the required keys to redeem and otherwise use a
+    /// minted NFT token.
+    pub struct ClientMint {
         /// The SPL token mint representing the NFT instance.
         pub mint: Keypair,
         /// The only account allowed to own the mint (other than valid
         /// locked programs).
         pub token_acc: Keypair,
+        /// The owner of the token account.
+        pub token_acc_owner: Pubkey,
         /// The receipt account address. Required upon redemption to prove
-        /// to the program this is a valid lSRM mint.
+        /// to the program this is a valid mint.
         pub receipt: Pubkey,
     }
 }

@@ -72,12 +72,12 @@ pub mod instruction {
         /// 6. `[]`         SPL token program.
         /// 7. `[]`         Clock sysvar.
         Withdraw { amount: u64 },
-        /// MintLocked mints a "locked" token and sends it to the
-        /// beneficiary's token account representing the locked NFT.
+        /// MintLocked mints a "locked" token and sends it to the beneficiary's
+        /// token account.
         ///
-        /// The beneficiary's token account, should be the only account holding
-        /// the locked NFT. Otherwise, the underlying token which the NFT
-        /// is redeemable for might be slashed.
+        /// The beneficiary's token account should be the only account holding
+        /// the locked NFT. Otherwise, the underlying token, which the NFT
+        /// is redeemable for, might be slashed.
         ///
         /// Accounts:
         ///
