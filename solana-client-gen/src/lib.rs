@@ -1,6 +1,10 @@
 //! solana-client-gen is a convenience macro to generate rpc clients from
 //! Solana instruction definitions.
 //!
+//! Ideally, Solana would have a Rust compiler extension built into their CLI,
+//! which emitted a standard runtime IDL that could be used to generate clients.
+//! This macro is a stopgap in the mean time.
+//!
 //! # Creating an interface.
 //!
 //! To start, one should make an "interface" crate, separate from one's Solana
@@ -15,6 +19,7 @@
 //!
 //! #[cfg_attr(feature = "client", solana_client_gen)]
 //! pub mod instruction {
+//!   #[derive(Serialize, Deserialize)]
 //!   pub enum MyInstruction {
 //!     Add: {
 //!       a: u64,
@@ -56,7 +61,7 @@
 //!      },
 //!    });
 //!
-//!   Define the accounts the program uses for each instruction.
+//!   // Define the accounts the program uses for each instruction.
 //!   let accounts = ...;
 //!
 //!   // Invoke rpcs as desired.
@@ -64,11 +69,11 @@
 //!   client.sub(accounts, 4, 2)
 //! ```
 //!
-//! In addition to generate an rpc client, the macro generates instruction
+//! In addition to generating an rpc client, the macro generates instruction
 //! methods to create `solana_sdk::instruction::Instruction` types. For example,
 //!
 //! ```
-//! let instruction = program_interface::instruction::add(2, 3);
+//! let instruction = my_crate::instruction::add(2, 3);
 //! ```
 //!
 //! This can be used to generate instructions to be invoked with other Solana
@@ -79,15 +84,18 @@
 //! It's not uncommon to want to atomically create an account and execute an
 //! instruction. For example, in the SPL token standard, one must include
 //! two instructions in the same transaction: one to create the mint account
-//! and another to initialize the mint. To do this, add the #[create_account]
+//! and another to initialize the mint. To do this, add the `#[create_account]`
 //! attribute to your instruction. For example
 //!
 //! ```
 //! #[cfg_attr(feature = "client", solana_client_gen)]
 //! pub mod instruction {
-//!   #[cfg_attr(feature = "client", create_account)]
-//!   Initialize {
-//!     some_data: u64,
+//!   #[derive(Serialize, Deserialize)]
+//!   pub enum MyInstruction {
+//!     #[cfg_attr(feature = "client", create_account)]
+//!     Initialize {
+//!       some_data: u64,
+//!     }
 //!   }
 //! }
 //! ```
@@ -97,48 +105,52 @@
 //! will always be the created account. Note: you don't have to pass the
 //! account yourself, since it will be done for you.
 //!
-//! Furthermore, continuing the above example the simpler `initialize`
-//! will also be generated.
+//! # Extending the client.
+//!
+//! If the generated client isn't enough, for example, if you want to batch
+//! multiple instructions together into the same transaction as a performance
+//! optimization, one can enable the `client-ext` feature in their crate
+//! (note: currently this feature is required to be in the crate where the
+//! instruction enum is defined).
+//!
+//! When using the `client-ext`, the proc macro won't generate a client
+//! immediately. Instead it will act as a meta-macro, generating yet another
+//! macro: `solana_client_gen_extension`, which must be used to build the client.
+//!
+//! We can extend the above client to have a `hello_world` method.
+//!
+//! ```
+//! solana_client_gen_extension! {
+//!    impl Client {
+//!      pub fn hello_world(&self) {
+//!        println!("hello world from the generated client");
+//!      }
+//!    }
+//! }
+//! ```
 //!
 //! # Using a custom coder.
+//!
+//! It's assumed instructions implement serde's `Serialize` and `Deserialize`.
 //!
 //! By default, a default coder will be used to serialize instructions before
 //! sending them to Solana. If you want to use a custom coder, inject it
 //! into the macro like this
 //!
 //! ```
-//! #[solana_client_gen(Coder)]
+//! #[solana_client_gen(crate::mod::Coder)]
 //! mod instruction {
 //!   ...
 //! }
 //! ```
 //!
-//! Where `Coder` is a user defined struct that has two methods. For example,
-//!
-//! ```
-//! struct Coder;
-//! impl Coder {
-//!   pub fn to_bytes(i: instruction::SrmSafeInstruction) -> Vec<u8> {
-//!     println!("using custom coder");
-//!      bincode::serialize(&(0u8, i)).expect("instruction must be serializable")
-//!   }
-//!   pub fn from_bytes(data: &[u8]) -> Result<instruction::SrmSafeInstruction, ()> {
-//!     match data.split_first() {
-//!       None => Err(()),
-//!       Some((&u08, rest)) => bincode::deserialize(rest).map_err(|_| ()),
-//!       Some((_, _rest)) => Err(()),
-//!      }
-//!    }
-//! }
-//! ```
-//!
-//! Note that the names must be `to_bytes` and `from_bytes` and the input/output of
-//! both methods must be the name of your instruction's `enum`.
+//! Where `Coder` is a user defined struct that implements the
+//! `InstructionCoder` interface.
 //!
 //! # Limitations
 //!
 //! Currently, only a client is generated for serializing requests to Solana clusters.
-//! This is why a conditional attribute macro is used (i.e., cfg_attr).
+//! This is why a conditional attribute macro is used via `cfg_attr`.
 //!
 //! In addition, it would be nice to generate code on the runtime as well to
 //! deserialize instructions and dispatch to the correct method. Currently, this
@@ -154,6 +166,8 @@ pub mod prelude {
 
     pub use solana_sdk::instruction::{AccountMeta, Instruction};
     pub use solana_sdk::pubkey::Pubkey;
+
+    pub use crate::coder::InstructionCoder;
 
     #[cfg(feature = "client")]
     pub use codegen::solana_client_gen;
@@ -180,6 +194,8 @@ pub mod prelude {
     #[cfg(feature = "client")]
     pub use thiserror::Error;
 }
+
+pub mod coder;
 
 // Re-export.
 #[cfg(feature = "client")]

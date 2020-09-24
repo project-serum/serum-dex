@@ -22,7 +22,7 @@ pub fn solana_client_gen(
     // The one and only argument of the macro should be the Coder struct.
     let coder_struct = match args.to_string().as_ref() {
         "" => None,
-        _ => Some(parse_macro_input!(args as syn::Ident)),
+        _ => Some(parse_macro_input!(args as syn::TypePath)),
     };
 
     // Interpet token stream as the instruction `mod`.
@@ -57,12 +57,8 @@ pub fn solana_client_gen(
     // Second pass:
     //
     // Parse the instruction enum and generate code from each enum variant.
-    let (client_methods, instruction_methods, decode_and_dispatch_tree, coder_mod) =
-        enum_to_methods(
-            instruction_mod.ident.clone(),
-            &instruction_enum_item,
-            coder_struct,
-        );
+    let (client_methods, instruction_methods, decode_and_dispatch_tree) =
+        enum_to_methods(&instruction_enum_item, coder_struct);
 
     // Now recreate the highest level instruction `mod`, but with our new
     // instruction_methods inside.
@@ -258,22 +254,18 @@ pub fn solana_client_gen(
                     $($client_ext)*
                 }
                 #new_instruction_mod
-                #coder_mod
             }
         }
     };
 
     // Now put it all together.
     //
-    // Output the transormed AST with the new client, new instruction mod,
-    // and new coder definition.
+    // Output the transormed AST with the new client and new instruction mod.
     proc_macro::TokenStream::from(quote! {
         #[cfg(not(feature = "client-ext"))]
         #client_mod
         #[cfg(not(feature = "client-ext"))]
         #new_instruction_mod
-        #[cfg(not(feature = "client-ext"))]
-        #coder_mod
 
         #extendable_client_macro
     })
@@ -288,18 +280,16 @@ pub fn solana_client_gen(
 // * Coder struct for serialization.
 //
 fn enum_to_methods(
-    instruction_mod_ident: syn::Ident,
     instruction_enum: &syn::ItemEnum,
-    coder_struct_opt: Option<syn::Ident>,
+    coder_struct_opt: Option<syn::TypePath>,
 ) -> (
-    proc_macro2::TokenStream,
     proc_macro2::TokenStream,
     proc_macro2::TokenStream,
     proc_macro2::TokenStream,
 ) {
     let coder_struct = match &coder_struct_opt {
         None => quote! {
-            solana_client_gen_coder::_DefaultCoder
+            solana_client_gen::coder::DefaultCoder
         },
         Some(cs) => quote! {
             #cs
@@ -673,34 +663,10 @@ fn enum_to_methods(
         }
     };
 
-    // Define the instruction coder to use for serialization.
-    let coder_mod = match coder_struct_opt {
-        // It's defined externally so do nothing.
-        Some(_) => quote! {},
-        // Coder not provided, so use declare and use the default one.
-        None => quote! {
-            pub mod solana_client_gen_coder {
-                use super::*;
-                pub struct _DefaultCoder;
-                impl _DefaultCoder {
-                    pub fn to_bytes(i: #instruction_mod_ident::#instruction_enum_ident) -> Vec<u8> {
-                        serum_common::pack::to_bytes(&i)
-                            .expect("instruction must be serializable")
-                    }
-                    pub fn from_bytes(data: &[u8]) -> Result<#instruction_mod_ident::#instruction_enum_ident, ()> {
-                        serum_common::pack::from_bytes(data)
-                            .map_err(|_| ())
-                    }
-                }
-            }
-        },
-    };
-
     (
         client_methods,
         instruction_methods,
         decode_and_dispatch_tree,
-        coder_mod,
     )
 }
 
