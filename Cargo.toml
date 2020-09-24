@@ -4,8 +4,6 @@ members = [
     "common",
     "safe",
     "safe/program",
-]
-exclude = [
-    "dex",
     "crank",
+    "dex",
 ]
