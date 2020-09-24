@@ -7,6 +7,7 @@ use solana_sdk::pubkey::Pubkey;
 use solana_sdk::sysvar::clock::Clock;
 use solana_sdk::sysvar::Sysvar;
 use spl_token::pack::Pack as TokenPack;
+use std::convert::Into;
 
 pub fn handler<'a>(
     program_id: &'a Pubkey,
@@ -48,9 +49,8 @@ pub fn handler<'a>(
                 beneficiary_spl_acc_info,
                 safe_acc_info,
                 spl_program_acc_info,
-            })?;
-
-            Ok(())
+            })
+            .map_err(Into::into)
         },
     )
     .map_err(|e| SafeError::ProgramError(e))
@@ -72,18 +72,18 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), SafeError> {
     assert_eq!(*spl_program_acc_info.key, spl_token::ID);
 
     if vesting_acc_info.owner != program_id {
-        return Err(SafeError::ErrorCode(SafeErrorCode::InvalidAccount));
+        return Err(SafeErrorCode::InvalidAccount)?;
     }
     if !vesting_acc_beneficiary_info.is_signer {
-        return Err(SafeError::ErrorCode(SafeErrorCode::Unauthorized));
+        return Err(SafeErrorCode::Unauthorized)?;
     }
     let vesting_acc = Vesting::unpack(&vesting_acc_info.try_borrow_data()?)?;
     if vesting_acc.beneficiary != *vesting_acc_beneficiary_info.key {
-        return Err(SafeError::ErrorCode(SafeErrorCode::Unauthorized));
+        return Err(SafeErrorCode::Unauthorized)?;
     }
     let clock = Clock::from_account_info(clock_acc_info)?;
     if amount > vesting_acc.available_for_withdrawal(clock.slot) {
-        return Err(SafeError::ErrorCode(SafeErrorCode::InsufficientBalance));
+        return Err(SafeErrorCode::InsufficientBalance)?;
     }
 
     // Validate the vault spl account.
@@ -95,7 +95,7 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), SafeError> {
 
         // AccountState must be initialized.
         if spl_vault_data[0x6c] != 1u8 {
-            return Err(SafeError::ErrorCode(SafeErrorCode::WrongVault));
+            return Err(SafeErrorCode::WrongVault)?;
         }
         // The SPL account owner must be hte program derived address.
         let expected_owner = {
@@ -108,7 +108,7 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), SafeError> {
         };
         let owner = Pubkey::new(&spl_vault_data[32..64]);
         if owner != expected_owner {
-            return Err(SafeError::ErrorCode(SafeErrorCode::WrongVault));
+            return Err(SafeErrorCode::WrongVault)?;
         }
     }
     // todo: check beneficiary account is initialized

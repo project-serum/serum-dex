@@ -7,6 +7,7 @@ use solana_sdk::pubkey::Pubkey;
 use solana_sdk::sysvar::rent::Rent;
 use solana_sdk::sysvar::Sysvar;
 use spl_token::pack::Pack as TokenPack;
+use std::convert::Into;
 
 pub fn handler<'a>(
     program_id: &'a Pubkey,
@@ -38,11 +39,12 @@ pub fn handler<'a>(
                 mint: mint_acc_info.key,
                 authority,
                 nonce,
-            })?;
-            Ok(())
+            })
+            .map_err(Into::into)
         },
-    )
-    .map_err(|e| SafeError::ProgramError(e))
+    )?;
+
+    Ok(())
 }
 
 fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), SafeError> {
@@ -59,14 +61,14 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), SafeError> {
     let safe_data = safe_acc_info.try_borrow_data()?;
     let safe = Safe::unpack(&safe_data)?;
     if safe.initialized {
-        return Err(SafeError::ErrorCode(SafeErrorCode::AlreadyInitialized));
+        return Err(SafeErrorCode::AlreadyInitialized)?;
     }
     if safe_acc_info.owner != program_id {
-        return Err(SafeError::ErrorCode(SafeErrorCode::NotOwnedByProgram));
+        return Err(SafeErrorCode::NotOwnedByProgram)?;
     }
     let rent = Rent::from_account_info(rent_acc_info)?;
     if !rent.is_exempt(safe_acc_info.lamports(), safe_data.len()) {
-        return Err(SafeError::ErrorCode(SafeErrorCode::NotRentExempt));
+        return Err(SafeErrorCode::NotRentExempt)?;
     }
     if Pubkey::create_program_address(
         &TokenVault::signer_seeds(safe_acc_info.key, &nonce),
@@ -74,11 +76,11 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), SafeError> {
     )
     .is_err()
     {
-        return Err(SafeError::ErrorCode(SafeErrorCode::InvalidVaultNonce));
+        return Err(SafeErrorCode::InvalidVaultNonce)?;
     }
     let mint = spl_token::state::Mint::unpack(&mint_acc_info.try_borrow_data()?)?;
     if !mint.is_initialized {
-        return Err(SafeError::ErrorCode(SafeErrorCode::UnitializedTokenMint));
+        return Err(SafeErrorCode::UnitializedTokenMint)?;
     }
 
     info!("access-control: success");

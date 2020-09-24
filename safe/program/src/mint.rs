@@ -7,6 +7,7 @@ use solana_sdk::pubkey::Pubkey;
 use solana_sdk::sysvar::rent::Rent;
 use solana_sdk::sysvar::Sysvar;
 use spl_token::pack::Pack as TokenPack;
+use std::convert::Into;
 
 pub fn handler<'a>(
     _program_id: &'a Pubkey,
@@ -59,8 +60,8 @@ pub fn handler<'a>(
                 token_acc_owner,
                 safe_acc_info,
                 safe_vault_authority_acc_info,
-            })?;
-            Ok(())
+            })
+            .map_err(Into::into)
         },
     )?;
 
@@ -80,22 +81,22 @@ fn access_control<'a, 'b>(req: AccessControlRequest<'a, 'b>) -> Result<(), SafeE
     } = req;
 
     if (accounts_len - FIXED_ACCS) % DYN_ACC_PIECES != 0 {
-        return Err(SafeError::ErrorCode(SafeErrorCode::WrongNumberOfAccounts));
+        return Err(SafeErrorCode::WrongNumberOfAccounts)?;
     }
 
     assert_eq!(*spl_token_program_acc_info.key, spl_token::ID);
     assert_eq!(*rent_acc_info.key, solana_sdk::sysvar::rent::id());
 
     if !vesting_acc_beneficiary_info.is_signer {
-        return Err(SafeError::ErrorCode(SafeErrorCode::Unauthorized));
+        return Err(SafeErrorCode::Unauthorized)?;
     }
     let vesting_acc = Vesting::unpack(&vesting_acc_info.try_borrow_data()?)?;
     if *vesting_acc_beneficiary_info.key != vesting_acc.beneficiary {
-        return Err(SafeError::ErrorCode(SafeErrorCode::Unauthorized));
+        return Err(SafeErrorCode::Unauthorized)?;
     }
     let lsrm_nft_count = ((accounts_len - FIXED_ACCS) / DYN_ACC_PIECES) as u64;
     if vesting_acc.total() - vesting_acc.locked_outstanding < lsrm_nft_count {
-        return Err(SafeError::ErrorCode(SafeErrorCode::InsufficientBalance));
+        return Err(SafeErrorCode::InsufficientBalance)?;
     }
 
     // Perform checks on all NFT instances.
@@ -105,32 +106,30 @@ fn access_control<'a, 'b>(req: AccessControlRequest<'a, 'b>) -> Result<(), SafeE
         let nft_data_len = data.len();
         let is_initialized = data[0x2d];
         if is_initialized != 0u8 {
-            return Err(SafeError::ErrorCode(SafeErrorCode::LsrmMintAlreadyInitialized).into());
+            return Err(SafeErrorCode::LsrmMintAlreadyInitialized)?;
         }
         // LsrmReceipt must be uninitialized.
         let data = receipt.try_borrow_data()?;
         let receipt_data_len = data.len();
         let initialized = data[0];
         if initialized != 0u8 {
-            return Err(SafeError::ErrorCode(SafeErrorCode::LsrmReceiptAlreadyInitialized).into());
+            return Err(SafeErrorCode::LsrmReceiptAlreadyInitialized)?;
         }
         // Rent Exemption.
         let rent = Rent::from_account_info(rent_acc_info)?;
         if !rent.is_exempt(mint.lamports(), nft_data_len) {
-            return Err(SafeError::ErrorCode(SafeErrorCode::NotRentExempt).into());
+            return Err(SafeErrorCode::NotRentExempt)?;
         }
         if !rent.is_exempt(receipt.lamports(), receipt_data_len) {
-            return Err(SafeError::ErrorCode(SafeErrorCode::NotRentExempt).into());
+            return Err(SafeErrorCode::NotRentExempt)?;
         }
         if !rent.is_exempt(token_acc.lamports(), token_acc.try_data_len()?) {
-            return Err(SafeError::ErrorCode(SafeErrorCode::NotRentExempt).into());
+            return Err(SafeErrorCode::NotRentExempt)?;
         }
         // Token account must be uninitialized.
         let token_acc = spl_token::state::Account::unpack_unchecked(&token_acc.try_borrow_data()?)?;
         if token_acc.state != spl_token::state::AccountState::Uninitialized {
-            return Err(SafeError::ErrorCode(
-                SafeErrorCode::TokenAccountAlreadyInitialized,
-            ));
+            return Err(SafeErrorCode::TokenAccountAlreadyInitialized)?;
         }
     }
 

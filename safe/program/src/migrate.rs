@@ -5,6 +5,7 @@ use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::info;
 use solana_sdk::pubkey::Pubkey;
 use spl_token::pack::Pack as TokenPack;
+use std::convert::Into;
 
 pub fn handler<'a>(_program_id: &Pubkey, accounts: &'a [AccountInfo<'a>]) -> Result<(), SafeError> {
     info!("handler: migrate");
@@ -36,9 +37,8 @@ pub fn handler<'a>(_program_id: &Pubkey, accounts: &'a [AccountInfo<'a>]) -> Res
                 safe_spl_vault_authority_acc_info,
                 receiver_spl_acc_info,
                 spl_program_acc_info,
-            })?;
-
-            Ok(())
+            })
+            .map_err(Into::into)
         },
     )?;
 
@@ -57,10 +57,10 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), SafeError> {
 
     if !safe_acc.initialized {}
     if !safe_authority_acc_info.is_signer {
-        return Err(SafeError::ErrorCode(SafeErrorCode::Unauthorized));
+        return Err(SafeErrorCode::Unauthorized)?;
     }
     if safe_acc.authority != *safe_authority_acc_info.key {
-        return Err(SafeError::ErrorCode(SafeErrorCode::Unauthorized));
+        return Err(SafeErrorCode::Unauthorized)?;
     }
 
     // todo

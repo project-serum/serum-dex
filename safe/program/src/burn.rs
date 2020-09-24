@@ -5,6 +5,7 @@ use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::info;
 use solana_sdk::pubkey::Pubkey;
 use spl_token::pack::Pack as TokenPack;
+use std::convert::Into;
 
 pub fn handler<'a>(
     program_id: &'a Pubkey,
@@ -43,8 +44,8 @@ pub fn handler<'a>(
                         token_acc_info,
                         mint_acc_info,
                         token_program_acc_info,
-                    })?;
-                    Ok(())
+                    })
+                    .map_err(Into::into)
                 },
             )
         },
@@ -66,30 +67,30 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), SafeError> {
     } = req;
 
     if !token_owner_acc_info.is_signer {
-        return Err(SafeError::ErrorCode(SafeErrorCode::Unauthorized));
+        return Err(SafeErrorCode::Unauthorized)?;
     }
     let account = spl_token::state::Account::unpack(&token_acc_info.try_borrow_data()?)?;
     if account.owner != *token_owner_acc_info.key {
-        return Err(SafeError::ErrorCode(SafeErrorCode::InvalidAccountOwner));
+        return Err(SafeErrorCode::InvalidAccountOwner)?;
     }
     if receipt_acc_info.owner != program_id {
-        return Err(SafeError::ErrorCode(SafeErrorCode::InvalidReceipt));
+        return Err(SafeErrorCode::InvalidReceipt)?;
     }
     let receipt = LsrmReceipt::unpack(&receipt_acc_info.try_borrow_data()?)?;
     if receipt.spl_acc != *token_acc_info.key {
-        return Err(SafeError::ErrorCode(SafeErrorCode::UnauthorizedReceipt));
+        return Err(SafeErrorCode::UnauthorizedReceipt)?;
     }
     if !receipt.initialized {
-        return Err(SafeError::ErrorCode(SafeErrorCode::InvalidReceipt));
+        return Err(SafeErrorCode::InvalidReceipt)?;
     }
     if receipt.burned {
-        return Err(SafeError::ErrorCode(SafeErrorCode::AlreadyBurned));
+        return Err(SafeErrorCode::AlreadyBurned)?;
     }
     if receipt.mint != *mint_acc_info.key {
-        return Err(SafeError::ErrorCode(SafeErrorCode::WrongCoinMint));
+        return Err(SafeErrorCode::WrongCoinMint)?;
     }
     if *token_program_acc_info.key != spl_token::ID {
-        return Err(SafeError::ErrorCode(SafeErrorCode::InvalidTokenProgram));
+        return Err(SafeErrorCode::InvalidTokenProgram)?;
     }
 
     info!("access-control: success");

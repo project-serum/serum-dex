@@ -6,6 +6,7 @@ use solana_sdk::info;
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::sysvar::rent::Rent;
 use solana_sdk::sysvar::Sysvar;
+use std::convert::Into;
 
 pub fn handler<'a>(
     program_id: &'a Pubkey,
@@ -52,8 +53,8 @@ pub fn handler<'a>(
                 safe_srm_vault_to,
                 authority_depositor_from,
                 spl_token_program_acc_info,
-            })?;
-            Ok(())
+            })
+            .map_err(Into::into)
         },
     )?;
 
@@ -78,9 +79,7 @@ fn access_control<'a, 'b>(req: AccessControlRequest<'a, 'b>) -> Result<(), SafeE
 
     // Check the dynamic data size is correct before unpacking.
     if vesting_data.len() != Vesting::size_dyn(vesting_slots.len())? as usize {
-        return Err(SafeError::ErrorCode(
-            SafeErrorCode::VestingAccountDataInvalid,
-        ));
+        return Err(SafeErrorCode::VestingAccountDataInvalid)?;
     }
     // Perform an unpack_unchecked--that is, unsafe--deserialization.
     //
@@ -100,7 +99,7 @@ fn access_control<'a, 'b>(req: AccessControlRequest<'a, 'b>) -> Result<(), SafeE
     // Switch serializers if this is a problem.
     let vesting_acc = Vesting::unpack_unchecked(&vesting_data)?;
     if vesting_acc.initialized {
-        return Err(SafeError::ErrorCode(SafeErrorCode::AlreadyInitialized));
+        return Err(SafeErrorCode::AlreadyInitialized)?;
     }
     if !vesting_slots
         .iter()
@@ -108,7 +107,7 @@ fn access_control<'a, 'b>(req: AccessControlRequest<'a, 'b>) -> Result<(), SafeE
         .collect::<Vec<&u64>>()
         .is_empty()
     {
-        return Err(SafeError::ErrorCode(SafeErrorCode::InvalidVestingSlots));
+        return Err(SafeErrorCode::InvalidVestingSlots)?;
     }
     if !vesting_amounts
         .iter()
@@ -116,28 +115,28 @@ fn access_control<'a, 'b>(req: AccessControlRequest<'a, 'b>) -> Result<(), SafeE
         .collect::<Vec<&u64>>()
         .is_empty()
     {
-        return Err(SafeError::ErrorCode(SafeErrorCode::InvalidVestingAmounts));
+        return Err(SafeErrorCode::InvalidVestingAmounts)?;
     }
     let rent = Rent::from_account_info(rent_acc_info)?;
     if !rent.is_exempt(vesting_acc_info.lamports(), vesting_data.len()) {
-        return Err(SafeError::ErrorCode(SafeErrorCode::NotRentExempt));
+        return Err(SafeErrorCode::NotRentExempt)?;
     }
     if vesting_acc_info.owner != program_id {
-        return Err(SafeError::ErrorCode(SafeErrorCode::NotOwnedByProgram));
+        return Err(SafeErrorCode::NotOwnedByProgram)?;
     }
     // Look at the deposit's SPL account data and check for the mint.
     let safe_acc = Safe::unpack(&safe_acc_info.try_borrow_data()?)
-        .map_err(|_| SafeError::ErrorCode(SafeErrorCode::SafeDataInvalid))?;
+        .map_err(|_| SafeErrorCode::SafeDataInvalid)?;
     if safe_acc.mint != Pubkey::new(&depositor_from.try_borrow_data()?[..32]) {
-        return Err(SafeError::ErrorCode(SafeErrorCode::WrongCoinMint));
+        return Err(SafeErrorCode::WrongCoinMint)?;
     }
     // Look into the safe vault's SPL account data and check for the owner (it should
     // be this program).
     let seeds = TokenVault::signer_seeds(safe_acc_info.key, &safe_acc.nonce);
     let expected_authority = Pubkey::create_program_address(&seeds, program_id)
-        .map_err(|_| SafeError::ErrorCode(SafeErrorCode::WrongVault))?;
+        .map_err(|_| SafeErrorCode::WrongVault)?;
     if Pubkey::new(&safe_srm_vault_to.try_borrow_data()?[32..64]) != expected_authority {
-        return Err(SafeError::ErrorCode(SafeErrorCode::WrongVault));
+        return Err(SafeErrorCode::WrongVault)?;
     }
 
     info!("access-control: success");

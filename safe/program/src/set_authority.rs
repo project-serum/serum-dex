@@ -4,6 +4,7 @@ use serum_safe::error::{SafeError, SafeErrorCode};
 use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::info;
 use solana_sdk::pubkey::Pubkey;
+use std::convert::Into;
 
 pub fn handler<'a>(
     _program_id: &Pubkey,
@@ -28,9 +29,8 @@ pub fn handler<'a>(
             state_transition(StateTransitionRequest {
                 safe_acc,
                 new_authority,
-            })?;
-
-            Ok(())
+            })
+            .map_err(Into::into)
         },
     )?;
 
@@ -47,10 +47,10 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), SafeError> {
 
     let safe_acc = Safe::unpack(&safe_acc_info.try_borrow_data()?)?;
     if !safe_authority_acc_info.is_signer {
-        return Err(SafeError::ErrorCode(SafeErrorCode::Unauthorized));
+        return Err(SafeErrorCode::Unauthorized)?;
     }
     if safe_acc.authority != *safe_authority_acc_info.key {
-        return Err(SafeError::ErrorCode(SafeErrorCode::Unauthorized));
+        return Err(SafeErrorCode::Unauthorized)?;
     }
 
     info!("access-control: success");
