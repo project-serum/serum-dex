@@ -1,4 +1,3 @@
-use common::assert::assert_eq_vec;
 use serum_common::pack::Pack;
 use serum_safe::accounts::{MintReceipt, Vesting};
 use solana_client_gen::solana_sdk::commitment_config::CommitmentConfig;
@@ -136,7 +135,7 @@ fn mint() {
             vesting_acc_beneficiary.pubkey()
         );
         assert_eq!(updated_vesting_acc.initialized, true);
-        assert_eq_vec(updated_vesting_acc.slots, vesting_acc_slots);
-        assert_eq_vec(updated_vesting_acc.amounts, vesting_acc_amounts);
+        assert_eq!(updated_vesting_acc.slots, vesting_acc_slots);
+        assert_eq!(updated_vesting_acc.amounts, vesting_acc_amounts);
     }
 }
