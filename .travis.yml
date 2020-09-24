@@ -18,19 +18,33 @@ _defaults: &defaults
   before_cache:
     - scripts/travis/stop-docker.sh
     - rm -rf "$TRAVIS_HOME/.cargo/registry/src"
+
+_localnet: &localnet
+  language: node_js
+  node_js:
+    - "node"
+  before_script:
+    - npm install -g @solana/web3.js
+    - npx solana-localnet update
+    - npx solana-localnet up
+
 jobs:
   include:
     - <<: *defaults
-      name: Unit tests
+      name: Dex unit tests
       script:
         - docker exec dev ./do.sh test dex
     - <<: *defaults
-      name: Integration tests
-      language: node_js
-      node_js:
-        - "node"
+      name: Dex integration tests
+      <<: *localnet
       script:
-        - npm install -g @solana/web3.js
-        - npx solana-localnet update
-        - npx solana-localnet up
-        - docker exec dev ./scripts/travis/e2e-tests.sh
+        - docker exec dev ./scripts/travis/dex-tests.sh
+    - <<: *defaults
+      name: Safe strict build
+      script:
+        - docker exec dev make -C safe build features=strict
+    - <<: *defaults
+      name: Safe tests
+      <<: *localnet
+      script:
+        - docker exec dev make -C safe init-test
