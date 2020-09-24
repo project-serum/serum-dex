@@ -6,14 +6,13 @@ use serum_safe::client::{Client, RequestOptions};
 use solana_client_gen::solana_client::rpc_config::RpcSendTransactionConfig;
 use solana_client_gen::solana_sdk::commitment_config::CommitmentConfig;
 
-pub mod assert;
 pub mod blockchain;
 pub mod lifecycle;
 
 // The test client assumes:
 //
 // * The payer with the client is already funded.
-// * The program with the client is already deployed. x
+// * The program with the client is already deployed.
 //
 pub fn client() -> Client {
     let program_id = std::env::var("TEST_PROGRAM_ID").unwrap().parse().unwrap();

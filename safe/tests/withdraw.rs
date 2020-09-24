@@ -1,4 +1,3 @@
-use common::assert::assert_eq_vec;
 use common::lifecycle;
 use rand::rngs::OsRng;
 use serum_common::pack::Pack;
@@ -219,7 +218,7 @@ fn withdraw_test(params: WithdrawTestParams) {
                 .unwrap();
             Vesting::unpack(&account.data).unwrap()
         };
-        assert_eq_vec(vesting_acc.amounts, expected_vesting_amounts);
+        assert_eq!(vesting_acc.amounts, expected_vesting_amounts);
     }
 }
 
