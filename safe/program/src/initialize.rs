@@ -58,29 +58,54 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), SafeError> {
         nonce,
     } = req;
 
-    let safe_data = safe_acc_info.try_borrow_data()?;
-    let safe = Safe::unpack(&safe_data)?;
-    if safe.initialized {
-        return Err(SafeErrorCode::AlreadyInitialized)?;
-    }
-    if safe_acc_info.owner != program_id {
-        return Err(SafeErrorCode::NotOwnedByProgram)?;
-    }
-    let rent = Rent::from_account_info(rent_acc_info)?;
-    if !rent.is_exempt(safe_acc_info.lamports(), safe_data.len()) {
-        return Err(SafeErrorCode::NotRentExempt)?;
-    }
-    if Pubkey::create_program_address(
-        &TokenVault::signer_seeds(safe_acc_info.key, &nonce),
-        program_id,
-    )
-    .is_err()
+    // Authorization: none.
+
+    // Safe.
     {
-        return Err(SafeErrorCode::InvalidVaultNonce)?;
+        let safe_data = safe_acc_info.try_borrow_data()?;
+        let safe = Safe::unpack(&safe_data)?;
+        if safe.initialized {
+            return Err(SafeErrorCode::AlreadyInitialized)?;
+        }
+        if safe_acc_info.owner != program_id {
+            return Err(SafeErrorCode::NotOwnedByProgram)?;
+        }
+        let rent = Rent::from_account_info(rent_acc_info)?;
+        if !rent.is_exempt(safe_acc_info.lamports(), safe_data.len()) {
+            return Err(SafeErrorCode::NotRentExempt)?;
+        }
     }
-    let mint = spl_token::state::Mint::unpack(&mint_acc_info.try_borrow_data()?)?;
-    if !mint.is_initialized {
-        return Err(SafeErrorCode::UnitializedTokenMint)?;
+
+    // Vault nonce.
+    {
+        if Pubkey::create_program_address(
+            &TokenVault::signer_seeds(safe_acc_info.key, &nonce),
+            program_id,
+        )
+        .is_err()
+        {
+            return Err(SafeErrorCode::InvalidVaultNonce)?;
+        }
+    }
+
+    // Mint.
+    {
+        let mint = spl_token::state::Mint::unpack(&mint_acc_info.try_borrow_data()?)?;
+
+        if *mint_acc_info.owner != spl_token::ID {
+            return Err(SafeErrorCode::InvalidMint)?;
+        }
+
+        if !mint.is_initialized {
+            return Err(SafeErrorCode::UnitializedTokenMint)?;
+        }
+    }
+
+    // Rent sysvar.
+    {
+        if *rent_acc_info.key != solana_sdk::sysvar::rent::id() {
+            return Err(SafeErrorCode::InvalidRentSysvar)?;
+        }
     }
 
     info!("access-control: success");

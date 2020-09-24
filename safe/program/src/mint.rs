@@ -1,5 +1,5 @@
 use serum_common::pack::Pack;
-use serum_safe::accounts::{LsrmReceipt, TokenVault, Vesting};
+use serum_safe::accounts::{MintReceipt, TokenVault, Vesting};
 use serum_safe::error::{SafeError, SafeErrorCode};
 use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::info;
@@ -9,8 +9,25 @@ use solana_sdk::sysvar::Sysvar;
 use spl_token::pack::Pack as TokenPack;
 use std::convert::Into;
 
+// The Mint instruction is unique in that it uses a variable length
+// accounts array. The following constants are used to help parse it.
+//
+// The number of accounts that are non-variable in the instruction.
+const FIXED_ACCS: usize = 6;
+// The pair size for accounts that are viariable in this instruction.
+// That is, every lSRM has `DYN_ACC_PIECES` number of accounts
+// associated with it.
+const DYN_ACC_PIECES: usize = 3;
+// Returns the number of NFTs in an instruction, given the length of the
+// accounts array.
+macro_rules! nft_count {
+    ($accounts_len:ident) => {
+        (($accounts_len - FIXED_ACCS) / DYN_ACC_PIECES) as u64;
+    };
+}
+
 pub fn handler<'a>(
-    _program_id: &'a Pubkey,
+    program_id: &'a Pubkey,
     accounts: &'a [AccountInfo<'a>],
     token_acc_owner: Pubkey,
 ) -> Result<(), SafeError> {
@@ -22,12 +39,12 @@ pub fn handler<'a>(
     let vesting_acc_info = next_account_info(acc_infos)?;
     let safe_acc_info = next_account_info(acc_infos)?;
     let safe_vault_authority_acc_info = next_account_info(acc_infos)?;
-    let spl_token_program_acc_info = next_account_info(acc_infos)?;
+    let token_program_acc_info = next_account_info(acc_infos)?;
     let rent_acc_info = next_account_info(acc_infos)?;
     let lsrm_nfts = {
-        let lsrm_nft_count = ((accounts.len() - FIXED_ACCS) / DYN_ACC_PIECES) as u64;
+        let accounts_len = accounts.len();
         let mut lsrm_nfts = vec![];
-        for _ in 0..lsrm_nft_count {
+        for _ in 0..nft_count!(accounts_len) {
             let lsrm_spl_mint_info = next_account_info(acc_infos)?;
             let lsrm_token_acc_info = next_account_info(acc_infos)?;
             let lsrm_receipt_info = next_account_info(acc_infos)?;
@@ -41,10 +58,11 @@ pub fn handler<'a>(
     };
 
     access_control(AccessControlRequest {
+        program_id,
         vesting_acc_info,
         vesting_acc_beneficiary_info,
         lsrm_nfts: &lsrm_nfts,
-        spl_token_program_acc_info,
+        token_program_acc_info,
         rent_acc_info,
         accounts_len: accounts.len(),
     })?;
@@ -72,64 +90,115 @@ fn access_control<'a, 'b>(req: AccessControlRequest<'a, 'b>) -> Result<(), SafeE
     info!("access-control: mint");
 
     let AccessControlRequest {
+        program_id,
         vesting_acc_info,
         vesting_acc_beneficiary_info,
         lsrm_nfts,
-        spl_token_program_acc_info,
+        token_program_acc_info,
         rent_acc_info,
         accounts_len,
     } = req;
 
-    if (accounts_len - FIXED_ACCS) % DYN_ACC_PIECES != 0 {
-        return Err(SafeErrorCode::WrongNumberOfAccounts)?;
-    }
-
-    assert_eq!(*spl_token_program_acc_info.key, spl_token::ID);
-    assert_eq!(*rent_acc_info.key, solana_sdk::sysvar::rent::id());
-
-    if !vesting_acc_beneficiary_info.is_signer {
-        return Err(SafeErrorCode::Unauthorized)?;
-    }
-    let vesting_acc = Vesting::unpack(&vesting_acc_info.try_borrow_data()?)?;
-    if *vesting_acc_beneficiary_info.key != vesting_acc.beneficiary {
-        return Err(SafeErrorCode::Unauthorized)?;
-    }
-    let lsrm_nft_count = ((accounts_len - FIXED_ACCS) / DYN_ACC_PIECES) as u64;
-    if vesting_acc.total() - vesting_acc.locked_outstanding < lsrm_nft_count {
-        return Err(SafeErrorCode::InsufficientBalance)?;
-    }
-
-    // Perform checks on all NFT instances.
-    for (mint, token_acc, receipt) in lsrm_nfts {
-        // NFT mint must be uninitialized.
-        let data = mint.try_borrow_data()?;
-        let nft_data_len = data.len();
-        let is_initialized = data[0x2d];
-        if is_initialized != 0u8 {
-            return Err(SafeErrorCode::LsrmMintAlreadyInitialized)?;
+    // Sanity check dynamic length accounts.
+    {
+        if (accounts_len - FIXED_ACCS) % DYN_ACC_PIECES != 0 {
+            return Err(SafeErrorCode::WrongNumberOfAccounts)?;
         }
-        // LsrmReceipt must be uninitialized.
-        let data = receipt.try_borrow_data()?;
-        let receipt_data_len = data.len();
-        let initialized = data[0];
-        if initialized != 0u8 {
-            return Err(SafeErrorCode::LsrmReceiptAlreadyInitialized)?;
+        if lsrm_nfts.len() as u64 != nft_count!(accounts_len) {
+            return Err(SafeErrorCode::WrongNumberOfAccounts)?;
         }
-        // Rent Exemption.
+    }
+
+    // Beneficiary authorization.
+    {
+        if !vesting_acc_beneficiary_info.is_signer {
+            return Err(SafeErrorCode::Unauthorized)?;
+        }
+    }
+
+    // Vesting.
+    {
+        let vesting = Vesting::unpack(&vesting_acc_info.try_borrow_data()?)?;
+
+        if vesting_acc_info.owner != program_id {
+            return Err(SafeErrorCode::InvalidAccount)?;
+        }
+        if !vesting.initialized {
+            return Err(SafeErrorCode::NotInitialized)?;
+        }
+        // Match the signing beneficiary to this account.
+        if vesting.beneficiary != *vesting_acc_beneficiary_info.key {
+            return Err(SafeErrorCode::Unauthorized)?;
+        }
+        // Do we have sufficient balance?
+        if vesting.available_for_mint() < lsrm_nfts.len() as u64 {
+            return Err(SafeErrorCode::InsufficientBalance)?;
+        }
+    }
+
+    // All NFTs (mint, token-account, receipt).
+    {
         let rent = Rent::from_account_info(rent_acc_info)?;
-        if !rent.is_exempt(mint.lamports(), nft_data_len) {
-            return Err(SafeErrorCode::NotRentExempt)?;
+        for (mint_acc_info, token_acc_info, receipt_acc_info) in lsrm_nfts {
+            // Mint.
+            {
+                let mint =
+                    spl_token::state::Mint::unpack_unchecked(&mint_acc_info.try_borrow_data()?)?;
+                if mint.is_initialized {
+                    return Err(SafeErrorCode::MintAlreadyInitialized)?;
+                }
+                if *mint_acc_info.owner != spl_token::ID {
+                    return Err(SafeErrorCode::InvalidMint)?;
+                }
+                if !rent.is_exempt(mint_acc_info.lamports(), mint_acc_info.try_data_len()?) {
+                    return Err(SafeErrorCode::NotRentExempt)?;
+                }
+            }
+            // Token account.
+            {
+                let token_acc = spl_token::state::Account::unpack_unchecked(
+                    &token_acc_info.try_borrow_data()?,
+                )?;
+                if token_acc.state != spl_token::state::AccountState::Uninitialized {
+                    return Err(SafeErrorCode::TokenAccountAlreadyInitialized)?;
+                }
+                if *token_acc_info.owner != spl_token::ID {
+                    return Err(SafeErrorCode::InvalidAccountOwner)?;
+                }
+                if !rent.is_exempt(token_acc_info.lamports(), token_acc_info.try_data_len()?) {
+                    return Err(SafeErrorCode::NotRentExempt)?;
+                }
+            }
+            // Receipt.
+            {
+                let receipt = MintReceipt::unpack(&receipt_acc_info.try_borrow_data()?)?;
+                if receipt.initialized {
+                    return Err(SafeErrorCode::ReceiptAlreadyInitialized)?;
+                }
+                if receipt_acc_info.owner != program_id {
+                    return Err(SafeErrorCode::InvalidAccountOwner)?;
+                }
+                if !rent.is_exempt(
+                    receipt_acc_info.lamports(),
+                    receipt_acc_info.try_data_len()?,
+                ) {
+                    return Err(SafeErrorCode::NotRentExempt)?;
+                }
+            }
         }
-        if !rent.is_exempt(receipt.lamports(), receipt_data_len) {
-            return Err(SafeErrorCode::NotRentExempt)?;
+    }
+
+    // Token program.
+    {
+        if *token_program_acc_info.key != spl_token::ID {
+            return Err(SafeErrorCode::InvalidTokenProgram)?;
         }
-        if !rent.is_exempt(token_acc.lamports(), token_acc.try_data_len()?) {
-            return Err(SafeErrorCode::NotRentExempt)?;
-        }
-        // Token account must be uninitialized.
-        let token_acc = spl_token::state::Account::unpack_unchecked(&token_acc.try_borrow_data()?)?;
-        if token_acc.state != spl_token::state::AccountState::Uninitialized {
-            return Err(SafeErrorCode::TokenAccountAlreadyInitialized)?;
+    }
+
+    // Rent sysvar.
+    {
+        if *rent_acc_info.key != solana_sdk::sysvar::rent::id() {
+            return Err(SafeErrorCode::InvalidRentSysvar)?;
         }
     }
 
@@ -153,14 +222,14 @@ fn state_transition<'a, 'b>(req: StateTransitionRequest<'a, 'b>) -> Result<(), S
 
     // Initialize all receipts, mints, and token accounts.
     for (mint, token_acc, receipt) in lsrm_nfts {
-        LsrmReceipt::unpack_mut(
+        MintReceipt::unpack_mut(
             &mut receipt.try_borrow_mut_data()?,
-            &mut |receipt: &mut LsrmReceipt| {
+            &mut |receipt: &mut MintReceipt| {
                 // Initialize the receipt.
                 {
                     receipt.initialized = true;
                     receipt.mint = *mint.key;
-                    receipt.spl_acc = *token_acc.key;
+                    receipt.token_acc = *token_acc.key;
                     receipt.vesting_acc = *vesting_acc_info.key;
                     receipt.burned = false;
                 }
@@ -247,11 +316,12 @@ fn state_transition<'a, 'b>(req: StateTransitionRequest<'a, 'b>) -> Result<(), S
 }
 
 struct AccessControlRequest<'a, 'b> {
+    program_id: &'a Pubkey,
     vesting_acc_info: &'a AccountInfo<'a>,
     vesting_acc_beneficiary_info: &'a AccountInfo<'a>,
     // (SPL mint, token account, lsrm receipt) pairs.
     lsrm_nfts: &'b [(AccountInfo<'a>, &'a AccountInfo<'a>, &'a AccountInfo<'a>)],
-    spl_token_program_acc_info: &'a AccountInfo<'a>,
+    token_program_acc_info: &'a AccountInfo<'a>,
     rent_acc_info: &'a AccountInfo<'a>,
     accounts_len: usize,
 }
@@ -266,10 +336,3 @@ struct StateTransitionRequest<'a, 'b> {
     safe_acc_info: &'a AccountInfo<'a>,
     safe_vault_authority_acc_info: &'a AccountInfo<'a>,
 }
-
-// The number of accounts that are non-variable in the instruction.
-const FIXED_ACCS: usize = 6;
-// The pair size for accounts that are viariable in this instruction.
-// That is, every lSRM has `DYN_ACC_PIECES` number of accounts
-// associated with it.
-const DYN_ACC_PIECES: usize = 3;

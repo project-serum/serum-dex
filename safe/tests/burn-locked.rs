@@ -1,5 +1,5 @@
 use common::lifecycle::{self, LsrmMinted};
-use serum_safe::accounts::{LsrmReceipt, Vesting};
+use serum_safe::accounts::{MintReceipt, Vesting};
 use solana_client_gen::solana_sdk::instruction::AccountMeta;
 use solana_client_gen::solana_sdk::signature::Signer;
 
@@ -54,7 +54,7 @@ fn burn() {
     //
     // My lSRM receipt should be burned.
     {
-        let receipt: LsrmReceipt =
+        let receipt: MintReceipt =
             serum_common::client::rpc::account_unpacked(client.rpc(), &lsrm1.receipt);
         assert_eq!(receipt.burned, true);
     }

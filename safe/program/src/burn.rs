@@ -1,5 +1,5 @@
 use serum_common::pack::Pack;
-use serum_safe::accounts::{LsrmReceipt, Vesting};
+use serum_safe::accounts::{MintReceipt, Vesting};
 use serum_safe::error::{SafeError, SafeErrorCode};
 use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::info;
@@ -29,14 +29,15 @@ pub fn handler<'a>(
         mint_acc_info,
         receipt_acc_info,
         token_program_acc_info,
+        vesting_acc_info,
     })?;
 
     Vesting::unpack_mut(
         &mut vesting_acc_info.try_borrow_mut_data()?,
         &mut |vesting_acc: &mut Vesting| {
-            LsrmReceipt::unpack_mut(
+            MintReceipt::unpack_mut(
                 &mut receipt_acc_info.try_borrow_mut_data()?,
-                &mut |lsrm_receipt: &mut LsrmReceipt| {
+                &mut |lsrm_receipt: &mut MintReceipt| {
                     state_transition(StateTransitionRequest {
                         vesting_acc,
                         lsrm_receipt,
@@ -64,33 +65,61 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), SafeError> {
         mint_acc_info,
         receipt_acc_info,
         token_program_acc_info,
+        vesting_acc_info,
     } = req;
 
-    if !token_owner_acc_info.is_signer {
-        return Err(SafeErrorCode::Unauthorized)?;
+    // NFT token owner authorization.
+    {
+        if !token_owner_acc_info.is_signer {
+            return Err(SafeErrorCode::Unauthorized)?;
+        }
     }
-    let account = spl_token::state::Account::unpack(&token_acc_info.try_borrow_data()?)?;
-    if account.owner != *token_owner_acc_info.key {
-        return Err(SafeErrorCode::InvalidAccountOwner)?;
+
+    // NFT token.
+    {
+        let token_acc = spl_token::state::Account::unpack(&token_acc_info.try_borrow_data()?)?;
+        // Match against owner.
+        if token_acc.owner != *token_owner_acc_info.key {
+            return Err(SafeErrorCode::InvalidAccountOwner)?;
+        }
     }
-    if receipt_acc_info.owner != program_id {
-        return Err(SafeErrorCode::InvalidReceipt)?;
+
+    // Receipt.
+    let receipt = MintReceipt::unpack(&receipt_acc_info.try_borrow_data()?)?;
+    {
+        if receipt_acc_info.owner != program_id {
+            return Err(SafeErrorCode::InvalidReceipt)?;
+        }
+        // Match against NFT.
+        if receipt.token_acc != *token_acc_info.key {
+            return Err(SafeErrorCode::UnauthorizedReceipt)?;
+        }
+        if !receipt.initialized {
+            return Err(SafeErrorCode::InvalidReceipt)?;
+        }
+        if receipt.burned {
+            return Err(SafeErrorCode::AlreadyBurned)?;
+        }
+        if receipt.mint != *mint_acc_info.key {
+            return Err(SafeErrorCode::WrongCoinMint)?;
+        }
     }
-    let receipt = LsrmReceipt::unpack(&receipt_acc_info.try_borrow_data()?)?;
-    if receipt.spl_acc != *token_acc_info.key {
-        return Err(SafeErrorCode::UnauthorizedReceipt)?;
+
+    // Vesting.
+    {
+        // Match against receipt.
+        if *vesting_acc_info.key != receipt.vesting_acc {
+            return Err(SafeErrorCode::WrongVestingAccount)?;
+        }
+        // The validity of the Vesting account is thus implied by the validity
+        // of the receipt.
     }
-    if !receipt.initialized {
-        return Err(SafeErrorCode::InvalidReceipt)?;
-    }
-    if receipt.burned {
-        return Err(SafeErrorCode::AlreadyBurned)?;
-    }
-    if receipt.mint != *mint_acc_info.key {
-        return Err(SafeErrorCode::WrongCoinMint)?;
-    }
-    if *token_program_acc_info.key != spl_token::ID {
-        return Err(SafeErrorCode::InvalidTokenProgram)?;
+
+    // Token program.
+    {
+        if *token_program_acc_info.key != spl_token::ID {
+            return Err(SafeErrorCode::InvalidTokenProgram)?;
+        }
     }
 
     info!("access-control: success");
@@ -158,12 +187,13 @@ struct AccessControlRequest<'a> {
     token_acc_info: &'a AccountInfo<'a>,
     mint_acc_info: &'a AccountInfo<'a>,
     receipt_acc_info: &'a AccountInfo<'a>,
+    vesting_acc_info: &'a AccountInfo<'a>,
     token_program_acc_info: &'a AccountInfo<'a>,
 }
 
 struct StateTransitionRequest<'a, 'b> {
     vesting_acc: &'b mut Vesting,
-    lsrm_receipt: &'b mut LsrmReceipt,
+    lsrm_receipt: &'b mut MintReceipt,
     token_owner_acc_info: &'a AccountInfo<'a>,
     token_acc_info: &'a AccountInfo<'a>,
     mint_acc_info: &'a AccountInfo<'a>,

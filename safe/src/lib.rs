@@ -12,7 +12,7 @@ pub mod instruction {
         /// Initializes a safe instance for use.
         ///
         /// Similar to a token mint, this must be included in the same
-        /// instruction that creates the account to initialize. Otherwise
+        /// instruction that creates the Safe account to initialize. Otherwise
         /// someone can take control of the account by calling initialize on it.
         ///
         /// Accounts:
@@ -29,7 +29,7 @@ pub mod instruction {
         },
         /// Deposit creates deposit and vesting account, transferring tokens
         /// from the controlling token account to one owned by the SrmSafe
-        /// program.
+        /// program. Anyone with funds to deposit can invoke this instruction.
         ///
         /// Accounts:
         ///
@@ -63,7 +63,7 @@ pub mod instruction {
         ///
         /// 0. `[signer]`   Vesting account's beneficiary.
         /// 1. `[writable]` Vesting account to withdraw from.
-        /// 2. `[writable]` SRM token account to withdraw to.
+        /// 2. `[writable]` SPL token account to withdraw to.
         /// 3. `[writable]` Safe's token account vault from which we are
         ///                 transferring ownership of the SRM out of.
         /// 4. `[readonly]` Safe's vault authority, i.e., the program-derived

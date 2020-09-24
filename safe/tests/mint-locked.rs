@@ -1,6 +1,6 @@
 use common::assert::assert_eq_vec;
 use serum_common::pack::Pack;
-use serum_safe::accounts::{LsrmReceipt, Vesting};
+use serum_safe::accounts::{MintReceipt, Vesting};
 use solana_client_gen::solana_sdk::commitment_config::CommitmentConfig;
 use solana_client_gen::solana_sdk::instruction::AccountMeta;
 use solana_client_gen::solana_sdk::signature::Signer;
@@ -103,14 +103,14 @@ fn mint() {
                 .unwrap()
                 .value
                 .unwrap();
-            (LsrmReceipt::unpack(&account.data).unwrap(), lsrm)
+            (MintReceipt::unpack(&account.data).unwrap(), lsrm)
         });
         for (idx, (receipt, lsrm)) in lsrm_receipts.enumerate() {
             assert!(receipt.initialized);
             assert_eq!(receipt.mint, lsrm_nfts[idx].mint.pubkey());
             assert_eq!(receipt.vesting_acc, vesting_acc);
             assert_eq!(receipt.burned, false);
-            assert_eq!(receipt.spl_acc, lsrm.token_acc.pubkey());
+            assert_eq!(receipt.token_acc, lsrm.token_acc.pubkey());
         }
     }
     // Then.

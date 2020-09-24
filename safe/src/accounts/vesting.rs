@@ -32,6 +32,11 @@ impl Vesting {
         self.amounts.iter().sum()
     }
 
+    /// Returns the amount available for minting locked token NFTs.
+    pub fn available_for_mint(&self) -> u64 {
+        self.total() - self.locked_outstanding
+    }
+
     /// Returns the amount available for withdrawal as of the given slot.
     pub fn available_for_withdrawal(&self, slot: u64) -> u64 {
         self.vested_amount(slot) - self.locked_outstanding

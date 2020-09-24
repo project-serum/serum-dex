@@ -1,5 +1,5 @@
 use serum_common::pack::Pack;
-use serum_safe::accounts::{TokenVault, Vesting};
+use serum_safe::accounts::{Safe, TokenVault, Vesting};
 use serum_safe::error::{SafeError, SafeErrorCode};
 use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::info;
@@ -20,11 +20,11 @@ pub fn handler<'a>(
 
     let vesting_acc_beneficiary_info = next_account_info(acc_infos)?;
     let vesting_acc_info = next_account_info(acc_infos)?;
-    let beneficiary_spl_acc_info = next_account_info(acc_infos)?;
-    let safe_spl_vault_acc_info = next_account_info(acc_infos)?;
-    let safe_spl_vault_authority_acc_info = next_account_info(acc_infos)?;
+    let beneficiary_token_acc_info = next_account_info(acc_infos)?;
+    let safe_vault_acc_info = next_account_info(acc_infos)?;
+    let safe_vault_authority_acc_info = next_account_info(acc_infos)?;
     let safe_acc_info = next_account_info(acc_infos)?;
-    let spl_program_acc_info = next_account_info(acc_infos)?;
+    let token_program_acc_info = next_account_info(acc_infos)?;
     let clock_acc_info = next_account_info(acc_infos)?;
 
     access_control(AccessControlRequest {
@@ -32,9 +32,9 @@ pub fn handler<'a>(
         amount,
         vesting_acc_beneficiary_info,
         vesting_acc_info,
-        safe_spl_vault_acc_info,
+        safe_vault_acc_info,
         safe_acc_info,
-        spl_program_acc_info,
+        token_program_acc_info,
         clock_acc_info,
     })?;
 
@@ -44,11 +44,11 @@ pub fn handler<'a>(
             state_transition(StateTransitionRequest {
                 amount,
                 vesting_acc,
-                safe_spl_vault_acc_info,
-                safe_spl_vault_authority_acc_info,
-                beneficiary_spl_acc_info,
+                safe_vault_acc_info,
+                safe_vault_authority_acc_info,
+                beneficiary_token_acc_info,
                 safe_acc_info,
-                spl_program_acc_info,
+                token_program_acc_info,
             })
             .map_err(Into::into)
         },
@@ -64,54 +64,85 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), SafeError> {
         amount,
         vesting_acc_beneficiary_info,
         vesting_acc_info,
-        safe_spl_vault_acc_info,
+        safe_vault_acc_info,
         safe_acc_info,
-        spl_program_acc_info,
+        token_program_acc_info,
         clock_acc_info,
     } = req;
-    assert_eq!(*spl_program_acc_info.key, spl_token::ID);
 
-    if vesting_acc_info.owner != program_id {
-        return Err(SafeErrorCode::InvalidAccount)?;
-    }
-    if !vesting_acc_beneficiary_info.is_signer {
-        return Err(SafeErrorCode::Unauthorized)?;
-    }
-    let vesting_acc = Vesting::unpack(&vesting_acc_info.try_borrow_data()?)?;
-    if vesting_acc.beneficiary != *vesting_acc_beneficiary_info.key {
-        return Err(SafeErrorCode::Unauthorized)?;
-    }
-    let clock = Clock::from_account_info(clock_acc_info)?;
-    if amount > vesting_acc.available_for_withdrawal(clock.slot) {
-        return Err(SafeErrorCode::InsufficientBalance)?;
-    }
-
-    // Validate the vault spl account.
+    // Beneficiary authorization.
     {
-        let spl_vault_data = safe_spl_vault_acc_info.try_borrow_data()?;
-
-        assert_eq!(*safe_spl_vault_acc_info.owner, spl_token::ID);
-        assert_eq!(spl_vault_data.len(), spl_token::state::Account::LEN);
-
-        // AccountState must be initialized.
-        if spl_vault_data[0x6c] != 1u8 {
-            return Err(SafeErrorCode::WrongVault)?;
-        }
-        // The SPL account owner must be hte program derived address.
-        let expected_owner = {
-            let data = safe_acc_info.try_borrow_data()?;
-            let nonce = data[data.len() - 1];
-            let signer_seeds = TokenVault::signer_seeds(safe_acc_info.key, &nonce);
-
-            Pubkey::create_program_address(&signer_seeds, program_id)
-                .expect("safe initialized with invalid nonce")
-        };
-        let owner = Pubkey::new(&spl_vault_data[32..64]);
-        if owner != expected_owner {
-            return Err(SafeErrorCode::WrongVault)?;
+        if !vesting_acc_beneficiary_info.is_signer {
+            return Err(SafeErrorCode::Unauthorized)?;
         }
     }
-    // todo: check beneficiary account is initialized
+
+    // Safe.
+    let safe = Safe::unpack(&safe_acc_info.try_borrow_data()?)?;
+    {
+        if !safe.initialized {
+            return Err(SafeErrorCode::NotInitialized)?;
+        }
+    }
+
+    // Vault.
+    {
+        let safe_vault =
+            spl_token::state::Account::unpack(&safe_vault_acc_info.try_borrow_data()?)?;
+
+        if *safe_vault_acc_info.owner != spl_token::ID {
+            return Err(SafeErrorCode::InvalidVault)?;
+        }
+        if safe_vault.state != spl_token::state::AccountState::Initialized {
+            return Err(SafeErrorCode::InvalidVault)?;
+        }
+        let safe_vault_authority = Pubkey::create_program_address(
+            &TokenVault::signer_seeds(safe_acc_info.key, &safe.nonce),
+            program_id,
+        )
+        .map_err(|_| SafeErrorCode::InvalidVault)?;
+        if safe_vault.owner != safe_vault_authority {
+            return Err(SafeErrorCode::InvalidVault)?;
+        }
+    }
+
+    // Vesting.
+    {
+        let vesting = Vesting::unpack(&vesting_acc_info.try_borrow_data()?)?;
+
+        if vesting_acc_info.owner != program_id {
+            return Err(SafeErrorCode::InvalidAccount)?;
+        }
+        if !vesting.initialized {
+            return Err(SafeErrorCode::NotInitialized)?;
+        }
+        // Match the signing beneficiary to this account.
+        if vesting.beneficiary != *vesting_acc_beneficiary_info.key {
+            return Err(SafeErrorCode::Unauthorized)?;
+        }
+        // Match the vesting account to the safe.
+        if vesting.safe != *safe_acc_info.key {
+            return Err(SafeErrorCode::WrongSafe)?;
+        }
+        // Do we have sufficient balance?
+        let clock = Clock::from_account_info(clock_acc_info)?;
+        if amount > vesting.available_for_withdrawal(clock.slot) {
+            return Err(SafeErrorCode::InsufficientBalance)?;
+        }
+    }
+
+    // Token program.
+    {
+        if *token_program_acc_info.key != spl_token::ID {
+            return Err(SafeErrorCode::InvalidTokenProgram)?;
+        }
+    }
+
+    // Beneficiary token account.
+    {
+        // Allow the SPL token program to handle this.
+    }
+
     info!("access-control: success");
 
     Ok(())
@@ -123,11 +154,11 @@ fn state_transition<'a, 'b>(req: StateTransitionRequest<'a, 'b>) -> Result<(), S
     let StateTransitionRequest {
         vesting_acc,
         amount,
-        safe_spl_vault_acc_info,
-        safe_spl_vault_authority_acc_info,
-        beneficiary_spl_acc_info,
+        safe_vault_acc_info,
+        safe_vault_authority_acc_info,
+        beneficiary_token_acc_info,
         safe_acc_info,
-        spl_program_acc_info,
+        token_program_acc_info,
     } = req;
 
     // Remove the withdrawn token from the vesting account.
@@ -141,9 +172,9 @@ fn state_transition<'a, 'b>(req: StateTransitionRequest<'a, 'b>) -> Result<(), S
 
         let withdraw_instruction = spl_token::instruction::transfer(
             &spl_token::ID,
-            safe_spl_vault_acc_info.key,
-            beneficiary_spl_acc_info.key,
-            &safe_spl_vault_authority_acc_info.key,
+            safe_vault_acc_info.key,
+            beneficiary_token_acc_info.key,
+            &safe_vault_authority_acc_info.key,
             &[],
             amount,
         )?;
@@ -155,10 +186,10 @@ fn state_transition<'a, 'b>(req: StateTransitionRequest<'a, 'b>) -> Result<(), S
         solana_sdk::program::invoke_signed(
             &withdraw_instruction,
             &[
-                safe_spl_vault_acc_info.clone(),
-                beneficiary_spl_acc_info.clone(),
-                safe_spl_vault_authority_acc_info.clone(),
-                spl_program_acc_info.clone(),
+                safe_vault_acc_info.clone(),
+                beneficiary_token_acc_info.clone(),
+                safe_vault_authority_acc_info.clone(),
+                token_program_acc_info.clone(),
             ],
             &[&signer_seeds],
         )?;
@@ -174,18 +205,18 @@ struct AccessControlRequest<'a> {
     amount: u64,
     vesting_acc_beneficiary_info: &'a AccountInfo<'a>,
     vesting_acc_info: &'a AccountInfo<'a>,
-    clock_acc_info: &'a AccountInfo<'a>,
-    safe_spl_vault_acc_info: &'a AccountInfo<'a>,
     safe_acc_info: &'a AccountInfo<'a>,
-    spl_program_acc_info: &'a AccountInfo<'a>,
+    safe_vault_acc_info: &'a AccountInfo<'a>,
+    token_program_acc_info: &'a AccountInfo<'a>,
+    clock_acc_info: &'a AccountInfo<'a>,
 }
 
 struct StateTransitionRequest<'a, 'b> {
     amount: u64,
     vesting_acc: &'b mut Vesting,
-    safe_spl_vault_acc_info: &'a AccountInfo<'a>,
-    beneficiary_spl_acc_info: &'a AccountInfo<'a>,
-    safe_spl_vault_authority_acc_info: &'a AccountInfo<'a>,
     safe_acc_info: &'a AccountInfo<'a>,
-    spl_program_acc_info: &'a AccountInfo<'a>,
+    beneficiary_token_acc_info: &'a AccountInfo<'a>,
+    safe_vault_acc_info: &'a AccountInfo<'a>,
+    safe_vault_authority_acc_info: &'a AccountInfo<'a>,
+    token_program_acc_info: &'a AccountInfo<'a>,
 }

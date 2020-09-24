@@ -1,6 +1,6 @@
 //! The client_ext module extends the auto-generated program client.
 
-use crate::accounts::{LsrmReceipt, Safe};
+use crate::accounts::{MintReceipt, Safe};
 use serum_common::pack::Pack;
 use solana_client_gen::prelude::*;
 use solana_client_gen::solana_sdk;
@@ -243,7 +243,7 @@ solana_client_gen_extension! {
                 let kp = serum_common::client::rpc::create_account_rent_exempt(
                     self.rpc(),
                     &self.payer(),
-                    LsrmReceipt::default().size().unwrap() as usize,
+                    MintReceipt::default().size().unwrap() as usize,
                     &self.program(),
                 ).map_err(|e| ClientError::RawError(e.to_string()))?;
 
