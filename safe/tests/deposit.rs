@@ -1,4 +1,3 @@
-use common::assert::assert_eq_vec;
 use rand::rngs::OsRng;
 use serum_common::pack::Pack;
 use serum_safe::accounts::Vesting;
@@ -78,8 +77,8 @@ fn deposit() {
         assert_eq!(vesting_acc.safe, safe_acc.pubkey());
         assert_eq!(vesting_acc.beneficiary, expected_beneficiary.pubkey());
         assert_eq!(vesting_acc.initialized, true);
-        assert_eq_vec(vesting_acc.slots, expected_slots.clone());
-        assert_eq_vec(vesting_acc.amounts, expected_amounts.clone());
+        assert_eq!(vesting_acc.slots, expected_slots);
+        assert_eq!(vesting_acc.amounts, expected_amounts);
     }
     // Then.
     //
