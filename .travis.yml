@@ -48,3 +48,8 @@ jobs:
       <<: *localnet
       script:
         - docker exec dev make -C safe init-test
+    - <<: *defaults
+      name: Common
+      script:
+        - docker exec dev cargo fmt -- --check
+        - docker exec -w=/workdir/common dev cargo test --features test,client
