@@ -35,9 +35,8 @@ use crate::{
     error::{DexErrorCode, DexResult, SourceFileId},
     fees::{self, FeeTier},
     instruction::{
-        SelfTradeBehavior,
         disable_authority, fee_sweeper, msrm_token, srm_token, CancelOrderInstruction,
-        InitializeMarketInstruction, MarketInstruction, NewOrderInstructionV2,
+        InitializeMarketInstruction, MarketInstruction, NewOrderInstructionV2, SelfTradeBehavior,
     },
     matching::{OrderBookState, OrderType, Side},
 };
@@ -674,7 +673,6 @@ enum RequestFlag {
     DecrementTakeOnSelfTrade = 0x20,
 }
 
-
 #[derive(Copy, Clone, Debug)]
 #[repr(C)]
 pub struct Request {
@@ -806,7 +804,9 @@ impl Request {
                 (true, true) => unreachable!(),
             };
             let fee_tier = FeeTier::try_from_primitive(self.fee_tier).or(check_unreachable!())?;
-            let self_trade_behavior = SelfTradeBehavior::try_from_primitive(self.self_trade_behavior).or(check_unreachable!())?;
+            let self_trade_behavior =
+                SelfTradeBehavior::try_from_primitive(self.self_trade_behavior)
+                    .or(check_unreachable!())?;
             Ok(RequestView::NewOrder {
                 side,
                 order_type,

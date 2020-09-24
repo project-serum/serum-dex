@@ -1,5 +1,4 @@
 #![cfg_attr(not(feature = "program"), allow(unused))]
-use std::convert::TryInto;
 use crate::error::DexError;
 use crate::matching::{OrderType, Side};
 use bytemuck::cast;
@@ -8,10 +7,11 @@ use solana_sdk::{
     instruction::{AccountMeta, Instruction},
     pubkey::Pubkey,
 };
+use std::convert::TryInto;
 
 use arrayref::{array_ref, array_refs};
-use std::num::NonZeroU64;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
+use std::num::NonZeroU64;
 
 #[cfg(test)]
 use proptest::prelude::*;
@@ -58,7 +58,9 @@ pub struct InitializeMarketInstruction {
     pub pc_dust_threshold: u64,
 }
 
-#[derive(PartialEq, Eq, Copy, Clone, Debug, TryFromPrimitive, IntoPrimitive, Serialize, Deserialize)]
+#[derive(
+    PartialEq, Eq, Copy, Clone, Debug, TryFromPrimitive, IntoPrimitive, Serialize, Deserialize,
+)]
 #[cfg_attr(test, derive(Arbitrary))]
 #[cfg_attr(feature = "fuzz", derive(arbitrary::Arbitrary))]
 #[repr(u8)]
@@ -105,7 +107,10 @@ pub struct NewOrderInstructionV1 {
 }
 
 impl NewOrderInstructionV1 {
-    pub fn add_self_trade_behavior(self, self_trade_behavior: SelfTradeBehavior) -> NewOrderInstructionV2 {
+    pub fn add_self_trade_behavior(
+        self,
+        self_trade_behavior: SelfTradeBehavior,
+    ) -> NewOrderInstructionV2 {
         let NewOrderInstructionV1 {
             side,
             limit_price,
@@ -313,8 +318,9 @@ impl MarketInstruction {
                 let (v1_data_arr, v2_data_arr) = array_refs![data_arr, 32, 4];
                 let v1_instr = NewOrderInstructionV1::unpack(v1_data_arr)?;
                 let self_trade_behavior = SelfTradeBehavior::try_from_primitive(
-                    u32::from_le_bytes(*v2_data_arr).try_into().ok()?
-                ).ok()?;
+                    u32::from_le_bytes(*v2_data_arr).try_into().ok()?,
+                )
+                .ok()?;
                 v1_instr.add_self_trade_behavior(self_trade_behavior)
             }),
             _ => return None,
