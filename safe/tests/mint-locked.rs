@@ -31,7 +31,7 @@ fn mint() {
     //
     // I mint locked srm.
     let nft_token_acc_owner = vesting_acc_beneficiary.pubkey();
-    let nft_count = 1; // todo: bump this
+    let nft_count = 2;
     let lsrm_nfts = {
         let mint_lsrm_accs = vec![
             AccountMeta::new(vesting_acc_beneficiary.pubkey(), true),
