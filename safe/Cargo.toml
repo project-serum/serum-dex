@@ -8,7 +8,6 @@ edition = "2018"
 [features]
 program = ["solana-client-gen/program", "spl-token/program", "serum-common/program"]
 client = ["solana-client-gen/client", "spl-token/default", "serum-common/client", "lazy_static"]
-client-ext = []
 test = ["rand", "solana-client-gen/client", "spl-token/default"]
 strict = []
 default = []
