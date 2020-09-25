@@ -437,7 +437,7 @@ fn enum_to_methods(
             // size.
             //
             // 1. create_account_and_<instruction-name>(...args)
-            // 2. create_account_with_size_and_<instruction-name>(size: usize, ...args)
+            // 2. create_account_with_size_and_<instruction-name>(size: u64, ...args)
             //
             // The first will be created when #[create_account(SIZE)] is used with a
             // fixed size. The second will be used when #[create_account(..)] is used
@@ -484,13 +484,13 @@ fn enum_to_methods(
                                 let create_account_instr = {
                                     let lamports = self
                                         .rpc()
-                                        .get_minimum_balance_for_rent_exemption(#account_data_size)
+                                        .get_minimum_balance_for_rent_exemption(#account_data_size as usize)
                                         .map_err(ClientError::RpcError)?;
                                     system_instruction::create_account(
                                         &self.payer().pubkey(),    // The from account on the tx.
                                         &new_account.pubkey(),     // Account to create.
                                         lamports,                  // Rent exempt balance to send to the new account.
-                                        #account_data_size as u64, // Data init for the new acccount.
+                                        #account_data_size,        // Data init for the new acccount.
                                         self.program(),            // Owner of the new account.
                                     )
                                 };
@@ -538,7 +538,7 @@ fn enum_to_methods(
                         },
                         CreateAccountDataSize::Dynamic => quote! {
                             // Same as the fixed size version, except the first argument is size.
-                            pub fn #create_account_client_method_name(&self, account_data_size: usize, accounts: &[AccountMeta], #method_args) -> Result<(Signature, Keypair), ClientError> {
+                            pub fn #create_account_client_method_name(&self, account_data_size: u64, accounts: &[AccountMeta], #method_args) -> Result<(Signature, Keypair), ClientError> {
                                 // The new account to create.
                                 let new_account = Keypair::generate(&mut OsRng);
 
@@ -552,7 +552,7 @@ fn enum_to_methods(
                                         &self.payer().pubkey(),    // The from account on the tx.
                                         &new_account.pubkey(),     // Account to create.
                                         lamports,                  // Rent exempt balance to send to the new account.
-                                        account_data_size as u64,  // Data init for the new acccount.
+                                        account_data_size,         // Data init for the new acccount.
                                         self.program(),            // Owner of the new account.
                                     )
                                 };
