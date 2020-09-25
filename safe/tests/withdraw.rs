@@ -12,52 +12,61 @@ use spl_token::pack::Pack as TokenPack;
 
 mod common;
 
+// Note: there's no way to programatically control slot time so when testing
+//       we're stuck with just waiting actual wall clock time. In theory
+//       this can make the tests brittle and break for unexpected reasons,
+//       e.g., the transaction gets mined at a slot that's too late and so
+//       the contract rejects it. Not an issue so far but it is something to be
+//       aware of.
+
 // Summary.
 //
-// * Vesting amount of 30 for first period.
+// * Vesting amount of 100 for first period.
 // * First vesting period passes.
-// * Withdraw 30 SRM.
+// * Withdraw 10 SRM.
 //
 // Should receive the SRM.
 #[test]
 fn withdraw() {
     withdraw_test(WithdrawTestParams {
         test_type: TestType::Normal,
-        vesting_slot_offsets: vec![1, 100_000, 200_000],
-        vesting_amounts: vec![30, 40, 50],
-        expected_vesting_amounts: vec![0, 40, 50],
-        expected_withdraw_amount: 30,
-        expected_spl_balance: 30,
-        slot_wait_index: Some(0),
+        deposit_amount: 100,
+        end_slot_offset: 100,
+        period_count: 10,
+        expected_vesting_balance: 90,
+        withdraw_amount: 10,
+        expected_spl_balance: 10,
+        slot_wait_offset: Some(10),
         error_code: None,
-    })
+    });
 }
 
 // Summary.
 //
-// * Vesting amount of 30.
-// * Vesting period passes.
-// * Withdraw 31.
+// * Vesting amount of 100.
+// * First vesting period passes.
+// * Withdraw 50.
 //
 // Should not receive anything.
 #[test]
 fn withdraw_more_than_vested() {
     withdraw_test(WithdrawTestParams {
         test_type: TestType::Normal,
-        vesting_slot_offsets: vec![1, 100_000, 200_000],
-        vesting_amounts: vec![30, 40, 50],
-        expected_vesting_amounts: vec![30, 40, 50],
-        expected_withdraw_amount: 31,
+        deposit_amount: 100,
+        end_slot_offset: 100,
+        period_count: 10,
+        expected_vesting_balance: 100,
+        withdraw_amount: 50,
         expected_spl_balance: 0,
-        slot_wait_index: Some(0),
-        error_code: Some(SafeErrorCode::InsufficientBalance.into()),
+        slot_wait_offset: Some(10),
+        error_code: Some(SafeErrorCode::InsufficientWithdrawalBalance.into()),
     })
 }
 
 // Summary.
 //
-// * Vesting amount of 30.
-// * Vesting period does not pass.
+// * Vesting amount of 100.
+// * First vesting period does not pass.
 // * Withdraw 1.
 //
 // Should not receive anything.
@@ -65,19 +74,20 @@ fn withdraw_more_than_vested() {
 fn withdraw_without_vesting() {
     withdraw_test(WithdrawTestParams {
         test_type: TestType::Normal,
-        vesting_slot_offsets: vec![99_000, 100_000, 200_000],
-        vesting_amounts: vec![30, 40, 50],
-        expected_vesting_amounts: vec![30, 40, 50],
-        expected_withdraw_amount: 100,
+        deposit_amount: 100,
+        end_slot_offset: 100_000,
+        period_count: 2,
+        expected_vesting_balance: 100,
+        withdraw_amount: 1,
         expected_spl_balance: 0,
-        slot_wait_index: None,
-        error_code: Some(SafeErrorCode::InsufficientBalance.into()),
+        slot_wait_offset: None,
+        error_code: Some(SafeErrorCode::InsufficientWithdrawalBalance.into()),
     })
 }
 
 // Summary.
 //
-// * Vesting amount of 30.
+// * Vesting amount of 100.
 // * Mint 2 lSRM.
 // * Vesting period passes.
 // * Withdraw 20 SRM.
@@ -87,49 +97,54 @@ fn withdraw_without_vesting() {
 fn withdraw_some_when_locked_outstanding() {
     withdraw_test(WithdrawTestParams {
         test_type: TestType::LsrmMinted(2),
-        vesting_slot_offsets: vec![1, 100_000, 200_000],
-        vesting_amounts: vec![30, 40, 50],
-        expected_vesting_amounts: vec![10, 40, 50],
-        expected_withdraw_amount: 20,
+        deposit_amount: 100,
+        end_slot_offset: 100,
+        period_count: 10,
+        expected_vesting_balance: 80,
+        withdraw_amount: 20,
         expected_spl_balance: 20,
-        slot_wait_index: Some(0),
+        slot_wait_offset: Some(20),
         error_code: None,
     })
 }
 
 // Summary.
 //
-// * Vesting amount of 30.
+// * Vesting amount of 100.
 // * Mint 2 LSRM.
-// * Vesting period passes.
-// * Withdraw 30 SRM.
+// * Vesting schedule passes entirely.
+// * Withdraw 99 SRM.
 //
 // Should not receive anything.
 #[test]
 fn withdraw_all_when_locked_outstanding() {
     withdraw_test(WithdrawTestParams {
         test_type: TestType::LsrmMinted(2),
-        vesting_slot_offsets: vec![1, 100_000, 200_000],
-        vesting_amounts: vec![30, 40, 50],
-        expected_vesting_amounts: vec![30, 40, 50],
-        expected_withdraw_amount: 30,
+        deposit_amount: 100,
+        end_slot_offset: 50,
+        period_count: 10,
+        expected_vesting_balance: 100,
+        withdraw_amount: 99,
         expected_spl_balance: 0,
-        slot_wait_index: Some(0),
-        error_code: Some(SafeErrorCode::InsufficientBalance.into()),
+        slot_wait_offset: Some(10),
+        error_code: Some(SafeErrorCode::InsufficientWithdrawalBalance.into()),
     })
 }
 
 fn withdraw_test(params: WithdrawTestParams) {
     let WithdrawTestParams {
         test_type,
-        vesting_slot_offsets,
-        vesting_amounts,
-        expected_vesting_amounts,
-        expected_withdraw_amount,
+        deposit_amount,
+        end_slot_offset,
+        period_count,
+        expected_vesting_balance,
+        withdraw_amount,
         expected_spl_balance,
-        slot_wait_index,
+        slot_wait_offset,
         error_code,
     } = params;
+    let current_slot = common::client().rpc().get_slot().unwrap();
+    let end_slot = end_slot_offset + current_slot;
     // Given.
     //
     // A vesting account.
@@ -137,13 +152,12 @@ fn withdraw_test(params: WithdrawTestParams) {
         client,
         vesting_acc,
         vesting_acc_beneficiary,
-        vesting_acc_slots,
         safe_acc,
         safe_srm_vault,
         safe_srm_vault_authority,
         srm_mint,
         ..
-    } = start_state(test_type, vesting_slot_offsets, vesting_amounts);
+    } = start_state(test_type, deposit_amount, end_slot, period_count);
     // And.
     //
     // An empty SRM SPL token account.
@@ -158,8 +172,9 @@ fn withdraw_test(params: WithdrawTestParams) {
     // When.
     //
     // The vesting period passes (or doesn't if set to None).
-    if let Some(slot_wait_index) = slot_wait_index {
-        common::blockchain::pass_time(client.rpc(), vesting_acc_slots[slot_wait_index]);
+    if let Some(slot_wait_offset) = slot_wait_offset {
+        let slot_wait = current_slot + slot_wait_offset;
+        common::blockchain::pass_time(client.rpc(), slot_wait);
     }
     // And.
     //
@@ -176,7 +191,7 @@ fn withdraw_test(params: WithdrawTestParams) {
             AccountMeta::new_readonly(sysvar::clock::ID, false),
         ];
         let signers = [&vesting_acc_beneficiary, client.payer()];
-        let r = client.withdraw_with_signers(&signers, &accounts, expected_withdraw_amount);
+        let r = client.withdraw_with_signers(&signers, &accounts, withdraw_amount);
         if error_code.is_some() {
             match r {
                 Ok(_) => panic!("expected error code from withdrawal"),
@@ -218,7 +233,7 @@ fn withdraw_test(params: WithdrawTestParams) {
                 .unwrap();
             Vesting::unpack(&account.data).unwrap()
         };
-        assert_eq!(vesting_acc.amounts, expected_vesting_amounts);
+        assert_eq!(vesting_acc.balance, expected_vesting_balance);
     }
 }
 
@@ -228,40 +243,43 @@ type StartState = lifecycle::LsrmMinted;
 
 fn start_state(
     test_type: TestType,
-    vesting_slot_offsets: Vec<u64>,
-    vesting_amounts: Vec<u64>,
+    deposit_amount: u64,
+    end_slot: u64,
+    period_count: u64,
 ) -> StartState {
     match test_type {
         TestType::LsrmMinted(lsrm_count) => {
-            lifecycle::mint_lsrm(lsrm_count, vesting_slot_offsets, vesting_amounts)
+            lifecycle::mint_lsrm(lsrm_count, deposit_amount, end_slot, period_count)
         }
         TestType::Normal => {
             let lifecycle::Deposited {
                 client,
                 vesting_acc,
                 vesting_acc_beneficiary,
-                vesting_acc_slots,
-                vesting_acc_amounts,
                 safe_acc,
                 safe_srm_vault,
                 safe_srm_vault_authority,
                 srm_mint,
+                deposit_amount,
+                end_slot,
+                period_count,
                 ..
-            } = lifecycle::deposit_with_schedule(vesting_slot_offsets, vesting_amounts);
+            } = lifecycle::deposit_with_schedule(deposit_amount, end_slot, period_count);
             // Dummy keypair to stuff into type. Not used.
             let lsrm_token_acc_owner = Keypair::generate(&mut OsRng);
             lifecycle::LsrmMinted {
                 client,
                 vesting_acc,
                 vesting_acc_beneficiary,
-                vesting_acc_slots,
-                vesting_acc_amounts,
                 safe_acc,
                 safe_srm_vault,
                 safe_srm_vault_authority,
                 srm_mint,
                 lsrm: vec![],
                 lsrm_token_acc_owner,
+                deposit_amount,
+                end_slot,
+                period_count,
             }
         }
     }
@@ -269,12 +287,13 @@ fn start_state(
 
 struct WithdrawTestParams {
     test_type: TestType,
-    vesting_slot_offsets: Vec<u64>,
-    vesting_amounts: Vec<u64>,
-    expected_vesting_amounts: Vec<u64>,
-    expected_withdraw_amount: u64,
+    deposit_amount: u64,
+    end_slot_offset: u64,
+    period_count: u64,
+    expected_vesting_balance: u64,
+    withdraw_amount: u64,
     expected_spl_balance: u64,
-    slot_wait_index: Option<usize>,
+    slot_wait_offset: Option<u64>,
     error_code: Option<u32>,
 }
 

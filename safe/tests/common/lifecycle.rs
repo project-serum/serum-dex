@@ -146,16 +146,7 @@ pub struct Initialized {
     pub srm_mint: Keypair,
 }
 
-pub fn deposit() -> Deposited {
-    let vesting_slots = vec![11, 12, 13, 14, 15];
-    let vesting_amounts = vec![1, 2, 3, 4, 5];
-    deposit_with_schedule(vesting_slots, vesting_amounts)
-}
-
-pub fn deposit_with_schedule(
-    vesting_slot_offsets: Vec<u64>,
-    vesting_amounts: Vec<u64>,
-) -> Deposited {
+pub fn deposit_with_schedule(deposit_amount: u64, end_slot: u64, period_count: u64) -> Deposited {
     let Initialized {
         client,
         safe_acc,
@@ -167,7 +158,7 @@ pub fn deposit_with_schedule(
         ..
     } = initialize();
 
-    let (vesting_acc, vesting_acc_beneficiary, vesting_acc_slots, vesting_acc_amounts) = {
+    let (vesting_acc, vesting_acc_beneficiary) = {
         let deposit_accs = [
             AccountMeta::new(depositor.pubkey(), false),
             // Authority of the depositing SPL account.
@@ -176,42 +167,33 @@ pub fn deposit_with_schedule(
             AccountMeta::new(safe_acc.pubkey(), false),
             AccountMeta::new(spl_token::ID, false),
             AccountMeta::new_readonly(solana_sdk::sysvar::rent::ID, false),
+            AccountMeta::new_readonly(solana_sdk::sysvar::clock::ID, false),
         ];
-        let current_slot = client.rpc().get_slot().unwrap();
-        let vesting_slots = vesting_slot_offsets
-            .iter()
-            .map(|offset| current_slot + offset)
-            .collect::<Vec<u64>>();
         let vesting_acc_beneficiary = Keypair::generate(&mut OsRng);
-        let vesting_acc_size = Vesting::size_dyn(vesting_slots.len()).unwrap() as usize;
         let (_signature, keypair) = client
-            .create_account_with_size_and_deposit(
-                vesting_acc_size,
+            .create_account_and_deposit(
                 &deposit_accs,
                 vesting_acc_beneficiary.pubkey(),
-                vesting_slots.clone(),
-                vesting_amounts.clone(),
+                end_slot,
+                period_count,
+                deposit_amount,
             )
             .unwrap();
-        (
-            keypair,
-            vesting_acc_beneficiary,
-            vesting_slots,
-            vesting_amounts,
-        )
+        (keypair, vesting_acc_beneficiary)
     };
 
     Deposited {
         client,
         vesting_acc_beneficiary,
         vesting_acc: vesting_acc.pubkey(),
-        vesting_acc_slots,
-        vesting_acc_amounts,
         safe_acc: safe_acc.pubkey(),
         safe_srm_vault,
         safe_srm_vault_authority,
         srm_mint,
         safe_authority,
+        end_slot,
+        period_count,
+        deposit_amount,
     }
 }
 
@@ -219,32 +201,32 @@ pub struct Deposited {
     pub client: Client,
     pub vesting_acc_beneficiary: Keypair,
     pub vesting_acc: Pubkey,
-    pub vesting_acc_slots: Vec<u64>,
-    pub vesting_acc_amounts: Vec<u64>,
     pub safe_acc: Pubkey,
     pub safe_srm_vault: Keypair,
     pub safe_srm_vault_authority: Pubkey,
     pub srm_mint: Keypair,
     pub safe_authority: Keypair,
+    pub end_slot: u64,
+    pub period_count: u64,
+    pub deposit_amount: u64,
 }
 
 pub fn mint_lsrm(
     nft_count: usize,
-    vesting_slot_offsets: Vec<u64>,
-    vesting_amounts: Vec<u64>,
+    deposit_amount: u64,
+    end_slot: u64,
+    period_count: u64,
 ) -> LsrmMinted {
     let Deposited {
         client,
         vesting_acc,
         vesting_acc_beneficiary,
-        vesting_acc_slots,
-        vesting_acc_amounts,
         safe_acc,
         safe_srm_vault,
         safe_srm_vault_authority,
         srm_mint,
         ..
-    } = deposit_with_schedule(vesting_slot_offsets, vesting_amounts);
+    } = deposit_with_schedule(deposit_amount, end_slot, period_count);
 
     // Let the beneficiary be the owner for the NFTs.
     let lsrm_token_acc_owner = Keypair::from_bytes(&vesting_acc_beneficiary.to_bytes()).unwrap();
@@ -282,13 +264,14 @@ pub fn mint_lsrm(
         vesting_acc,
         vesting_acc_beneficiary,
         srm_mint,
-        vesting_acc_slots,
-        vesting_acc_amounts,
         safe_acc,
         safe_srm_vault,
         safe_srm_vault_authority,
         lsrm,
         lsrm_token_acc_owner,
+        deposit_amount,
+        end_slot,
+        period_count,
     }
 }
 
@@ -297,12 +280,13 @@ pub struct LsrmMinted {
     pub lsrm: Vec<ClientMint>,
     pub vesting_acc: Pubkey,
     pub vesting_acc_beneficiary: Keypair,
-    pub vesting_acc_slots: Vec<u64>,
-    pub vesting_acc_amounts: Vec<u64>,
     pub safe_acc: Pubkey,
     pub safe_srm_vault: Keypair,
     pub safe_srm_vault_authority: Pubkey,
     pub srm_mint: Keypair,
     // Authority/owner of all the token accounts holding lSRM NFTs.
     pub lsrm_token_acc_owner: Keypair,
+    pub deposit_amount: u64,
+    pub end_slot: u64,
+    pub period_count: u64,
 }

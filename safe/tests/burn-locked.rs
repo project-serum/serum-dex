@@ -16,7 +16,7 @@ fn burn() {
         lsrm,
         lsrm_token_acc_owner,
         ..
-    } = lifecycle::mint_lsrm(2, vec![10_000, 20_000, 30_000], vec![10, 20, 30]);
+    } = lifecycle::mint_lsrm(2, 10, 100_000, 1000);
 
     let lsrm1 = &lsrm[0];
 
