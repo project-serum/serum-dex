@@ -102,7 +102,7 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), SafeError> {
         }
         // Do we have sufficient balance?
         if vesting.available_for_mint() < 1 {
-            return Err(SafeErrorCode::InsufficientBalance)?;
+            return Err(SafeErrorCode::InsufficientMintBalance)?;
         }
     }
 
