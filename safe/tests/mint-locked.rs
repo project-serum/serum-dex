@@ -65,7 +65,7 @@ fn mint() {
                 .unwrap()
                 .value
                 .unwrap();
-            Mint::unpack_unchecked(&account.data).unwrap()
+            Mint::unpack(&account.data).unwrap()
         });
 
         for mint in lsrm_nft_mints {
