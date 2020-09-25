@@ -127,7 +127,7 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), SafeError> {
         // Do we have sufficient balance?
         let clock = Clock::from_account_info(clock_acc_info)?;
         if amount > vesting.available_for_withdrawal(clock.slot) {
-            return Err(SafeErrorCode::InsufficientBalance)?;
+            return Err(SafeErrorCode::InsufficientWithdrawalBalance)?;
         }
     }
 

@@ -33,15 +33,17 @@ fn process_instruction<'a>(
             initialize::handler(program_id, accounts, authority, nonce)
         }
         SafeInstruction::Deposit {
-            vesting_account_beneficiary,
-            vesting_slots,
-            vesting_amounts,
+            beneficiary,
+            end_slot,
+            period_count,
+            deposit_amount,
         } => deposit::handler(
             program_id,
             accounts,
-            vesting_account_beneficiary,
-            vesting_slots,
-            vesting_amounts,
+            beneficiary,
+            end_slot,
+            period_count,
+            deposit_amount,
         ),
         SafeInstruction::MintLocked {
             token_account_owner,

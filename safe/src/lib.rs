@@ -46,15 +46,20 @@ pub mod instruction {
         /// 4. `[]`         Safe instance.
         /// 5. `[]`         SPL token program.
         /// 6. `[]`         Rent sysvar.
-        #[cfg_attr(feature = "client", create_account(..))]
+        /// 7. `[]`         Clock sysvar.
+        #[cfg_attr(feature = "client", create_account(*vesting::SIZE))]
         Deposit {
             /// The beneficiary of the vesting account, i.e.,
             /// the user who will own the SRM upon vesting.
-            vesting_account_beneficiary: Pubkey,
-            /// The Solana slot number at which point a vesting amount unlocks.
-            vesting_slots: Vec<u64>,
-            /// The amount of SRM to release for each vesting_slot.
-            vesting_amounts: Vec<u64>,
+            beneficiary: Pubkey,
+            /// The Solana slot number at which point the entire deposit will
+            /// be vested.
+            end_slot: u64,
+            /// The number of vesting periods for the account. For example,
+            /// a vesting yearly over seven years would make this 7.
+            period_count: u64,
+            /// The amount to deposit into the vesting account.
+            deposit_amount: u64,
         },
         /// Withdraw withdraws the given amount from the given vesting
         /// account subject to a vesting schedule.
