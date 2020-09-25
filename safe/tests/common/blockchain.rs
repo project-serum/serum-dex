@@ -10,6 +10,7 @@ pub fn pass_time(client: &RpcClient, slot_num: u64) {
         if retries == 0 {
             assert!(false);
         }
+        println!("SLEEPING TO PASS TIME {:?}", slot_num);
         retries -= 1;
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
