@@ -48,9 +48,7 @@ pub fn handler<'a>(
         clock_slot,
     })?;
 
-    // Same deal with unpack_unchecked. See the comment in `access_control`
-    // for safety considerations.
-    Vesting::unpack_unchecked_mut(
+    Vesting::unpack_mut(
         &mut vesting_acc_info.try_borrow_mut_data()?,
         &mut |vesting_acc: &mut Vesting| {
             state_transition(StateTransitionRequest {
