@@ -7,7 +7,7 @@ edition = "2018"
 
 [features]
 program = ["solana-client-gen/program", "spl-token/program", "serum-common/program"]
-client = ["solana-client-gen/client", "spl-token/default", "serum-common/client"]
+client = ["solana-client-gen/client", "spl-token/default", "serum-common/client", "lazy_static"]
 client-ext = []
 test = ["rand", "solana-client-gen/client", "spl-token/default"]
 strict = []
@@ -21,6 +21,9 @@ thiserror = "1.0.20"
 solana-client-gen = { path = "../solana-client-gen" }
 serum-common = { path = "../common" }
 bytemuck = "1.4.0"
+
+# Client only.
+lazy_static = { version = "1.4.0", optional = true }
 
 # Used for testing.
 rand = { version = "0.7.3", optional = true }

@@ -1,5 +1,6 @@
 //! The client_ext module extends the auto-generated program client.
 
+use crate::accounts::vesting;
 use crate::accounts::{MintReceipt, Safe};
 use serum_common::pack::Pack;
 use solana_client_gen::prelude::*;

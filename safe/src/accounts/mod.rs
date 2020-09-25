@@ -1,9 +1,9 @@
 //! mod accounts defines the storage layout for the accounts used by this program.
 
-mod mint_receipt;
-mod safe;
-mod token_vault;
-mod vesting;
+pub mod mint_receipt;
+pub mod safe;
+pub mod token_vault;
+pub mod vesting;
 
 pub use mint_receipt::MintReceipt;
 pub use safe::Safe;
