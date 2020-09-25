@@ -1,3 +1,4 @@
+use serum_common::pack::*;
 use solana_client_gen::solana_sdk::pubkey::Pubkey;
 
 #[cfg(feature = "client")]

@@ -1,6 +1,7 @@
 //! pack.rs defines utilities for serializing Solana accounts to/from bytes.
 
-use solana_sdk::program_error::ProgramError;
+// Re-export for users of the `packable` macro.
+pub use solana_sdk::program_error::ProgramError;
 
 /// The Pack trait defines Account serialization for Solana programs.
 ///
@@ -69,9 +70,6 @@ pub trait Pack<'a>: serde::Serialize + serde::Deserialize<'a> {
 #[macro_export]
 macro_rules! packable {
     ($my_struct:ty) => {
-        use serum_common::pack::Pack;
-        use solana_client_gen::solana_sdk::program_error::ProgramError;
-
         impl<'a> Pack<'a> for $my_struct {
             fn pack(src: $my_struct, dst: &mut [u8]) -> Result<(), ProgramError> {
                 if src.size()? != dst.len() as u64 {
@@ -130,6 +128,7 @@ where
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate as serum_common;
 
     #[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -177,20 +176,17 @@ mod tests {
         assert_eq!(r.unwrap_err(), ProgramError::InvalidAccountData);
     }
 
-    mod dyn_size {
-        use super::*;
-        #[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
-        pub struct VarLenStruct {
-            a: u64,
-            v: Vec<u64>,
-        }
-        packable!(VarLenStruct);
+    #[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+    pub struct VarLenStruct {
+        a: u64,
+        v: Vec<u64>,
     }
+    packable!(VarLenStruct);
 
     #[test]
     fn var_len_struct_unpack_unchecked() {
         let mut data = [0; 100].as_ref();
-        let r = dyn_size::VarLenStruct::unpack_unchecked(&mut data);
+        let r = VarLenStruct::unpack_unchecked(&mut data);
         assert!(r.is_ok());
         assert_eq!(data.len(), 84);
     }
@@ -198,7 +194,7 @@ mod tests {
     #[test]
     fn var_len_struct_unpack_checked() {
         let data = [0; 100].as_ref();
-        let r = dyn_size::VarLenStruct::unpack(&data);
+        let r = VarLenStruct::unpack(&data);
         assert_eq!(r.unwrap_err(), ProgramError::InvalidAccountData);
     }
 }

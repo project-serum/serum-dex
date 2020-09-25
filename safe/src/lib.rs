@@ -2,6 +2,7 @@
 
 #![cfg_attr(feature = "strict", deny(warnings))]
 
+use serum_common::pack::*;
 use solana_client_gen::prelude::*;
 
 #[cfg_attr(feature = "client", solana_client_gen)]
@@ -155,6 +156,8 @@ pub mod client_ext;
 pub use client_ext::client;
 #[cfg(feature = "client")]
 pub use client_ext::instruction;
+
+serum_common::packable!(crate::instruction::SafeInstruction);
 
 pub mod accounts;
 pub mod error;
