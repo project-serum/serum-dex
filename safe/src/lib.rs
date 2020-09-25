@@ -5,7 +5,7 @@
 use serum_common::pack::*;
 use solana_client_gen::prelude::*;
 
-#[cfg_attr(feature = "client", solana_client_gen)]
+#[cfg_attr(feature = "client", solana_client_gen(ext))]
 pub mod instruction {
     use super::*;
     #[derive(serde::Serialize, serde::Deserialize)]
