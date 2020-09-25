@@ -109,13 +109,12 @@
 //!
 //! If the generated client isn't enough, for example, if you want to batch
 //! multiple instructions together into the same transaction as a performance
-//! optimization, one can enable the `client-ext` feature in their crate
-//! (note: currently this feature is required to be in the crate where the
-//! instruction enum is defined).
+//! optimization, one can enable the macro's client-extension feature. This
+//! Can be done by adding the "ext" argument, e.g., `#[solana_client_gen(ext)]`.
 //!
-//! When using the `client-ext`, the proc macro won't generate a client
-//! immediately. Instead it will act as a meta-macro, generating yet another
-//! macro: `solana_client_gen_extension`, which must be used to build the client.
+//! When using the extension, the proc macro won't generate a client directly
+//! Instead it will act as a meta-macro, generating yet another macro:
+//! `solana_client_gen_extension`, which must be used to build the client.
 //!
 //! We can extend the above client to have a `hello_world` method.
 //!

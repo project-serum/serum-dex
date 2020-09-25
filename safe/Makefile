@@ -46,9 +46,9 @@ build: build-program build-client
 
 build-client:
 ifdef features
-	cargo build --features client,client-ext,$(features)
+	cargo build --features client,$(features)
 else
-	cargo build --features client,client-ext
+	cargo build --features client
 endif
 
 workdir:
@@ -68,7 +68,7 @@ test-program:
 	TEST_PROGRAM_ID=$(TEST_PROGRAM_ID) \
 	TEST_PAYER_FILEPATH=$(TEST_PAYER_FILEPATH) \
 	TEST_CLUSTER=$(TEST_CLUSTER) \
-	cargo test --features test,client,client-ext -- --nocapture $(args)
+	cargo test --features test,client -- --nocapture $(args)
 
 test: deploy test-program
 
@@ -76,11 +76,11 @@ init-test: init test
 
 test-unit:
 	RUST_BACKTRACE=1 \
-	cargo test --lib --features test,client,client-ext -- --nocapture $(args)
+	cargo test --lib --features test,client -- --nocapture $(args)
 
 init:
 	yes | solana-keygen new --outfile $(TEST_PAYER_FILEPATH)
 	yes | solana airdrop $(SOL_OPTIONS) 100
 
 clippy:
-	cargo clippy --features client,client-ext
+	cargo clippy --features client
