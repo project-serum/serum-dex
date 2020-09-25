@@ -16,9 +16,13 @@ use syn::parse_macro_input;
 //
 #[proc_macro_attribute]
 pub fn solana_client_gen(
-    _args: proc_macro::TokenStream,
+    args: proc_macro::TokenStream,
     input: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
+    // The one and only argument of the macro should be the boolean marker for
+    // using the client extension
+    let needs_client_ext = parse_client_ext_arg(args);
+
     // Interpet token stream as the instruction `mod`.
     let instruction_mod = parse_macro_input!(input as syn::ItemMod);
 
@@ -227,7 +231,20 @@ pub fn solana_client_gen(
         }
     };
 
-    // When this meta macro is enabled, a client can extend the client
+    // Now put it all together.
+    //
+    // There are two options: with or without the client-extension.
+
+    // By default, just output the new modules directly.
+    let default_output = quote! {
+        #client_mod
+        #new_instruction_mod
+    };
+
+    // Instead, if the client-extension is enabled, we output yet another
+    // macro.
+    //
+    // When this macro is enabled, a client can extend the client
     // to add custom apis. For example.
     //
     // solana_client_gen_extension! {
@@ -237,8 +254,7 @@ pub fn solana_client_gen(
     //     }
     //   }
     // }
-    let extendable_client_macro = quote! {
-        #[cfg(feature = "client-ext")]
+    let client_ext_macro = quote! {
         #[macro_export]
         macro_rules! solana_client_gen_extension {
             ($($client_ext:tt)*) => {
@@ -251,16 +267,9 @@ pub fn solana_client_gen(
         }
     };
 
-    // Now put it all together.
-    //
-    // Output the transormed AST with the new client and new instruction mod.
-    proc_macro::TokenStream::from(quote! {
-        #[cfg(not(feature = "client-ext"))]
-        #client_mod
-        #[cfg(not(feature = "client-ext"))]
-        #new_instruction_mod
-
-        #extendable_client_macro
+    proc_macro::TokenStream::from(match needs_client_ext {
+        true => client_ext_macro,
+        false => default_output,
     })
 }
 
@@ -656,6 +665,13 @@ fn enum_to_methods(
         instruction_methods,
         decode_and_dispatch_tree,
     )
+}
+
+fn parse_client_ext_arg(args: proc_macro::TokenStream) -> bool {
+    match args.to_string().as_ref() {
+        "ext" => true,
+        _ => false,
+    }
 }
 
 // Parses the `SIZE`  out of the `#[create_account(SIZE)]` attribute.
