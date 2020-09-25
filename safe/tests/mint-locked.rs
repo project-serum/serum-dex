@@ -15,16 +15,18 @@ fn mint() {
     // Given.
     //
     // An initialized Serum Safe with deposit.
+    let client = common::client();
+    let current_slot = client.rpc().get_slot().unwrap();
+    let end_slot = current_slot + 1000;
+    let start_balance = 20;
+    let period_count = 5;
     let common::lifecycle::Deposited {
-        client,
         vesting_acc,
         vesting_acc_beneficiary,
-        vesting_acc_slots,
-        vesting_acc_amounts,
         safe_acc,
         safe_srm_vault_authority,
         ..
-    } = common::lifecycle::deposit();
+    } = common::lifecycle::deposit_with_schedule(start_balance, end_slot, period_count);
 
     // When.
     //
@@ -135,7 +137,14 @@ fn mint() {
             vesting_acc_beneficiary.pubkey()
         );
         assert_eq!(updated_vesting_acc.initialized, true);
-        assert_eq!(updated_vesting_acc.slots, vesting_acc_slots);
-        assert_eq!(updated_vesting_acc.amounts, vesting_acc_amounts);
+        assert_eq!(updated_vesting_acc.start_balance, start_balance);
+        assert_eq!(updated_vesting_acc.balance, start_balance);
+        assert_eq!(updated_vesting_acc.end_slot, end_slot);
+        assert_eq!(updated_vesting_acc.period_count, period_count);
+        // Time passes from the time we get the slot number executing
+        // the transaction. So just make sure the start_slot gets set
+        // somewhere in the middle.
+        let start_slot = updated_vesting_acc.start_slot;
+        assert!(current_slot <= start_slot && start_slot < end_slot);
     }
 }

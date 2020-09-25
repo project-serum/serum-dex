@@ -26,7 +26,13 @@ fn deposit() {
     // When.
     //
     // A depositor performs the vesting account deposit.
-    let (vesting_acc_kp, expected_beneficiary, expected_slots, expected_amounts) = {
+    let (
+        vesting_acc_kp,
+        expected_beneficiary,
+        expected_deposit,
+        expected_end_slot,
+        expected_period_count,
+    ) = {
         let deposit_accs = [
             AccountMeta::new(depositor.pubkey(), false),
             AccountMeta::new(client.payer().pubkey(), true), // Owner of the depositor SPL account.
@@ -34,34 +40,32 @@ fn deposit() {
             AccountMeta::new(safe_acc.pubkey(), false),
             AccountMeta::new_readonly(spl_token::ID, false),
             AccountMeta::new_readonly(solana_sdk::sysvar::rent::ID, false),
+            AccountMeta::new_readonly(solana_sdk::sysvar::clock::ID, false),
         ];
         let vesting_acc_beneficiary = Keypair::generate(&mut OsRng);
-        let vesting_slots = vec![11, 12, 13, 14, 15];
-        let vesting_amounts = vec![1, 2, 3, 4, 5];
-        let vesting_acc_size = Vesting::size_dyn(vesting_slots.len()).unwrap() as usize;
-        println!("EXPECTED_SIZE vesting_acc_size {:?}", vesting_acc_size);
+        let end_slot = 100_000;
+        let period_count = 1000;
+        let deposit_amount = 100;
+
         let (_signature, keypair) = client
-            .create_account_with_size_and_deposit(
-                vesting_acc_size,
+            .create_account_and_deposit(
                 &deposit_accs,
                 vesting_acc_beneficiary.pubkey(),
-                vesting_slots.clone(),
-                vesting_amounts.clone(),
+                end_slot,
+                period_count,
+                deposit_amount,
             )
             .unwrap();
         (
             keypair,
             vesting_acc_beneficiary,
-            vesting_slots,
-            vesting_amounts,
+            deposit_amount,
+            end_slot,
+            period_count,
         )
     };
 
     // Then.
-    //
-    // Read the state of the program and ensure it's correct.
-    //
-    // Check.
     //
     // The vesting account is setup properly.
     {
@@ -77,8 +81,8 @@ fn deposit() {
         assert_eq!(vesting_acc.safe, safe_acc.pubkey());
         assert_eq!(vesting_acc.beneficiary, expected_beneficiary.pubkey());
         assert_eq!(vesting_acc.initialized, true);
-        assert_eq!(vesting_acc.slots, expected_slots);
-        assert_eq!(vesting_acc.amounts, expected_amounts);
+        assert_eq!(vesting_acc.end_slot, expected_end_slot);
+        assert_eq!(vesting_acc.period_count, expected_period_count);
     }
     // Then.
     //
@@ -86,7 +90,7 @@ fn deposit() {
     {
         let depositor_spl_acc: spl_token::state::Account =
             serum_common::client::rpc::account_token_unpacked(client.rpc(), &depositor.pubkey());
-        let expected_balance = depositor_balance_before - expected_amounts.iter().sum::<u64>();
+        let expected_balance = depositor_balance_before - expected_deposit;
         assert_eq!(depositor_spl_acc.amount, expected_balance);
     }
     // Then.
@@ -98,9 +102,8 @@ fn deposit() {
                 client.rpc(),
                 &safe_srm_vault.pubkey(),
             );
-        let expected_balance = expected_amounts.iter().sum::<u64>();
-        assert_eq!(safe_vault_spl_acc.amount, expected_balance);
+        assert_eq!(safe_vault_spl_acc.amount, expected_deposit);
         // Sanity check the owner of the vault account.
-        assert_eq!(safe_vault_spl_acc.owner, safe_srm_vault_authority,);
+        assert_eq!(safe_vault_spl_acc.owner, safe_srm_vault_authority);
     }
 }
