@@ -12,7 +12,9 @@ mod common;
 fn migrate() {
     // Given.
     //
-    // An initialized safe with deposit.
+    // An initialized safe with deposit (scheduled doesn't matter for
+    // this test).
+    let deposit_amount = 100;
     let lifecycle::Deposited {
         client,
         safe_acc,
@@ -21,7 +23,7 @@ fn migrate() {
         srm_mint,
         safe_authority,
         ..
-    } = lifecycle::deposit_with_schedule(vec![1, 2, 3, 4, 5], vec![100, 200, 300, 400, 500]);
+    } = lifecycle::deposit_with_schedule(100, 100_000, 1);
     // And.
     //
     // An SPL account to transfer to.
@@ -68,7 +70,7 @@ fn migrate() {
                 client.rpc(),
                 &receiver_token_acc.pubkey(),
             );
-        assert_eq!(recipient.amount, 100 + 200 + 300 + 400 + 500);
+        assert_eq!(recipient.amount, deposit_amount);
     }
 
     // Then.

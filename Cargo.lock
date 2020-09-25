@@ -1839,6 +1839,7 @@ name = "serum-safe"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
+ "lazy_static",
  "num_enum",
  "rand",
  "serde",
