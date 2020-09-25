@@ -129,23 +129,10 @@
 //! }
 //! ```
 //!
-//! # Using a custom coder.
+//! # Serialization
 //!
-//! It's assumed instructions implement serde's `Serialize` and `Deserialize`.
-//!
-//! By default, a default coder will be used to serialize instructions before
-//! sending them to Solana. If you want to use a custom coder, inject it
-//! into the macro like this
-//!
-//! ```
-//! #[solana_client_gen(crate::mod::Coder)]
-//! mod instruction {
-//!   ...
-//! }
-//! ```
-//!
-//! Where `Coder` is a user defined struct that implements the
-//! `InstructionCoder` interface.
+//! Instructions used with this macro must implement the
+//! `serum_common::pack::Pack` trait, where serialization should be defined.
 //!
 //! # Limitations
 //!
@@ -166,8 +153,6 @@ pub mod prelude {
 
     pub use solana_sdk::instruction::{AccountMeta, Instruction};
     pub use solana_sdk::pubkey::Pubkey;
-
-    pub use crate::coder::InstructionCoder;
 
     #[cfg(feature = "client")]
     pub use codegen::solana_client_gen;
@@ -194,8 +179,6 @@ pub mod prelude {
     #[cfg(feature = "client")]
     pub use thiserror::Error;
 }
-
-pub mod coder;
 
 // Re-export.
 #[cfg(feature = "client")]
