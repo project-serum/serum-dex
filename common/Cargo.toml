@@ -8,7 +8,6 @@ edition = "2018"
 [features]
 program = ["spl-token/program", "solana-sdk/program"]
 client = ["spl-token/default", "solana-sdk/default", "solana-client", "anyhow", "rand"]
-test = []
 
 [dependencies]
 spl-token = { version = "=2.0.3", default-features = false }

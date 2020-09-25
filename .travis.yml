@@ -52,4 +52,4 @@ jobs:
       name: Common
       script:
         - docker exec dev cargo fmt -- --check
-        - docker exec -w=/workdir/common dev cargo test --features test,client
+        - docker exec -w=/workdir/common dev cargo test --features client

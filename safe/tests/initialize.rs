@@ -1,7 +1,7 @@
 use rand::rngs::OsRng;
 use serum_common::pack::Pack;
 use serum_safe::accounts::Safe;
-use serum_safe::client::SafeInitialization;
+use serum_safe::client::InitializeResponse;
 use serum_safe::error::SafeErrorCode;
 use solana_client_gen::solana_sdk;
 use solana_client_gen::solana_sdk::commitment_config::CommitmentConfig;
@@ -24,7 +24,7 @@ fn initialized() {
     let safe_authority = Keypair::generate(&mut OsRng);
     let rent_acc = AccountMeta::new_readonly(solana_sdk::sysvar::rent::id(), false);
     let accounts = vec![rent_acc];
-    let SafeInitialization {
+    let InitializeResponse {
         safe_acc,
         nonce,
         vault_acc,
@@ -85,7 +85,7 @@ fn initialized_already() {
     let safe_authority = Keypair::generate(&mut OsRng);
     let rent_acc = AccountMeta::new_readonly(solana_sdk::sysvar::rent::id(), false);
     let accounts = vec![rent_acc.clone()];
-    let SafeInitialization {
+    let InitializeResponse {
         safe_acc, nonce, ..
     } = client
         .create_all_accounts_and_initialize(
