@@ -2,6 +2,7 @@
 
 #![cfg_attr(feature = "strict", deny(warnings))]
 
+use serum_common::pack::Pack;
 use serum_safe::error::{SafeError, SafeErrorCode};
 use serum_safe::instruction::SafeInstruction;
 use solana_sdk::account_info::AccountInfo;
@@ -25,7 +26,7 @@ fn process_instruction<'a>(
 ) -> ProgramResult {
     info!("process-instruction");
 
-    let instruction: SafeInstruction = serum_common::pack::from_bytes(instruction_data)
+    let instruction: SafeInstruction = SafeInstruction::unpack(instruction_data)
         .map_err(|_| SafeError::ErrorCode(SafeErrorCode::WrongSerialization))?;
 
     let result = match instruction {
