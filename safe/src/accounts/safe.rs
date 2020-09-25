@@ -38,6 +38,7 @@ mod tests {
 
         let mut dst = Vec::new();
         dst.resize(Safe::default().size().unwrap() as usize, 0u8);
+
         Safe::pack(safe, &mut dst).unwrap();
 
         let new_safe = Safe::unpack(&dst).unwrap();
@@ -74,7 +75,7 @@ mod tests {
     fn unpack_zeroes_size() {
         let og_size = Safe::default().size().unwrap();
         let zero_data = vec![0; og_size as usize];
-        let r = Safe::unpack_unchecked(&zero_data).unwrap();
+        let r = Safe::unpack(&zero_data).unwrap();
         assert_eq!(r.mint, Pubkey::new(&[0; 32]));
         assert_eq!(r.initialized, false);
         assert_eq!(r.authority, Pubkey::new(&[0; 32]));
