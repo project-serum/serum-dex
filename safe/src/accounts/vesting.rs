@@ -96,7 +96,7 @@ impl Vesting {
         };
         let reward_per_period = self.start_balance / self.period_count;
 
-        return vested_period_count * reward_per_period;
+        vested_period_count * reward_per_period
     }
 }
 

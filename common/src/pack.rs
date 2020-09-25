@@ -12,8 +12,8 @@ pub trait Pack<'a>: serde::Serialize + serde::Deserialize<'a> {
     fn pack(src: Self, dst: &mut [u8]) -> Result<(), ProgramError>;
 
     /// Deserializes `src` into Self. The deserialized object need not
-    /// use all the bytes in `src` and should mutate the slice so that
-    /// it's new len() becomes the size of the bytes deserialized.
+    /// use all the bytes in `src` and should mutated the slice so that
+    /// it's new len() becomes the size of the bytes *not* deserialized.
     ///
     /// This is the case, for example, when encoding variable length data,
     /// say, when one has a src array of all zeroes, and a Self that has a
@@ -29,9 +29,9 @@ pub trait Pack<'a>: serde::Serialize + serde::Deserialize<'a> {
     /// Analogue to pack, performing a check on the size of the given byte
     /// array.
     fn unpack(src: &[u8]) -> Result<Self, ProgramError> {
-        let mut src_mut = src.as_ref();
+        let mut src_mut = src;
         Pack::unpack_unchecked(&mut src_mut).and_then(|r: Self| {
-            if src_mut.len() != 0 {
+            if !src_mut.is_empty() {
                 return Err(ProgramError::InvalidAccountData);
             }
             Ok(r)
@@ -111,7 +111,7 @@ where
     bincode::deserialize(data).map_err(|_| ProgramError::InvalidAccountData)
 }
 
-pub fn from_reader<'a, T, R>(rdr: R) -> Result<T, ProgramError>
+pub fn from_reader<T, R>(rdr: R) -> Result<T, ProgramError>
 where
     R: std::io::Read,
     T: serde::de::DeserializeOwned,
