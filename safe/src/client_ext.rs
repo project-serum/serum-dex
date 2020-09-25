@@ -183,14 +183,14 @@ solana_client_gen_extension! {
                         mint,
                         token_acc,
                         receipt: r_key.pubkey(),
-                        token_acc_owner: nft_token_acc_owner.clone(),
+                        token_acc_owner: *nft_token_acc_owner,
                     });
                 }
 
                 // Collect signers on the entire tx.
-                for k in 0..nfts.len() {
-                    signers.push(&nfts[k].mint);
-                    signers.push(&nfts[k].token_acc);
+                for nft in &nfts {
+                    signers.push(&nft.mint);
+                    signers.push(&nft.token_acc);
                 }
 
                 // Create the tx.
