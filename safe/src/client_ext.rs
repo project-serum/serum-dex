@@ -7,6 +7,8 @@ use solana_client_gen::prelude::*;
 use solana_client_gen::solana_sdk;
 use solana_client_gen::solana_sdk::instruction::AccountMeta;
 use solana_client_gen::solana_sdk::pubkey::Pubkey;
+use solana_client_gen::solana_sdk::signers::Signers;
+use solana_client_gen::solana_sdk::system_instruction;
 use spl_token::pack::Pack as TokenPack;
 
 // TODO: Use deterministic derived addresses for all accounts associated with
@@ -24,16 +26,6 @@ use spl_token::pack::Pack as TokenPack;
 //       find for testing the program, but doesn't provide a robust client
 //       experience.
 solana_client_gen_extension! {
-    use solana_client_gen::solana_sdk::signers::Signers;
-
-    pub struct SafeInitialization {
-        pub signature: Signature,
-        pub safe_acc: Keypair,
-        pub vault_acc: Keypair,
-        pub vault_acc_authority: Pubkey,
-        pub nonce: u8,
-    }
-
     impl Client {
         /// Does complete initialization of the safe.
         ///
@@ -47,7 +39,7 @@ solana_client_gen_extension! {
             accounts: &[AccountMeta],
             srm_mint: &Pubkey,
             safe_authority: &Pubkey,
-        ) -> Result<SafeInitialization, ClientError> {
+        ) -> Result<InitializeResponse, ClientError> {
             // Build the data dependent addresses.
             //
             // The safe instance requires a nonce for it's token vault, which
@@ -121,7 +113,7 @@ solana_client_gen_extension! {
                     self.opts.tx,
                 )
                 .map_err(ClientError::RpcError)
-                .map(|sig| SafeInitialization {
+                .map(|sig| InitializeResponse {
                     signature: sig,
                     safe_acc,
                     vault_acc_authority: safe_vault_authority,
@@ -266,7 +258,7 @@ solana_client_gen_extension! {
 
             // The NFT Mint to intialize.
             let mint = Keypair::generate(&mut OsRng);
-            let create_mint_acc_instr = solana_sdk::system_instruction::create_account(
+            let create_mint_acc_instr = system_instruction::create_account(
                 &self.payer().pubkey(),
                 &mint.pubkey(),
                 lamports_mint,
@@ -276,7 +268,7 @@ solana_client_gen_extension! {
 
             // The token Account to hold the NFT.
             let token_acc = Keypair::generate(&mut OsRng);
-            let create_token_acc_instr = solana_sdk::system_instruction::create_account(
+            let create_token_acc_instr = system_instruction::create_account(
                 &self.payer().pubkey(),
                 &token_acc.pubkey(),
                 lamports_token_acc,
@@ -305,6 +297,14 @@ solana_client_gen_extension! {
 
             Ok((instructions, mint, token_acc))
         }
+    }
+
+    pub struct InitializeResponse {
+        pub signature: Signature,
+        pub safe_acc: Keypair,
+        pub vault_acc: Keypair,
+        pub vault_acc_authority: Pubkey,
+        pub nonce: u8,
     }
 
     /// ClientMint defines the required keys to redeem and otherwise use a

@@ -8,7 +8,7 @@
 use crate::common;
 use rand::rngs::OsRng;
 use serum_safe::accounts::Vesting;
-use serum_safe::client::{Client, ClientMint, SafeInitialization};
+use serum_safe::client::{Client, ClientMint, InitializeResponse};
 use solana_client_gen::solana_sdk;
 use solana_client_gen::solana_sdk::commitment_config::CommitmentConfig;
 use solana_client_gen::solana_sdk::instruction::AccountMeta;
@@ -94,7 +94,7 @@ pub fn initialize() -> Initialized {
         solana_sdk::sysvar::rent::id(),
         false,
     )];
-    let SafeInitialization {
+    let InitializeResponse {
         safe_acc,
         vault_acc,
         vault_acc_authority,
