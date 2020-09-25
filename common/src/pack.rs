@@ -11,13 +11,16 @@ pub trait Pack<'a>: serde::Serialize + serde::Deserialize<'a> {
     fn pack(src: Self, dst: &mut [u8]) -> Result<(), ProgramError>;
 
     /// Deserializes `src` into Self. The deserialized object need not
-    /// use all the bytes in `src`. This is the case, for example,
-    /// when encoding variable length data, say, when one has a src
-    /// array of all zeroes, and a Self that has a Vec<u64>.
+    /// use all the bytes in `src` and should mutate the slice so that
+    /// it's new len() becomes the size of the bytes deserialized.
+    ///
+    /// This is the case, for example, when encoding variable length data,
+    /// say, when one has a src array of all zeroes, and a Self that has a
+    /// Vec<u64>.
     ///
     /// Use care when using this directly. If using fixed length structs
     /// always use the `unpack` method, instead.
-    fn unpack_unchecked(src: &[u8]) -> Result<Self, ProgramError>;
+    fn unpack_unchecked(src: &mut &[u8]) -> Result<Self, ProgramError>;
 
     /// Returns the size of the byte array required to serialize Self.
     fn size(&self) -> Result<u64, ProgramError>;
@@ -25,8 +28,9 @@ pub trait Pack<'a>: serde::Serialize + serde::Deserialize<'a> {
     /// Analogue to pack, performing a check on the size of the given byte
     /// array.
     fn unpack(src: &[u8]) -> Result<Self, ProgramError> {
-        Pack::unpack_unchecked(src).and_then(|r: Self| {
-            if r.size()? != src.len() as u64 {
+        let mut src_mut = src.as_ref();
+        Pack::unpack_unchecked(&mut src_mut).and_then(|r: Self| {
+            if src_mut.len() != 0 {
                 return Err(ProgramError::InvalidAccountData);
             }
             Ok(r)
@@ -49,7 +53,7 @@ pub trait Pack<'a>: serde::Serialize + serde::Deserialize<'a> {
     where
         F: FnMut(&mut Self) -> Result<U, ProgramError>,
     {
-        let mut t = Self::unpack_unchecked(input)?;
+        let mut t = Self::unpack_unchecked(&mut input.as_ref())?;
         let u = f(&mut t)?;
         Self::pack(t, input)?;
         Ok(u)
@@ -75,9 +79,11 @@ macro_rules! packable {
                 }
                 serum_common::pack::into_bytes(&src, dst)
             }
-            fn unpack_unchecked(src: &[u8]) -> Result<$my_struct, ProgramError> {
-                serum_common::pack::from_bytes::<$my_struct>(src)
+
+            fn unpack_unchecked(src: &mut &[u8]) -> Result<$my_struct, ProgramError> {
+                serum_common::pack::from_reader(src)
             }
+
             fn size(&self) -> Result<u64, ProgramError> {
                 serum_common::pack::bytes_size(&self)
             }
@@ -99,11 +105,20 @@ where
     let cursor = std::io::Cursor::new(dst);
     bincode::serialize_into(cursor, i).map_err(|_| ProgramError::InvalidAccountData)
 }
+
 pub fn from_bytes<'a, T>(data: &'a [u8]) -> Result<T, ProgramError>
 where
     T: serde::de::Deserialize<'a>,
 {
     bincode::deserialize(data).map_err(|_| ProgramError::InvalidAccountData)
+}
+
+pub fn from_reader<'a, T, R>(rdr: R) -> Result<T, ProgramError>
+where
+    R: std::io::Read,
+    T: serde::de::DeserializeOwned,
+{
+    bincode::deserialize_from(rdr).map_err(|_| ProgramError::InvalidAccountData)
 }
 
 pub fn bytes_size<T: ?Sized>(value: &T) -> Result<u64, ProgramError>
@@ -137,40 +152,53 @@ mod tests {
     #[test]
     fn unpack_too_small() {
         let data = vec![0; 8];
-        let result = TestStruct::unpack(&data);
-        match result {
-            Ok(_) => panic!("expect error"),
-            Err(e) => assert_eq!(e, ProgramError::InvalidAccountData),
-        }
+        let r = TestStruct::unpack(&data);
+        assert_eq!(r.unwrap_err(), ProgramError::InvalidAccountData);
     }
 
     #[test]
     fn unpack_too_large() {
         let data = vec![0; 100];
-        let result = TestStruct::unpack(&data);
-        match result {
-            Ok(_) => panic!("expect error"),
-            Err(e) => assert_eq!(e, ProgramError::InvalidAccountData),
-        }
+        let r = TestStruct::unpack(&data);
+        assert_eq!(r.unwrap_err(), ProgramError::InvalidAccountData);
     }
 
     #[test]
     fn pack_too_small() {
         let mut data = vec![0; 8];
-        let result = TestStruct::pack(Default::default(), &mut data);
-        match result {
-            Ok(_) => panic!("expect error"),
-            Err(e) => assert_eq!(e, ProgramError::InvalidAccountData),
-        }
+        let r = TestStruct::pack(Default::default(), &mut data);
+        assert_eq!(r.unwrap_err(), ProgramError::InvalidAccountData);
     }
 
     #[test]
     fn pack_too_large() {
         let mut data = vec![0; 100];
-        let result = TestStruct::pack(Default::default(), &mut data);
-        match result {
-            Ok(_) => panic!("expect error"),
-            Err(e) => assert_eq!(e, ProgramError::InvalidAccountData),
+        let r = TestStruct::pack(Default::default(), &mut data);
+        assert_eq!(r.unwrap_err(), ProgramError::InvalidAccountData);
+    }
+
+    mod dyn_size {
+        use super::*;
+        #[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+        pub struct VarLenStruct {
+            a: u64,
+            v: Vec<u64>,
         }
+        packable!(VarLenStruct);
+    }
+
+    #[test]
+    fn var_len_struct_unpack_unchecked() {
+        let mut data = [0; 100].as_ref();
+        let r = dyn_size::VarLenStruct::unpack_unchecked(&mut data);
+        assert!(r.is_ok());
+        assert_eq!(data.len(), 84);
+    }
+
+    #[test]
+    fn var_len_struct_unpack_checked() {
+        let data = [0; 100].as_ref();
+        let r = dyn_size::VarLenStruct::unpack(&data);
+        assert_eq!(r.unwrap_err(), ProgramError::InvalidAccountData);
     }
 }
