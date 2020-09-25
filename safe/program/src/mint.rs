@@ -110,6 +110,7 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), SafeError> {
 
     // Mint.
     {
+        // unpack_unchecked because it's not yet initialized.
         let mint = spl_token::state::Mint::unpack_unchecked(&mint_acc_info.try_borrow_data()?)?;
         if mint.is_initialized {
             return Err(SafeErrorCode::MintAlreadyInitialized)?;
@@ -123,6 +124,7 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), SafeError> {
     }
     // Token account.
     {
+        // unpack_unchecked because it's not yet initialized.
         let token_acc =
             spl_token::state::Account::unpack_unchecked(&token_acc_info.try_borrow_data()?)?;
         if token_acc.state != spl_token::state::AccountState::Uninitialized {
