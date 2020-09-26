@@ -1,0 +1,9 @@
+[workspace]
+members = [
+    "solana-client-gen",
+    "common",
+    "safe",
+    "safe/program",
+    "crank",
+    "dex",
+]
