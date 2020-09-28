@@ -1,5 +1,9 @@
 bin/
 dex/target
 crank/target
+pool/target
+retbuf/target
 .idea*
 *~
+*.swp
+*.swo
