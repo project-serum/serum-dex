@@ -5,6 +5,9 @@ description = "Serum Safe Solana program"
 repository = "https://github.com/project-serum/serum-dex"
 edition = "2018"
 
+# Needed for the encapsulating `serum-safe` crate to be part of the workspace.
+[workspace]
+
 [lib]
 crate-type = ["cdylib", "lib"]
 name = "serum_safe_program"
