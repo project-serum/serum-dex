@@ -26,7 +26,7 @@ BPF_SDK=$(shell pwd)/../bin/bpf-sdk
 #
 # Parent dir for the Solana program's build target.
 #
-BUILD_DIR=$(shell pwd)/../target/bpfel-unknown-unknown/release
+BUILD_DIR=$(shell pwd)/program/target/bpfel-unknown-unknown/release
 #
 # The program's crate name.
 #

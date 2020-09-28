@@ -2,8 +2,10 @@
 members = [
     "solana-client-gen",
     "common",
-    "safe",
-    "safe/program",
     "crank",
+    "safe",
+]
+exclude = [
+    "safe/program",
     "dex",
 ]
