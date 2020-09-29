@@ -590,7 +590,6 @@ fn consume_events_loop(
                         thread_num,
                         events_per_worker,
                     )
-                    .unwrap()
                 });
             }
             pool.join();
@@ -604,7 +603,6 @@ fn consume_events_loop(
     return Ok(());
 }
 
-#[cfg(target_endian = "little")]
 fn consume_events_wrapper(
     client: &RpcClient,
     program_id: &Pubkey,
@@ -612,7 +610,8 @@ fn consume_events_wrapper(
     account_metas: Vec<AccountMeta>,
     thread_num: usize,
     to_consume: usize,
-) -> Result<()> {
+) {
+    let start = std::time::Instant::now();
     let result = consume_events_once(
         &client,
         program_id,
@@ -622,19 +621,20 @@ fn consume_events_wrapper(
         thread_num,
     );
     match result {
-        Ok(()) => (info!("[thread {}] Successfully consumed events.", thread_num)),
+        Ok(signature) => {
+            (info!(
+                "[thread {}] Successfully consumed events after {:?}: {}.",
+                thread_num,
+                start.elapsed(),
+                signature
+            ))
+        }
         Err(err) => {
             error!("[thread {}] Received error: {:?}", thread_num, err);
-            warn!(
-                "[thread {}] Done consuming events. Sleeping for 100ms...",
-                thread_num
-            );
         }
     };
-    Ok(())
 }
 
-#[cfg(target_endian = "little")]
 fn consume_events_once(
     client: &RpcClient,
     program_id: &Pubkey,
@@ -642,7 +642,7 @@ fn consume_events_once(
     account_metas: Vec<AccountMeta>,
     to_consume: usize,
     thread_number: usize,
-) -> Result<()> {
+) -> Result<Signature> {
     let start = std::time::Instant::now();
     let instruction_data: Vec<u8> = MarketInstruction::ConsumeEvents(to_consume as u16).pack();
 
@@ -657,24 +657,22 @@ fn consume_events_once(
         rand::random::<u64>() % 10000 + 1,
     );
     let (recent_hash, _fee_calc) = client.get_recent_blockhash()?;
-    info!("Consuming events ...");
     let txn = Transaction::new_signed_with_payer(
         &[instruction, random_instruction],
         Some(&payer.pubkey()),
         &[payer],
         recent_hash,
     );
-    info!("Consuming events ...");
-    let rval = send_txn(client, &txn, false).map(|_| ());
-    let end = std::time::Instant::now();
 
-    info!(
-        "Thread {} took {} milliseconds to consume {} events",
-        thread_number,
-        end.duration_since(start).as_millis(),
-        to_consume
-    );
-    rval
+    info!("Consuming events ...");
+    let signature = client.send_transaction_with_config(
+        &txn,
+        RpcSendTransactionConfig {
+            skip_preflight: true,
+            preflight_commitment: None,
+        },
+    )?;
+    Ok(signature)
 }
 
 #[cfg(target_endian = "little")]
