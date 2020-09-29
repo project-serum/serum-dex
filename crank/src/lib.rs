@@ -1,6 +1,17 @@
 #![allow(unused)]
+
+use std::borrow::Cow;
+use std::cmp::min;
+use std::collections::BTreeSet;
+use std::mem::size_of;
+use std::num::NonZeroU64;
+use std::str::FromStr;
+use std::sync::mpsc::{Receiver, Sender};
+use std::{thread, time};
+
 use anyhow::{format_err, Result};
 use clap::Clap;
+use debug_print::debug_println;
 use log::{error, info, warn};
 use rand::prelude::*;
 use rand::rngs::OsRng;
@@ -10,6 +21,22 @@ use safe_transmute::{
     transmute_many, transmute_many_pedantic, transmute_many_permissive, transmute_one,
     transmute_one_pedantic, try_copy,
 };
+use sloggers::file::FileLoggerBuilder;
+use sloggers::types::Severity;
+use sloggers::Build;
+use solana_client::rpc_client::RpcClient;
+use solana_client::rpc_config::RpcSendTransactionConfig;
+use solana_sdk::commitment_config::CommitmentConfig;
+use solana_sdk::instruction::{AccountMeta, Instruction};
+use solana_sdk::program_pack::Pack;
+use solana_sdk::pubkey::Pubkey;
+use solana_sdk::signature::Signature;
+use solana_sdk::signature::{Keypair, Signer};
+use solana_sdk::system_instruction::SystemInstruction;
+use solana_sdk::transaction::Transaction;
+use spl_token::instruction as token_instruction;
+use warp::Filter;
+
 use serum_common::client::rpc::{
     create_and_init_mint, create_token_account, mint_to_new_account, send_txn, simulate_transaction,
 };
@@ -23,31 +50,6 @@ use serum_dex::state::MarketState;
 use serum_dex::state::QueueHeader;
 use serum_dex::state::Request;
 use serum_dex::state::RequestQueueHeader;
-use solana_client::rpc_client::RpcClient;
-use solana_client::rpc_config::RpcSendTransactionConfig;
-use solana_sdk::commitment_config::CommitmentConfig;
-use solana_sdk::instruction::{AccountMeta, Instruction};
-use solana_sdk::program_pack::Pack;
-use solana_sdk::pubkey::Pubkey;
-use solana_sdk::signature::Signature;
-use solana_sdk::signature::{Keypair, Signer};
-use solana_sdk::system_instruction::SystemInstruction;
-use solana_sdk::transaction::Transaction;
-use spl_token::instruction as token_instruction;
-use std::borrow::Cow;
-use std::collections::BTreeSet;
-use std::mem::size_of;
-use std::num::NonZeroU64;
-use std::str::FromStr;
-use std::{thread, time};
-use warp::Filter;
-
-use sloggers::file::FileLoggerBuilder;
-use sloggers::types::Severity;
-use sloggers::Build;
-use std::sync::mpsc::{Receiver, Sender};
-
-use debug_print::debug_println;
 
 pub fn with_logging<F: FnOnce()>(to: &str, fnc: F) {
     fnc();
@@ -265,8 +267,8 @@ pub fn start(opts: Opts) -> Result<()> {
             ref market,
             ref coin_wallet,
             ref pc_wallet,
-            ref num_workers,
-            ref events_per_worker,
+            num_workers,
+            events_per_worker,
             ref num_accounts,
             ref log_directory,
         } => {
@@ -278,7 +280,7 @@ pub fn start(opts: Opts) -> Result<()> {
                 &coin_wallet,
                 &pc_wallet,
                 num_workers,
-                *events_per_worker,
+                events_per_worker,
                 num_accounts.unwrap_or(32),
                 log_directory,
             );
@@ -475,7 +477,7 @@ fn consume_events_loop(
     market: &Pubkey,
     coin_wallet: &Pubkey,
     pc_wallet: &Pubkey,
-    num_workers: &usize,
+    num_workers: usize,
     events_per_worker: usize,
     num_accounts: usize,
     log_directory: &str,
@@ -494,8 +496,10 @@ fn consume_events_loop(
     let client = opts.client();
     let market_keys = get_keys_for_market(&client, &program_id, &market)?;
     info!("{:#?}", market_keys);
-    let pool = threadpool::ThreadPool::new(*num_workers);
+    let pool = threadpool::ThreadPool::new(num_workers);
     loop {
+        thread::sleep(time::Duration::from_millis(300));
+
         let loop_start = std::time::Instant::now();
         let start_time = std::time::Instant::now();
         let event_q_data = client
@@ -520,9 +524,7 @@ fn consume_events_loop(
         );
 
         if event_q_len == 0 {
-            debug_println!("Total event queue length: 0, returning early");
-            let one_hundred_millis = time::Duration::from_millis(300);
-            thread::sleep(one_hundred_millis);
+            continue;
         } else {
             info!(
                 "Total event queue length: {}, market {}, coin {}, pc {}",
@@ -575,7 +577,7 @@ fn consume_events_loop(
                 event_q_len,
                 end_time.duration_since(start_time).as_millis()
             );
-            for thread_num in 0..*num_workers {
+            for thread_num in 0..min(num_workers, 2 * event_q_len / events_per_worker + 1) {
                 let payer = read_keypair_file(&payer_path)?;
                 let program_id = program_id.clone();
                 let client = opts.client();
