@@ -489,6 +489,7 @@ fn consume_events_loop(
     builder.level(Severity::Info).rotate_size(8 * 1024 * 1024);
     let log = builder.build().unwrap();
     let _guard = slog_scope::set_global_logger(log);
+    _guard.cancel_reset();
     slog_stdlog::init().unwrap();
 
     info!("Getting market keys ...");
@@ -515,14 +516,14 @@ fn consume_events_loop(
         let (req_header, req_seg0, req_seg1) = parse_event_queue(&req_inner)?;
         let event_q_len = seg0.len() + seg1.len();
         let req_q_len = req_seg0.len() + req_seg1.len();
-        info!("Size of request queue is {}", req_q_len);
+        info!("Size of request queue is {}, market {}, coin {}, pc {}", req_q_len, market, coin_wallet, pc_wallet);
 
         if event_q_len == 0 {
             debug_println!("Total event queue length: 0, returning early");
             let one_hundred_millis = time::Duration::from_millis(300);
             thread::sleep(one_hundred_millis);
         } else {
-            info!("Total event queue length: {}", event_q_len);
+            info!("Total event queue length: {}, market {}, coin {}, pc {}", event_q_len, market, coin_wallet, pc_wallet);
             let accounts = seg0.iter().chain(seg1.iter()).map(|event| event.owner);
             let mut used_accounts = BTreeSet::new();
             for account in accounts {
@@ -532,7 +533,7 @@ fn consume_events_loop(
                 }
             }
             let mut orders_accounts: Vec<_> = used_accounts.into_iter().collect();
-            info!("Number of unique order accounts: {}", orders_accounts.len());
+            info!("Number of unique order accounts: {}, market {}, coin {}, pc {}", orders_accounts.len(), market, coin_wallet, pc_wallet);
             info!(
                 "First 5 accouts: {:?}",
                 orders_accounts
