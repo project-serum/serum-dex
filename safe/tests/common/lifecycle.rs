@@ -5,7 +5,6 @@
 //!
 //! Each stage here builds on eachother. Genesis -> Initialization -> Deposit, etc.
 
-use crate::common;
 use rand::rngs::OsRng;
 use serum_safe::accounts::Vesting;
 use serum_safe::client::{Client, ClientMint, InitializeResponse};
@@ -17,71 +16,15 @@ use solana_client_gen::solana_sdk::signature::{Keypair, Signer};
 use solana_client_gen::solana_sdk::sysvar;
 use spl_token::pack::Pack as TokenPack;
 
-pub fn genesis() -> Genesis {
-    let client = common::client();
-
-    let spl_mint_decimals = 3;
-
-    // Setup.
-    //
-    // Initialize the SPL token representing SRM.
-    let mint_authority = Keypair::from_bytes(&Keypair::to_bytes(client.payer().clone())).unwrap();
-    let srm_mint = Keypair::generate(&mut OsRng);
-    let _ = serum_common::client::rpc::create_and_init_mint(
-        client.rpc(),
-        client.payer(),
-        &srm_mint,
-        &mint_authority.pubkey(),
-        spl_mint_decimals,
-    )
-    .unwrap();
-
-    // Setup.
-    //
-    // Create a funded SRM SPL account representing the depositor allocating
-    // vesting accounts.
-    let god_balance_before = 1_000_000;
-    let god = serum_common::client::rpc::mint_to_new_account(
-        client.rpc(),
-        client.payer(),
-        &mint_authority,
-        &srm_mint.pubkey(),
-        god_balance_before,
-    )
-    .unwrap();
-
-    Genesis {
-        client,
-        mint_authority,
-        srm_mint,
-        god,
-        god_balance_before,
-    }
-}
-
-// Genesis defines the initial state of the world.
-pub struct Genesis {
-    // RPC client.
-    pub client: Client,
-    // SRM mint authority.
-    pub mint_authority: Keypair,
-    // SRM.
-    pub srm_mint: Keypair,
-    // Account funded with a ton of SRM.
-    pub god: Keypair,
-    // Balance of the god account to start.
-    pub god_balance_before: u64,
-}
-
 // Sets up the initial on-chain state for a serum safe.
 pub fn initialize() -> Initialized {
-    let Genesis {
+    let serum_common_tests::Genesis {
         client,
         srm_mint,
         god,
         god_balance_before,
         ..
-    } = genesis();
+    } = serum_common_tests::genesis::<Client>();
 
     let depositor = god;
     let depositor_balance_before = god_balance_before;

@@ -6,7 +6,7 @@ pub use solana_sdk::program_error::ProgramError;
 /// The Pack trait defines Account serialization for Solana programs.
 ///
 /// If possible, don't use `*_unchecked` methods.
-pub trait Pack<'a>: serde::Serialize + serde::Deserialize<'a> {
+pub trait Pack: std::marker::Sized {
     /// Serializes `src` into `dst`. The size of the serialization and
     /// dst must be equal.
     fn pack(src: Self, dst: &mut [u8]) -> Result<(), ProgramError>;
@@ -70,7 +70,7 @@ pub trait Pack<'a>: serde::Serialize + serde::Deserialize<'a> {
 #[macro_export]
 macro_rules! packable {
     ($my_struct:ty) => {
-        impl<'a> Pack<'a> for $my_struct {
+        impl Pack for $my_struct {
             fn pack(src: $my_struct, dst: &mut [u8]) -> Result<(), ProgramError> {
                 if src.size()? != dst.len() as u64 {
                     return Err(ProgramError::InvalidAccountData);

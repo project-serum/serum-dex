@@ -1,7 +1,7 @@
 use rand::rngs::OsRng;
 use serum_common::pack::Pack;
 use serum_safe::accounts::Safe;
-use serum_safe::client::InitializeResponse;
+use serum_safe::client::{Client, InitializeResponse};
 use serum_safe::error::SafeErrorCode;
 use solana_client_gen::solana_sdk;
 use solana_client_gen::solana_sdk::commitment_config::CommitmentConfig;
@@ -14,9 +14,9 @@ mod common;
 #[test]
 fn initialized() {
     // Given.
-    let common::lifecycle::Genesis {
+    let serum_common_tests::Genesis {
         client, srm_mint, ..
-    } = common::lifecycle::genesis();
+    } = serum_common_tests::genesis::<Client>();
 
     // When.
     //
@@ -75,9 +75,9 @@ fn initialized() {
 #[test]
 fn initialized_already() {
     // Given.
-    let common::lifecycle::Genesis {
+    let serum_common_tests::Genesis {
         client, srm_mint, ..
-    } = common::lifecycle::genesis();
+    } = serum_common_tests::genesis::<Client>();
 
     // When
     //

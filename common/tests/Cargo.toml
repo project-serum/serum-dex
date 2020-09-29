@@ -1,0 +1,13 @@
+[package]
+name = "serum-common-tests"
+version = "0.1.0"
+description = "Serum common test utilities"
+repository = "https://github.com/project-serum/serum-dex"
+edition = "2018"
+
+[features]
+strict = []
+
+[dependencies]
+solana-client-gen = { path = "../../solana-client-gen", features = ["client"] }
+serum-common = { path = "../", features = ["client"] }
