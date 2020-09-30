@@ -1,0 +1,10 @@
+[package]
+name = "serum-node-context"
+version = "0.1.0"
+description = "Serum Node Context"
+repository = "https://github.com/project-serum/serum-dex"
+edition = "2018"
+
+[dependencies]
+serum-common = { path = "../../common" }
+clap = "3.0.0-beta.1"

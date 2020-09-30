@@ -1,0 +1,29 @@
+[package]
+name = "serum-node"
+version = "0.1.0"
+description = "Serum Node"
+repository = "https://github.com/project-serum/serum-dex"
+edition = "2018"
+
+[[bin]]
+name = "serum-node"
+path = "src/bin/main.rs"
+
+[features]
+trace = ["serum-node-logging/trace"]
+default = []
+strict = []
+rpc = []
+
+[dependencies]
+serum-common = { path = "../common" }
+serum-node-json-rpc = { path = "./json-rpc" }
+serum-node-logging = { path = "./logging" }
+serum-node-crank = { path = "./crank" }
+serum-node-registry = { path = "./registry" }
+serum-node-context = { path = "./context" }
+tokio = { version = "0.2.22", features = ["sync"] }
+futures = "0.3"
+anyhow = "1.0.32"
+crossbeam = "0.7.3"
+clap = "3.0.0-beta.1"

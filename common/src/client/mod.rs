@@ -3,7 +3,7 @@ use std::str::FromStr;
 
 pub mod rpc;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Cluster {
     Testnet,
     Mainnet,
