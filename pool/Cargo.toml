@@ -18,13 +18,12 @@ solana-sdk = { version = "1.3.9", default-features = false, optional = true }
 spl-token = { version = "=2.0.3", default-features = false }
 capnp = "0.13.3"
 thiserror = "1.0.20"
+zerocopy = "0.3.0"
+bytemuck = "1.4.1"
 
 [lib]
 name = "serum_pool"
 crate-type = ["cdylib", "lib"]
-
-[dev-dependencies]
-capnpc = "0.13.1"
 
 [build-dependencies]
 capnpc = "0.13.1"

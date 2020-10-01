@@ -5,5 +5,5 @@ $parentModule("schema");
 
 struct CpiInstr(T) {
 	typeId @0 :UInt64;
-	message @1 :T;
+	innerInstruction @1 :T;
 }

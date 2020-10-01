@@ -2,22 +2,24 @@ pub use solana_sdk;
 
 pub mod schema;
 
-use arrayref::array_ref;
+use std::ops::DerefMut;
+
+use arrayref::{array_ref, array_refs};
 
 use solana_sdk::{
+    info,
     account_info::AccountInfo,
+    instruction::{Instruction, AccountMeta},
     entrypoint::ProgramResult,
     program_error::ProgramError,
     entrypoint_deprecated,
     pubkey::Pubkey,
+    program::invoke,
 };
 
 use schema::{
-    pool_proxy_capnp::{
-        proxy_request,
-    },
     pool_capnp::{
-        pool_request,
+        proxy_request,
     },
     cpi_capnp::{
         cpi_instr,
@@ -25,10 +27,9 @@ use schema::{
 };
 
 use capnp::{
-    NotInSchema,
-    message::{self, ReaderSegments, TypedReader},
+    message,
     traits::{Owned, HasTypeId},
-    serialize::{read_message_from_flat_slice, SliceSegments},
+    serialize::{read_message_from_flat_slice, write_message_to_words, SliceSegments},
 };
 
 use thiserror::Error;
@@ -42,14 +43,25 @@ enum PoolError {
     NotInSchema(#[from] capnp::NotInSchema),
     #[error("program error: {0:?}")]
     Program(#[from] ProgramError),
+    #[error("byte cast error: {0}")]
+    PodCastError(bytemuck::PodCastError),
     #[error("{}", .0)]
     Msg(&'static str),
+    #[error("unimplemented")]
+    Todo,
 }
 
 impl From<&'static str> for PoolError {
     #[inline(always)]
     fn from(value: &'static str) -> PoolError {
         PoolError::Msg(value)
+    }
+}
+
+impl From<bytemuck::PodCastError> for PoolError {
+    #[inline(always)]
+    fn from(value: bytemuck::PodCastError) -> PoolError {
+        PoolError::PodCastError(value)
     }
 }
 
@@ -66,7 +78,7 @@ where
     if instr_type_id != T::Reader::type_id() {
         return Err("type_id not recognized".into())
     }
-    Ok(tagged.get_message()?)
+    Ok(tagged.get_inner_instruction()?)
 }
 
 #[cfg(feature = "program")]
@@ -76,8 +88,20 @@ fn entry(
     accounts: &[AccountInfo],
     instruction_data: &[u8],
 ) -> ProgramResult {
-    Ok(process_instruction(program_id, accounts, instruction_data).unwrap())
+    // TODO map errors into solana error codes or log them or something
+    match process_instruction(program_id, accounts, instruction_data) {
+        Ok(()) => Ok(()),
+        Err(e) => match e {
+            PoolError::Program(e) => Err(e),
+            e => {
+                let s = format!("error processing instructions: {:?}", e);
+                info!(&s);
+                Err(ProgramError::Custom(0x100))
+            }
+        }
+    }
 }
+
 fn process_instruction(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
@@ -89,30 +113,31 @@ fn process_instruction(
         capnp::message::DEFAULT_READER_OPTIONS,
     )?;
     let cpi_instr_reader: cpi_instr::Reader<'_, proxy_request::Owned> = msg_reader.get_root()?;
-    let proxy_request_reader: proxy_request::Reader<'_> = strip_instruction_tag(cpi_instr_reader)?;
-    use proxy_request::Which::*;
-    match (proxy_request_reader.which()?, accounts.len()) {
-        (InitProxy(()), 2) => {
-            let &[ref proxy, ref pool] = array_ref![accounts, 0, 2];
-            init_proxy(program_id, proxy, pool)?;
-        }
-        _ => unimplemented!()
+    let reader: proxy_request::Reader<'_> = strip_instruction_tag(cpi_instr_reader)?;
+
+    let retbuf_account = &accounts.get(reader.get_retbuf_account_ref() as usize).ok_or("bad retbuf account ref")?;
+    let retbuf_program = &accounts.get(reader.get_retbuf_program_id_ref() as usize).ok_or("bad retbuf program id ref")?;
+
+    let required_params = {
+        let range = reader.get_required_params_range();
+        let begin = range.get_begin_ref() as usize;
+        let end = begin + range.get_count() as usize;
+        &accounts.get(begin..end).ok_or("bad required params range")?;
     };
-    unimplemented!()
+
+    use proxy_request::instruction::Which;
+    match reader.get_instruction().which().or(Err("unrecognized pool proxy instruction type"))? {
+        Which::RefreshBasket(()) => Err(PoolError::Todo),
+        Which::CreateShares(_reader) => Err(PoolError::Todo),
+        Which::RedeemShares(_reader) => Err(PoolError::Todo),
+        Which::AcceptAdmin(_reader) => Err(PoolError::Todo),
+        Which::AdminRequest(_reader) => Err(PoolError::Todo),
+    }
 }
 
-fn proxy_pool_request(
+fn process_accept_admin(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    request: pool_request::Reader,
 ) -> PoolResult<()> {
-    Ok(())
-}
-
-fn init_proxy(
-    program_id: &Pubkey,
-    proxy: &AccountInfo,
-    pool: &AccountInfo,
-) -> PoolResult<()> {
-    Ok(())
+    unimplemented!()
 }
