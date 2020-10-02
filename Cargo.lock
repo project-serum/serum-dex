@@ -2353,6 +2353,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "serum-common-tests"
+version = "0.1.0"
+dependencies = [
+ "serum-common",
+ "solana-client-gen",
+]
+
+[[package]]
+name = "serum-registry"
+version = "0.1.0"
+dependencies = [
+ "arrayref",
+ "bytemuck",
+ "lazy_static",
+ "num_enum",
+ "rand 0.7.3",
+ "serde",
+ "serum-common",
+ "serum-common-tests",
+ "solana-client-gen",
+ "spl-token",
+ "thiserror",
+]
+
+[[package]]
 name = "serum-safe"
 version = "0.1.0"
 dependencies = [
@@ -2362,6 +2387,7 @@ dependencies = [
  "rand 0.7.3",
  "serde",
  "serum-common",
+ "serum-common-tests",
  "solana-client-gen",
  "spl-token",
  "thiserror",

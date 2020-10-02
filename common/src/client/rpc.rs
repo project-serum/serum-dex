@@ -196,7 +196,7 @@ pub fn account_token_unpacked<T: TokenPack>(client: &RpcClient, addr: &Pubkey) -
     T::unpack_from_slice(&account.data).unwrap()
 }
 
-pub fn account_unpacked<'a, T: Pack<'a>>(client: &RpcClient, addr: &Pubkey) -> T {
+pub fn account_unpacked<T: Pack>(client: &RpcClient, addr: &Pubkey) -> T {
     let account = client
         .get_account_with_commitment(addr, CommitmentConfig::recent())
         .unwrap()

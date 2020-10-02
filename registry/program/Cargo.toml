@@ -1,0 +1,29 @@
+[package]
+name = "serum-registry-program"
+version = "0.1.0"
+description = "Serum Registry Solana program"
+repository = "https://github.com/project-serum/serum-dex"
+edition = "2018"
+
+[workspace]
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "serum_registry_program"
+
+[features]
+program = ["serum-registry/program", "solana-sdk/program", "spl-token/program", "spl-token/no-entrypoint"]
+strict = []
+default = []
+
+[dependencies]
+solana-sdk = { version = "=1.3.9", default-features = false }
+spl-token = { version = "=2.0.3", default-features = false }
+serum-registry = { path = "../" }
+serum-common = { path = "../../common", features = ["program"] }
+
+[profile.release]
+lto = true
+
+[profile.test]
+opt-level = 2

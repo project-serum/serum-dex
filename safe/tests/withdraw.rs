@@ -2,6 +2,7 @@ use common::lifecycle;
 use rand::rngs::OsRng;
 use serum_common::pack::Pack;
 use serum_safe::accounts::Vesting;
+use serum_safe::client::Client;
 use serum_safe::error::SafeErrorCode;
 use solana_client_gen::solana_sdk::commitment_config::CommitmentConfig;
 use solana_client_gen::solana_sdk::instruction::AccountMeta;
@@ -143,7 +144,10 @@ fn withdraw_test(params: WithdrawTestParams) {
         slot_wait_offset,
         error_code,
     } = params;
-    let current_slot = common::client().rpc().get_slot().unwrap();
+    let current_slot = serum_common_tests::client::<Client>()
+        .rpc()
+        .get_slot()
+        .unwrap();
     let end_slot = end_slot_offset + current_slot;
     // Given.
     //

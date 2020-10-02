@@ -2,13 +2,7 @@ language: shell
 os: linux
 
 _defaults: &defaults
-  cache:
-    directories:
-      - $TRAVIS_HOME/.cargo
-      - $TRAVIS_HOME/.rustup
-      - $TRAVIS_HOME/.cache
-      - $TRAVIS_BUILD_DIR/crank/target
-      - $TRAVIS_BUILD_DIR/dex/target
+  cache: false
   services:
     - docker
   before_install:
@@ -17,7 +11,6 @@ _defaults: &defaults
     - mkdir -p bin && ./bpf-sdk-install.sh bin
   before_cache:
     - scripts/travis/stop-docker.sh
-    - rm -rf "$TRAVIS_HOME/.cargo/registry/src"
 
 _localnet: &localnet
   language: node_js
@@ -40,16 +33,17 @@ jobs:
       script:
         - docker exec dev ./scripts/travis/dex-tests.sh
     - <<: *defaults
-      name: Safe strict build
-      script:
-        - docker exec dev make -C safe build features=strict
-    - <<: *defaults
       name: Safe tests
       <<: *localnet
       script:
-        - docker exec dev make -C safe init-test
+        - docker exec dev make -C safe init-test features=strict
     - <<: *defaults
-      name: Common
+      name: Registry tests
+      <<: *localnet
+      script:
+        - docker exec dev make -C registry init-test
+    - <<: *defaults
+      name: Fmt and Common Tests
       script:
         - docker exec dev cargo fmt -- --check
-        - docker exec -w=/workdir/common dev cargo test --features client
+        - docker exec -w=/workdir/common dev cargo test --features client,strict

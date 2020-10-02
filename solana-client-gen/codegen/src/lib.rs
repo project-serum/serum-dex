@@ -121,12 +121,6 @@ pub fn solana_client_gen(
             }
         }
 
-        #[derive(Debug)]
-        pub struct RequestOptions {
-            pub commitment: CommitmentConfig,
-            pub tx: RpcSendTransactionConfig,
-        }
-
         // Client is the RPC client generated to talk to a program running
         // on a configured Solana cluster.
         pub struct Client {
@@ -188,6 +182,30 @@ pub fn solana_client_gen(
             }
 
             #client_methods
+        }
+
+        // Used for tests.
+        impl solana_client_gen::prelude::ClientGen for Client {
+            fn from_keypair_file(
+                program_id: Pubkey,
+                filename: &str,
+                url: &str,
+            ) -> Result<Client, String> {
+                Client::from_keypair_file(program_id, filename, url)
+                    .map_err(|_| "Unable to read keypair file".to_string())
+            }
+            fn with_options(self, opts: solana_client_gen::prelude::RequestOptions) -> Client {
+                self.with_options(opts)
+            }
+            fn rpc(&self) -> &RpcClient {
+                self.rpc()
+            }
+            fn payer(&self) -> &Keypair {
+                self.payer()
+            }
+            fn program(&self) -> &Pubkey {
+                self.program()
+            }
         }
     };
 
@@ -430,18 +448,31 @@ fn enum_to_methods(
             // fixed size. The second will be used when #[create_account(..)] is used
             // with a `..`.
             let create_account_client_method = {
-                let create_account_client_method_name = {
+                let (create_account_client_method_name, create_account_client_method_name_with_signers) = {
                     match account_data_size {
                         CreateAccountDataSize::Fixed(_) => {
-                            proc_macro2::Ident::new(
-                                format!("create_account_and_{}", variant_name.to_string().to_snake_case()).as_str(),
-                                proc_macro2::Span::call_site(),
+                            (
+                                proc_macro2::Ident::new(
+                                    format!("create_account_and_{}", variant_name.to_string().to_snake_case()).as_str(),
+                                    proc_macro2::Span::call_site(),
+                                ),
+                                proc_macro2::Ident::new(
+                                    format!("create_account_and_{}_with_signers", variant_name.to_string().to_snake_case()).as_str(),
+                                    proc_macro2::Span::call_site(),
+                                )
                             )
                         },
                         CreateAccountDataSize::Dynamic => {
-                            proc_macro2::Ident::new(
-                                format!("create_account_with_size_and_{}", variant_name.to_string().to_snake_case()).as_str(),
-                                proc_macro2::Span::call_site(),
+                            (
+                                proc_macro2::Ident::new(
+                                    format!("create_account_with_size_and_{}", variant_name.to_string().to_snake_case()).as_str(),
+                                    proc_macro2::Span::call_site(),
+                                ),
+                                // Note: the dynamic with_signers variant is not used at the moment.
+                                proc_macro2::Ident::new(
+                                    format!("create_account_with_size_and_{}_with_signers", variant_name.to_string().to_snake_case()).as_str(),
+                                    proc_macro2::Span::call_site(),
+                                )
                             )
                         },
                     }
@@ -463,10 +494,35 @@ fn enum_to_methods(
                             //
                             // The account created will always be rent exempt and owned by
                             // *this* program.
-                            pub fn #create_account_client_method_name(&self, accounts: &[AccountMeta], #method_args) -> Result<(Signature, Keypair), ClientError> {
+                            pub fn #create_account_client_method_name(
+                                &self,
+                                accounts: &[AccountMeta],
+                                #method_args
+                            ) -> Result<(Signature, Keypair), ClientError> {
                                 // The new account to create.
                                 let new_account = Keypair::generate(&mut OsRng);
 
+                                let mut new_accounts = accounts.to_vec();
+                                new_accounts.insert(0, AccountMeta::new(new_account.pubkey(), false));
+
+																// This copy is most unfortunate.
+                                // TODO: eliminate this clone.
+                                let new_account_cpy = Keypair::from_bytes(&new_account.to_bytes()).unwrap();
+                                let signers = vec![self.payer(), &new_account];
+                                self.#create_account_client_method_name_with_signers(
+                                    new_account_cpy,
+                                    &signers,
+                                    &new_accounts,
+                                    #method_arg_idents
+                                )
+                            }
+                            pub fn #create_account_client_method_name_with_signers<T: Signers>(
+                                &self,
+                                new_account: Keypair,
+                                signers: &T,
+                                accounts: &[AccountMeta],
+                                #method_args
+                            ) -> Result<(Signature, Keypair), ClientError> {
                                 // Instruction: create the new account system instruction.
                                 let create_account_instr = {
                                     let lamports = self
@@ -482,13 +538,10 @@ fn enum_to_methods(
                                     )
                                 };
 
-                                let mut new_accounts = accounts.to_vec();
-                                new_accounts.insert(0, AccountMeta::new(new_account.pubkey(), false));
-
                                 // Instruction: create the enum's instruction.
                                 let variant_instr = super::instruction::#method_name(
                                     self.program_id,
-                                    &new_accounts,
+                                    &accounts,
                                     #method_arg_idents
                                 );
 
@@ -500,17 +553,13 @@ fn enum_to_methods(
                                         .rpc()
                                         .get_recent_blockhash()
                                         .map_err(|e| ClientError::RawError(e.to_string()))?;
-
-                                    let signers = vec![self.payer(), &new_account];
-
                                     Transaction::new_signed_with_payer(
                                         &instructions,
                                         Some(&self.payer().pubkey()),
-                                        &signers,
+                                        signers,
                                         recent_hash,
                                     )
                                 };
-
                                 // Execute the transaction.
                                 self
                                     .rpc
@@ -522,6 +571,7 @@ fn enum_to_methods(
                                     .map_err(ClientError::RpcError)
                                     .map(|sig| (sig, new_account))
                             }
+
                         },
                         CreateAccountDataSize::Dynamic => quote! {
                             // Same as the fixed size version, except the first argument is size.

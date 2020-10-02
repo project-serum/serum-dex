@@ -1,5 +1,6 @@
 use serum_common::pack::Pack;
 use serum_safe::accounts::{MintReceipt, Vesting};
+use serum_safe::client::Client;
 use solana_client_gen::solana_sdk::commitment_config::CommitmentConfig;
 use solana_client_gen::solana_sdk::instruction::AccountMeta;
 use solana_client_gen::solana_sdk::signature::Signer;
@@ -15,7 +16,7 @@ fn mint() {
     // Given.
     //
     // An initialized Serum Safe with deposit.
-    let client = common::client();
+    let client = serum_common_tests::client::<Client>();
     let current_slot = client.rpc().get_slot().unwrap();
     let end_slot = current_slot + 1000;
     let start_balance = 20;

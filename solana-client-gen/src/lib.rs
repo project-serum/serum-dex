@@ -150,6 +150,7 @@ pub mod prelude {
     pub use bincode;
     pub use serde;
 
+    pub use solana_sdk;
     pub use solana_sdk::instruction::{AccountMeta, Instruction};
     pub use solana_sdk::pubkey::Pubkey;
 
@@ -177,6 +178,24 @@ pub mod prelude {
     pub use solana_sdk::transaction::Transaction;
     #[cfg(feature = "client")]
     pub use thiserror::Error;
+
+    #[cfg(feature = "client")]
+    #[derive(Debug)]
+    pub struct RequestOptions {
+        pub commitment: CommitmentConfig,
+        pub tx: RpcSendTransactionConfig,
+    }
+
+    // Used for tests.
+    #[cfg(feature = "client")]
+    pub trait ClientGen: std::marker::Sized {
+        fn from_keypair_file(program_id: Pubkey, filename: &str, url: &str)
+            -> Result<Self, String>;
+        fn with_options(self, opts: RequestOptions) -> Self;
+        fn rpc(&self) -> &RpcClient;
+        fn payer(&self) -> &Keypair;
+        fn program(&self) -> &Pubkey;
+    }
 }
 
 // Re-export.
