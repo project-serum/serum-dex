@@ -23,8 +23,7 @@
 
 #![cfg_attr(feature = "strict", deny(warnings))]
 
-use error::{RewardsError, RewardsErrorCode};
-use serum_common::pack::Pack;
+use error::RewardsError;
 use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::entrypoint::ProgramResult;
 use solana_sdk::info;
@@ -39,7 +38,7 @@ solana_sdk::entrypoint!(process_instruction);
 fn process_instruction<'a>(
     program_id: &'a Pubkey,
     accounts: &'a [AccountInfo<'a>],
-    instruction_data: &[u8],
+    _instruction_data: &[u8],
 ) -> ProgramResult {
     info!("process-instruction");
     handler(program_id, accounts)?;
@@ -48,7 +47,7 @@ fn process_instruction<'a>(
 }
 
 pub fn handler<'a>(
-    program_id: &'a Pubkey,
+    _program_id: &'a Pubkey,
     accounts: &'a [AccountInfo<'a>],
 ) -> Result<(), RewardsError> {
     info!("handler: rewards");
@@ -56,18 +55,13 @@ pub fn handler<'a>(
     let acc_infos = &mut accounts.iter();
 
     let return_value_acc_info = next_account_info(acc_infos)?;
-    let registry_acc_info = next_account_info(acc_infos)?;
-    let stake_acc_info = next_account_info(acc_infos)?;
-    let entity_acc_info = next_account_info(acc_infos)?;
+    let _registry_acc_info = next_account_info(acc_infos)?;
+    let _stake_acc_info = next_account_info(acc_infos)?;
+    let _entity_acc_info = next_account_info(acc_infos)?;
 
     let return_value_result = REWARDS_CONSTANT;
 
-    access_control(AccessControlRequest {
-        return_value_acc_info,
-        registry_acc_info,
-        stake_acc_info,
-        entity_acc_info,
-    })?;
+    access_control(AccessControlRequest {})?;
 
     state_transition(StateTransitionRequest {
         return_value_acc_info,
@@ -79,12 +73,7 @@ pub fn handler<'a>(
 fn access_control(req: AccessControlRequest) -> Result<(), RewardsError> {
     info!("access-control: rewards");
 
-    let AccessControlRequest {
-        return_value_acc_info,
-        registry_acc_info,
-        stake_acc_info,
-        entity_acc_info,
-    } = req;
+    let AccessControlRequest { .. } = req;
 
     // todo
 
@@ -111,12 +100,7 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), RewardsError> {
     Ok(())
 }
 
-struct AccessControlRequest<'a> {
-    return_value_acc_info: &'a AccountInfo<'a>,
-    registry_acc_info: &'a AccountInfo<'a>,
-    stake_acc_info: &'a AccountInfo<'a>,
-    entity_acc_info: &'a AccountInfo<'a>,
-}
+struct AccessControlRequest {}
 
 struct StateTransitionRequest<'a> {
     return_value_acc_info: &'a AccountInfo<'a>,
