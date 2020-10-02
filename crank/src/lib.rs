@@ -1,25 +1,21 @@
-#![allow(unused)]
+#![allow(dead_code)]
 
 use std::borrow::Cow;
 use std::cmp::min;
 use std::collections::BTreeSet;
 use std::mem::size_of;
 use std::num::NonZeroU64;
-use std::str::FromStr;
-use std::sync::mpsc::{Receiver, Sender};
 use std::{thread, time};
 
 use anyhow::{format_err, Result};
 use clap::Clap;
 use debug_print::debug_println;
-use log::{error, info, warn};
-use rand::prelude::*;
+use log::{error, info};
 use rand::rngs::OsRng;
 use safe_transmute::{
-    guard::{PermissiveGuard, SingleManyGuard, SingleValueGuard},
+    guard::SingleManyGuard,
     to_bytes::{transmute_one_to_bytes, transmute_to_bytes},
-    transmute_many, transmute_many_pedantic, transmute_many_permissive, transmute_one,
-    transmute_one_pedantic, try_copy,
+    transmute_many, transmute_many_pedantic, transmute_one_pedantic,
 };
 use sloggers::file::FileLoggerBuilder;
 use sloggers::types::Severity;
@@ -32,7 +28,6 @@ use solana_sdk::program_pack::Pack;
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::Signature;
 use solana_sdk::signature::{Keypair, Signer};
-use solana_sdk::system_instruction::SystemInstruction;
 use solana_sdk::transaction::Transaction;
 use spl_token::instruction as token_instruction;
 use warp::Filter;
@@ -51,7 +46,7 @@ use serum_dex::state::QueueHeader;
 use serum_dex::state::Request;
 use serum_dex::state::RequestQueueHeader;
 
-pub fn with_logging<F: FnOnce()>(to: &str, fnc: F) {
+pub fn with_logging<F: FnOnce()>(_to: &str, fnc: F) {
     fnc();
 }
 
@@ -283,7 +278,8 @@ pub fn start(opts: Opts) -> Result<()> {
                 events_per_worker,
                 num_accounts.unwrap_or(32),
                 log_directory,
-            );
+            )
+            .unwrap();
         }
         Command::MonitorQueue {
             dex_program_id,
@@ -292,7 +288,9 @@ pub fn start(opts: Opts) -> Result<()> {
         } => {
             let client = opts.client();
             let mut runtime = tokio::runtime::Runtime::new().unwrap();
-            runtime.block_on(read_queue_length_loop(client, dex_program_id, market, port));
+            runtime
+                .block_on(read_queue_length_loop(client, dex_program_id, market, port))
+                .unwrap();
         }
         Command::PrintEventQueue {
             ref dex_program_id,
@@ -513,9 +511,9 @@ fn consume_events_loop(
             .expect("Failed to retrieve account")
             .data;
         let inner: Cow<[u64]> = remove_dex_account_padding(&event_q_data)?;
-        let (header, seg0, seg1) = parse_event_queue(&inner)?;
+        let (_header, seg0, seg1) = parse_event_queue(&inner)?;
         let req_inner: Cow<[u64]> = remove_dex_account_padding(&req_q_data)?;
-        let (req_header, req_seg0, req_seg1) = parse_event_queue(&req_inner)?;
+        let (_req_header, req_seg0, req_seg1) = parse_event_queue(&req_inner)?;
         let event_q_len = seg0.len() + seg1.len();
         let req_q_len = req_seg0.len() + req_seg1.len();
         info!(
@@ -534,11 +532,11 @@ fn consume_events_loop(
             let mut used_accounts = BTreeSet::new();
             for account in accounts {
                 used_accounts.insert(account);
-                if (used_accounts.len() >= num_accounts) {
+                if used_accounts.len() >= num_accounts {
                     break;
                 }
             }
-            let mut orders_accounts: Vec<_> = used_accounts.into_iter().collect();
+            let orders_accounts: Vec<_> = used_accounts.into_iter().collect();
             info!(
                 "Number of unique order accounts: {}, market {}, coin {}, pc {}",
                 orders_accounts.len(),
@@ -602,7 +600,6 @@ fn consume_events_loop(
             );
         }
     }
-    return Ok(());
 }
 
 fn consume_events_wrapper(
@@ -623,14 +620,12 @@ fn consume_events_wrapper(
         thread_num,
     );
     match result {
-        Ok(signature) => {
-            (info!(
-                "[thread {}] Successfully consumed events after {:?}: {}.",
-                thread_num,
-                start.elapsed(),
-                signature
-            ))
-        }
+        Ok(signature) => info!(
+            "[thread {}] Successfully consumed events after {:?}: {}.",
+            thread_num,
+            start.elapsed(),
+            signature
+        ),
         Err(err) => {
             error!("[thread {}] Received error: {:?}", thread_num, err);
         }
@@ -643,9 +638,9 @@ fn consume_events_once(
     payer: &Keypair,
     account_metas: Vec<AccountMeta>,
     to_consume: usize,
-    thread_number: usize,
+    _thread_number: usize,
 ) -> Result<Signature> {
-    let start = std::time::Instant::now();
+    let _start = std::time::Instant::now();
     let instruction_data: Vec<u8> = MarketInstruction::ConsumeEvents(to_consume as u16).pack();
 
     let instruction = Instruction {
@@ -688,7 +683,7 @@ fn consume_events(
 ) -> Result<()> {
     let event_q_data = client.get_account_data(&state.event_q)?;
     let inner: Cow<[u64]> = remove_dex_account_padding(&event_q_data)?;
-    let (header, seg0, seg1) = parse_event_queue(&inner)?;
+    let (_header, seg0, seg1) = parse_event_queue(&inner)?;
 
     if seg0.len() + seg1.len() == 0 {
         info!("Total event queue length: 0, returning early");
@@ -877,7 +872,7 @@ fn place_order(
         }
     };
     *orders = Some(orders_pubkey);
-    let side = new_order.side;
+    let _side = new_order.side;
     let data = MarketInstruction::NewOrder(new_order).pack();
     let instruction = Instruction {
         program_id: *program_id,
@@ -1069,8 +1064,8 @@ fn gen_listing_params(
     client: &RpcClient,
     program_id: &Pubkey,
     payer: &Pubkey,
-    coin_mint: &Pubkey,
-    pc_mint: &Pubkey,
+    _coin_mint: &Pubkey,
+    _pc_mint: &Pubkey,
 ) -> Result<(ListingKeys, Vec<Instruction>)> {
     let (market_key, create_market) = create_dex_account(client, program_id, payer, 376)?;
     let (req_q_key, create_req_q) = create_dex_account(client, program_id, payer, 640)?;
@@ -1293,7 +1288,7 @@ async fn read_queue_length_loop(
             .expect("Failed to retrieve account")
             .data;
         let inner: Cow<[u64]> = remove_dex_account_padding(&event_q_data).unwrap();
-        let (header, seg0, seg1) = parse_event_queue(&inner).unwrap();
+        let (_header, seg0, seg1) = parse_event_queue(&inner).unwrap();
         let len = seg0.len() + seg1.len();
         format!("{{ \"length\": {}  }}", len)
     });
