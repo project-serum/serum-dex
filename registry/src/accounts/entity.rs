@@ -12,21 +12,21 @@ lazy_static::lazy_static! {
 
 /// Entity is the account representing a single "node" that addresses can
 /// stake with.
-#[derive(Default, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Default, Debug, Serialize, Deserialize)]
 pub struct Entity {
+    /// Set when this entity is registered with the program.
+    pub initialized: bool,
     /// Leader of the entity, i.e., the one responsible for fulfilling node
     /// duties.
     pub leader: Pubkey,
-    /// Set when this entity is registered with the program.
-    pub initialized: bool,
-    /// The amount of the token pooled in this entity.
+    /// Amount of the token staked to this entity.
     pub amount: u64,
-    /// The amount of the mega token pooled in this entity.
+    /// Amount of the mega token staked to this entity.
     pub mega_amount: u64,
     /// Bitmap representing this entity's capabilities .
     pub capabilities: u32,
-    /// The type of stake backing this entity (determines voting rights)
-    /// of the stsakers.
+    /// Type of stake backing this entity (determines voting rights)
+    /// of the stakers.
     pub stake_kind: StakeKind,
 }
 

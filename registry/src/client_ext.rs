@@ -1,5 +1,5 @@
-use crate::accounts::entity;
-use crate::accounts::stake;
+use crate::accounts::member;
+use crate::accounts::registrar;
 use serum_common::pack::Pack;
 use solana_client_gen::prelude::*;
 use solana_client_gen::solana_sdk;
@@ -10,118 +10,151 @@ use solana_client_gen::solana_sdk::system_instruction;
 
 solana_client_gen_extension! {
     impl Client {
-        /// Does complete initialization of the Registry.
-        ///
-        /// Assumes:
-        ///
-        ///   * The coin to be deposited (SRM) is already minted.
-        ///   * The program is already deployed on chain.
-        ///
-        // TODO: share this with the safe.
-        pub fn create_all_accounts_and_initialize(
+        pub fn create_entity_derived(
             &self,
-            srm_mint: &Pubkey,
-            msrm_mint: &Pubkey,
-            registry_authority: &Pubkey,
-        ) -> Result<InitializeResponse, ClientError> {
-            // Build the data dependent addresses.
-            //
-            // The registry instance requires a nonce for it's token vault, which
-            // uses a program-derived address to "sign" transactions and
-            // manage funds within the program.
-            let registry_acc = Keypair::generate(&mut OsRng);
-            let (registry_vault_authority, nonce) = Pubkey::find_program_address(
-                &[registry_acc.pubkey().as_ref()],
-                self.program(),
+            leader_kp: &Keypair,
+            capabilities: u32,
+            stake_kind: crate::accounts::StakeKind,
+        ) -> Result<(Signature, Pubkey), ClientError> {
+            let entity_account_size = *crate::accounts::entity::SIZE;
+            let lamports = self.rpc().get_minimum_balance_for_rent_exemption(
+                entity_account_size as usize,
+            )?;
+
+            let entity_address = self.entity_address_derived(&leader_kp.pubkey())?;
+            let create_acc_instr =
+                solana_sdk::system_instruction::create_account_with_seed(
+                    &self.payer().pubkey(),   // From (signer).
+                    &entity_address,          // To.
+                    &leader_kp.pubkey(),      // Base (signer).
+                    Self::entity_seed(),      // Seed.
+                    lamports,                 // Account start balance.
+                    entity_account_size,      // Acc size.
+                    &self.program(),          // Owner.
+                );
+
+            let accounts = [
+                AccountMeta::new(entity_address, false),
+                AccountMeta::new_readonly(leader_kp.pubkey(), true),
+                AccountMeta::new_readonly(solana_sdk::sysvar::rent::ID, false),
+            ];
+            let create_entity_instr = super::instruction::create_entity(
+                *self.program(),
+                &accounts,
+                capabilities,
+                stake_kind,
+            );
+            let instructions = [
+                create_acc_instr, create_entity_instr,
+            ];
+            let signers = [leader_kp, self.payer()];
+            let (recent_hash, _fee_calc) = self
+                .rpc()
+                .get_recent_blockhash()?;
+
+            let tx = Transaction::new_signed_with_payer(
+                &instructions,
+                Some(&self.payer().pubkey()),
+                &signers,
+                recent_hash,
             );
 
-            // Create and initialize the vaults, owned by a program-derived-address.
-            let registry_srm_vault = serum_common::client::rpc::create_token_account(
-                self.rpc(),
-                &srm_mint,
-                &registry_vault_authority,
-                self.payer(),
-            ).map_err(|e| ClientError::RawError(e.to_string()))?;
-
-            let registry_msrm_vault = serum_common::client::rpc::create_token_account(
-                self.rpc(),
-                &msrm_mint,
-                &registry_vault_authority,
-                self.payer(),
-            ).map_err(|e| ClientError::RawError(e.to_string()))?;
-
-            // Now build the final transaction.
-            let instructions = {
-                let create_registry_acc_instr = {
-                    let lamports = self
-                        .rpc()
-                        .get_minimum_balance_for_rent_exemption(
-                            crate::accounts::registry::SIZE
-                        )
-                        .map_err(ClientError::RpcError)?;
-                    system_instruction::create_account(
-                        &self.payer().pubkey(),
-                        &registry_acc.pubkey(),
-                        lamports,
-                        crate::accounts::registry::SIZE as u64,
-                        self.program(),
-                    )
-                };
-                let accounts = [
-                    AccountMeta::new(registry_acc.pubkey(), false),
-                    AccountMeta::new_readonly(*srm_mint, false),
-                    AccountMeta::new_readonly(*msrm_mint, false),
-                    AccountMeta::new_readonly(solana_sdk::sysvar::rent::id(), false),
-                ];
-                let initialize_instr = super::instruction::initialize(
-                    *self.program(),
-                    &accounts,
-                    *registry_authority,
-                    nonce,
-                );
-                vec![create_registry_acc_instr, initialize_instr]
-            };
-
-            let tx = {
-                let (recent_hash, _fee_calc) = self
-                    .rpc()
-                    .get_recent_blockhash()
-                    .map_err(|e| ClientError::RawError(e.to_string()))?;
-                let signers = vec![self.payer(), &registry_acc];
-                Transaction::new_signed_with_payer(
-                    &instructions,
-                    Some(&self.payer().pubkey()),
-                    &signers,
-                    recent_hash,
-                )
-            };
-
-            // Execute the transaction.
             self
-                .rpc
+                .rpc()
                 .send_and_confirm_transaction_with_spinner_and_config(
                     &tx,
-                    self.opts.commitment,
-                    self.opts.tx,
+                    self.options().commitment,
+                    self.options().tx,
                 )
                 .map_err(ClientError::RpcError)
-                .map(|sig| InitializeResponse {
-                    signature: sig,
-                    registry_acc,
-                    vault_acc_authority: registry_vault_authority,
-                    vault_acc: registry_srm_vault,
-                    mega_vault_acc: registry_msrm_vault,
-                    nonce,
-                })
+                .map(|sig| (sig, entity_address))
+        }
+
+        pub fn join_entity_derived(
+            &self,
+            entity: Pubkey,
+            beneficiary: Pubkey,
+            delegate: Pubkey,
+        ) -> Result<(Signature, Pubkey), ClientError> {
+
+            let member_address = self.member_address_derived()?;
+
+            let lamports = self.rpc().get_minimum_balance_for_rent_exemption(
+                *crate::accounts::member::SIZE as usize,
+            )?;
+
+            let create_acc_instr =
+                solana_sdk::system_instruction::create_account_with_seed(
+                    &self.payer().pubkey(),
+                    &member_address,
+                    &self.payer().pubkey(),
+                    Self::member_seed(),
+                    lamports,
+                    *crate::accounts::member::SIZE,
+                    &self.program(),
+                );
+
+            let accounts = [
+                AccountMeta::new(member_address, false),
+                AccountMeta::new(entity, false),
+                AccountMeta::new_readonly(solana_sdk::sysvar::rent::ID, false),
+            ];
+
+            let member_instr = super::instruction::join_entity(
+                *self.program(),
+                &accounts,
+                beneficiary,
+                delegate,
+            );
+
+            let instructions = [
+                create_acc_instr, member_instr,
+            ];
+            let signers = [self.payer()];
+            let (recent_hash, _fee_calc) = self
+                .rpc()
+                .get_recent_blockhash()?;
+
+            let tx = Transaction::new_signed_with_payer(
+                &instructions,
+                Some(&self.payer().pubkey()),
+                &signers,
+                recent_hash,
+            );
+
+            self
+                .rpc()
+                .send_and_confirm_transaction_with_spinner_and_config(
+                    &tx,
+                    self.options().commitment,
+                    self.options().tx,
+                )
+                .map_err(ClientError::RpcError)
+                .map(|sig| (sig, member_address))
+        }
+
+        pub fn entity_address_derived(&self, leader: &Pubkey) -> Result<Pubkey, ClientError> {
+            Pubkey::create_with_seed(
+                leader,
+                Self::entity_seed(),
+                &self.program(),
+            ).map_err(|e| ClientError::RawError(e.to_string()))
+        }
+
+        pub fn entity_seed() -> &'static str {
+            "srm:registry:entity"
+        }
+
+        pub fn member_address_derived(&self) -> Result<Pubkey, ClientError> {
+            Pubkey::create_with_seed(
+                &self.payer().pubkey(),
+                Self::member_seed(),
+                &self.program(),
+            ).map_err(|e| ClientError::RawError(e.to_string()))
+        }
+
+        pub fn member_seed() -> &'static str {
+            "srm:registry:member"
         }
     }
-    pub struct InitializeResponse {
-        pub signature: Signature,
-        pub registry_acc: Keypair,
-        pub vault_acc: Keypair,
-        pub mega_vault_acc: Keypair,
-        pub vault_acc_authority: Pubkey,
-        pub nonce: u8,
-    }
-
 }

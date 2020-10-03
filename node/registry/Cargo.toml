@@ -8,10 +8,16 @@ edition = "2018"
 [dependencies]
 serum-node-logging = { path = "../logging" }
 serum-node-context = { path = "../context" }
+serum-common = { path = "../../common" }
+serum-registry = { path = "../../registry", features = ["client"] }
+serum-registry-cli = { path = "../../registry/cli" }
+solana-client-gen = { path = "../../solana-client-gen" }
+spl-token = { version = "2.0.6", default-features = false }
+serde = { version = "1.0", features = ["derive"] }
 tokio = "0.2.22"
 futures = "0.3"
 anyhow = "1.0.32"
-serde = { version = "1.0", features = ["derive"] }
-solana-sdk = { version = "=1.3.9", default-features = false }
+solana-sdk = "1.3.9"
+solana-client = "1.3.14"
 crossbeam = "0.7.3"
 clap = "3.0.0-beta.1"

@@ -6,6 +6,11 @@ use solana_client_gen::prelude::*;
 use solana_client_gen::solana_client::rpc_config::RpcSendTransactionConfig;
 use solana_client_gen::solana_sdk::commitment_config::CommitmentConfig;
 
+// Env variables that must be exported to use this crate.
+pub static TEST_PROGRAM_ID: &str = "TEST_PROGRAM_ID";
+pub static TEST_PAYER_FILEPATH: &str = "TEST_PAYER_FILEPATH";
+pub static TEST_CLUSTER: &str = "TEST_CLUSTER";
+
 // Creates
 //
 // * Mint authority (shared between SRM and MSRM)
@@ -101,11 +106,27 @@ pub struct Genesis<T: ClientGen> {
     pub god_owner: Keypair,
 }
 
+impl<T: ClientGen> std::fmt::Debug for Genesis<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.debug_struct("Genesis")
+            .field("wallet", &self.client.payer().pubkey())
+            .field("mint_authority", &self.mint_authority.pubkey())
+            .field("god_owner", &self.god_owner.pubkey())
+            .field("srm_mint", &self.srm_mint.pubkey())
+            .field("msrm_mint", &self.msrm_mint.pubkey())
+            .field("god", &self.god.pubkey())
+            .field("god_msrm", &self.god_msrm.pubkey())
+            .field("god_balance_before", &self.god_balance_before)
+            .field("god_msrm_balance_before", &self.god_msrm_balance_before)
+            .finish()
+    }
+}
+
 // Returns a solana-client-gen generated client from the environment.
 pub fn client<T: ClientGen>() -> T {
-    let program_id = std::env::var("TEST_PROGRAM_ID").unwrap().parse().unwrap();
-    let payer_filepath = std::env::var("TEST_PAYER_FILEPATH").unwrap().clone();
-    let cluster: Cluster = std::env::var("TEST_CLUSTER").unwrap().parse().unwrap();
+    let program_id = std::env::var(TEST_PROGRAM_ID).unwrap().parse().unwrap();
+    let payer_filepath = std::env::var(TEST_PAYER_FILEPATH).unwrap().clone();
+    let cluster: Cluster = std::env::var(TEST_CLUSTER).unwrap().parse().unwrap();
 
     T::from_keypair_file(program_id, &payer_filepath, cluster.url())
         .expect("invalid keypair file")

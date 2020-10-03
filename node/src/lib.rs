@@ -5,14 +5,13 @@ use clap::Clap;
 use crossbeam::sync::WaitGroup;
 use futures::channel::mpsc;
 use serum_node_context::Context;
-use serum_node_logging::info;
-use serum_node_logging::{error, trace};
+use serum_node_logging::{error, info, trace};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::runtime::Runtime;
 
 /// start is the entrypoint to running a node.
-pub fn start(cfg: Config) -> Handle {
+pub fn start(cfg: Config) -> Result<Handle> {
     // Start logging.
     serum_node_logging::start(cfg.logging);
     let logger = serum_node_logging::get_logger("node");
@@ -68,25 +67,27 @@ pub fn start(cfg: Config) -> Handle {
 
     // Run the command, if given.
     if let Some(cmd) = cfg.cmd {
-        trace!(logger, "Executing command: {:?}", cmd);
-        if let Err(e) = run_cmd(&cfg.context, cmd) {
-            error!(logger, "Command failed with error: {}", e.to_string());
-            std::process::exit(1);
-        }
+        trace!(logger, "Executing: {:?}", cmd);
+        run_cmd(&cfg.context, cmd).map_err(|err| {
+            error!(logger, "{}", err);
+            serum_node_logging::stop();
+            err
+        })?;
     }
 
-    Handle { _services }
+    Ok(Handle { _services })
 }
 
 fn run_cmd(ctx: &Context, cmd: Command) -> Result<()> {
     match cmd {
         Command::Crank(crank_cmd) => serum_node_crank::run_cmd(ctx, crank_cmd),
         Command::Registry(reg_cmd) => serum_node_registry::run_cmd(ctx, reg_cmd),
+        Command::Dev(dev_cmd) => serum_node_dev::run_cmd(ctx, dev_cmd),
     }
 }
 
 #[derive(Debug, Clap)]
-#[clap(name = "serum-node", about = "A Serum node")]
+#[clap(name = "Serum CLI")]
 pub struct Config {
     #[clap(flatten)]
     pub logging: serum_node_logging::Config,
@@ -111,6 +112,8 @@ pub enum Command {
     Crank(serum_node_crank::Command),
     /// Communicates with a Serum registry.
     Registry(serum_node_registry::Command),
+    /// Development utilities.
+    Dev(serum_node_dev::Command),
 }
 
 pub struct Handle {

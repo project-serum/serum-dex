@@ -6,14 +6,12 @@ repository = "https://github.com/project-serum/serum-dex"
 edition = "2018"
 
 [[bin]]
-name = "serum-node"
+name = "serum"
 path = "src/bin/main.rs"
 
 [features]
-trace = ["serum-node-logging/trace"]
-default = []
+default = ["serum-node-logging/trace"]
 strict = []
-rpc = []
 
 [dependencies]
 serum-common = { path = "../common" }
@@ -27,3 +25,6 @@ futures = "0.3"
 anyhow = "1.0.32"
 crossbeam = "0.7.3"
 clap = "3.0.0-beta.1"
+
+# dev feature.
+serum-node-dev = { path = "./dev" }

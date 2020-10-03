@@ -1,8 +1,7 @@
 pub mod entity;
-pub mod registry;
-pub mod stake;
-pub mod vault;
+pub mod member;
+pub mod registrar;
 
 pub use entity::{Entity, StakeKind};
-pub use registry::Registry;
-pub use stake::Stake;
+pub use member::Member;
+pub use registrar::Registrar;

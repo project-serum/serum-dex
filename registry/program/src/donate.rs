@@ -3,6 +3,7 @@ use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::info;
 use solana_sdk::pubkey::Pubkey;
 
+// TODO: update to transfer funds to the pool.
 pub fn handler<'a>(
     program_id: &'a Pubkey,
     accounts: &'a [AccountInfo<'a>],

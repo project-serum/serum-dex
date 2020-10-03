@@ -1,5 +1,5 @@
 use serum_common::pack::Pack;
-use serum_registry::accounts::{Entity, StakeKind};
+use serum_registry::accounts::Member;
 use serum_registry::error::{RegistryError, RegistryErrorCode};
 use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::info;
@@ -8,32 +8,31 @@ use solana_sdk::pubkey::Pubkey;
 pub fn handler<'a>(
     program_id: &'a Pubkey,
     accounts: &'a [AccountInfo<'a>],
-    capabilities: u32,
-    stake_kind: StakeKind,
+    beneficiary: Pubkey,
+    delegate: Pubkey,
 ) -> Result<(), RegistryError> {
-    info!("handler: create_entity");
+    info!("handler: join_entity");
 
     let acc_infos = &mut accounts.iter();
 
+    let member_acc_info = next_account_info(acc_infos)?;
     let entity_acc_info = next_account_info(acc_infos)?;
-    let entity_leader_acc_info = next_account_info(acc_infos)?;
     let rent_acc_info = next_account_info(acc_infos)?;
 
     access_control(AccessControlRequest {
+        member_acc_info,
         entity_acc_info,
-        entity_leader_acc_info,
         rent_acc_info,
-        stake_kind,
     })?;
 
-    Entity::unpack_mut(
-        &mut entity_acc_info.try_borrow_mut_data()?,
-        &mut |entity: &mut Entity| {
+    Member::unpack_mut(
+        &mut member_acc_info.try_borrow_mut_data()?,
+        &mut |member: &mut Member| {
             state_transition(StateTransitionRequest {
-                leader: entity_leader_acc_info.key,
-                entity,
-                capabilities,
-                stake_kind,
+                member,
+                beneficiary,
+                delegate,
+                entity_acc_info,
             })
             .map_err(Into::into)
         },
@@ -43,19 +42,13 @@ pub fn handler<'a>(
 }
 
 fn access_control(req: AccessControlRequest) -> Result<(), RegistryError> {
-    info!("access-control: create_entity");
+    info!("access-control: join_entity");
 
     let AccessControlRequest {
+        member_acc_info,
         entity_acc_info,
-        entity_leader_acc_info,
         rent_acc_info,
-        stake_kind,
     } = req;
-
-    // TODO: remove in next release.
-    if stake_kind != StakeKind::Delegated {
-        return Err(RegistryErrorCode::MustBeDelegated)?;
-    }
 
     // todo
 
@@ -65,21 +58,21 @@ fn access_control(req: AccessControlRequest) -> Result<(), RegistryError> {
 }
 
 fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
-    info!("state-transition: create_entity");
+    info!("state-transition: join_entity");
 
     let StateTransitionRequest {
-        entity,
-        leader,
-        capabilities,
-        stake_kind,
+        member,
+        beneficiary,
+        delegate,
+        entity_acc_info,
     } = req;
 
-    entity.initialized = true;
-    entity.leader = *leader;
-    entity.amount = 0;
-    entity.mega_amount = 0;
-    entity.capabilities = capabilities;
-    entity.stake_kind = stake_kind;
+    member.initialized = true;
+    member.entity = *entity_acc_info.key;
+    member.beneficiary = beneficiary;
+    member.delegate = delegate;
+    member.amount = 0;
+    member.mega_amount = 0;
 
     info!("state-transition: success");
 
@@ -87,15 +80,14 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
 }
 
 struct AccessControlRequest<'a> {
+    member_acc_info: &'a AccountInfo<'a>,
     entity_acc_info: &'a AccountInfo<'a>,
-    entity_leader_acc_info: &'a AccountInfo<'a>,
     rent_acc_info: &'a AccountInfo<'a>,
-    stake_kind: StakeKind,
 }
 
 struct StateTransitionRequest<'a, 'b> {
-    entity: &'b mut Entity,
-    leader: &'a Pubkey,
-    capabilities: u32,
-    stake_kind: StakeKind,
+    member: &'b mut Member,
+    beneficiary: Pubkey,
+    delegate: Pubkey,
+    entity_acc_info: &'a AccountInfo<'a>,
 }

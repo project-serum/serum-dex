@@ -23,12 +23,12 @@ macro_rules! info {
 use solana_sdk::{
     account_info::AccountInfo,
     program_error::ProgramError,
+    program_pack::Pack,
     pubkey::Pubkey,
     rent::Rent,
     sysvar::{Sysvar, SysvarId},
 };
 use spl_token::error::TokenError;
-use spl_token::pack::Pack;
 
 use crate::{
     critbit::Slab,

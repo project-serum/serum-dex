@@ -1,14 +1,15 @@
 use crate::pack::Pack;
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use rand::rngs::OsRng;
 use solana_client::rpc_client::RpcClient;
 use solana_client::rpc_config::RpcSendTransactionConfig;
 use solana_sdk::commitment_config::CommitmentConfig;
+use solana_sdk::program_pack::Pack as TokenPack;
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::{Keypair, Signature, Signer};
 use solana_sdk::transaction::Transaction;
 use spl_token::instruction as token_instruction;
-use spl_token::pack::Pack as TokenPack;
+use std::convert::Into;
 
 pub fn create_account_rent_exempt(
     client: &RpcClient,
@@ -81,8 +82,6 @@ pub fn create_token_account(
         &signers,
         recent_hash,
     );
-
-    println!("Creating account: {} ...", spl_account.pubkey());
     send_txn(client, &txn, false)?;
     Ok(spl_account)
 }
@@ -187,20 +186,28 @@ pub fn send_txn(client: &RpcClient, txn: &Transaction, _simulate: bool) -> Resul
     )?)
 }
 
-pub fn account_token_unpacked<T: TokenPack>(client: &RpcClient, addr: &Pubkey) -> T {
+pub fn get_token_account<T: TokenPack>(client: &RpcClient, addr: &Pubkey) -> Result<T> {
     let account = client
-        .get_account_with_commitment(addr, CommitmentConfig::recent())
-        .unwrap()
+        .get_account_with_commitment(addr, CommitmentConfig::recent())?
         .value
-        .unwrap();
-    T::unpack_from_slice(&account.data).unwrap()
+        .map_or(Err(anyhow!("Account not found")), |acc| Ok(acc))?;
+    T::unpack_from_slice(&account.data).map_err(Into::into)
 }
 
-pub fn account_unpacked<T: Pack>(client: &RpcClient, addr: &Pubkey) -> T {
+pub fn get_account<T: Pack>(client: &RpcClient, addr: &Pubkey) -> Result<T> {
     let account = client
-        .get_account_with_commitment(addr, CommitmentConfig::recent())
-        .unwrap()
+        .get_account_with_commitment(addr, CommitmentConfig::recent())?
         .value
-        .unwrap();
-    T::unpack(&account.data).unwrap()
+        .map_or(Err(anyhow!("Account not found")), |acc| Ok(acc))?;
+    T::unpack(&account.data).map_err(Into::into)
+}
+
+// Convenience for testing. Use `get_token_account` otherwise.
+pub fn account_token_unpacked<T: TokenPack>(client: &RpcClient, addr: &Pubkey) -> T {
+    get_token_account::<T>(client, addr).unwrap()
+}
+
+// Convenience for testing. Use `get_account` otherwise.
+pub fn account_unpacked<T: Pack>(client: &RpcClient, addr: &Pubkey) -> T {
+    get_account(client, addr).unwrap()
 }
