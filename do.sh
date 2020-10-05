@@ -68,7 +68,7 @@ perform_action() {
         (
             cd "$projectDir"
             echo "generating docs $projectDir"
-            cargo doc ${@:3}
+            cargo doc $features ${@:3}
         )
         ;;
     dump)

@@ -20,6 +20,7 @@ capnp = "0.13.3"
 thiserror = "1.0.20"
 zerocopy = "0.3.0"
 bytemuck = "1.4.1"
+slice-of-array = "0.2.1"
 
 [lib]
 name = "serum_pool"

@@ -1,0 +1,11 @@
+( retbufAccountRef = 0,
+  retbufProgramIdRef = 1,
+  requiredParamsRange = (beginRef = 2, count = 1),
+  instruction = (
+    initProxy = (
+      addressTable = [],
+      basket = (
+        static = []
+      )
+    ) ),
+  stateAccountsRefs = (root = 3) )

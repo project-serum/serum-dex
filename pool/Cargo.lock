@@ -1450,6 +1450,7 @@ dependencies = [
  "bytemuck",
  "capnp",
  "capnpc",
+ "slice-of-array",
  "solana-sdk",
  "spl-token",
  "thiserror",
@@ -1491,6 +1492,12 @@ name = "slab"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c111b5bd5695e56cffe5129854aa230b39c93a305372fdbb2668ca2394eea9f8"
+
+[[package]]
+name = "slice-of-array"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8fffe93cb1051a724788529b504be2a1016498582545e50d76de4ffca1906367"
 
 [[package]]
 name = "smallvec"

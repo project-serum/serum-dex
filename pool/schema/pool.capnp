@@ -4,33 +4,29 @@ using Common = import "common.capnp";
 using Common.parentModule;
 
 $Common.parentModule("schema");
-using import "cpi.capnp".CpiInstr;
 
-struct Address {
-		word0 @0 :UInt64;
-		word1 @1 :UInt64;
-		word2 @2 :UInt64;
-		word3 @3 :UInt64;
-}
+using Cpi = import "cpi.capnp";
+using Cpi.CpiInstr;
+using Cpi.AccountInfo;
+using Cpi.Address;
 
-struct ResizableProxyState {
+struct ProxyAccount {
 	union {
-		inPlace @0 :ProxyState;
+		unset @0 :Void;
+		proxyState @1 :ProxyState;
 		# The address of an account containing a ProxyState
-		indirect @1 :Address;
+		# TODO support indirection to another account, for post-hoc resizing
 	}
 }
 
 struct RequiredAccounts {
-	# compact list of references into a separate list of accounts, with writablility requirements.
 	# accountRefs and writableAccounts are separated to save space, and must be the same length.
-	accountRefs @0 :List(UInt8);
+	accounts @0 :List(Address);
 	writableAccounts @1 :List(Bool);
 }
 
 struct BasketComponent {
-	# the index, in addressTable, of the mint address for this component
-	mintAddressRef @0 :UInt8;
+	mintAddress @0 :Address;
 
 	# binary fixed point with 64 fractional bits. Layout matches that of a
 	# little-endian UInt128.
@@ -39,29 +35,26 @@ struct BasketComponent {
 		fractionalPart @1 :UInt64;
 	}
 
-	vaultAddressRef @3 :UInt8;
+	vaultAddress @3 :Address;
 	vaultSignerNonce @4 :UInt8;
 }
 
 struct DelegationPolicy {
-	delegateProgramRef @0 :UInt8;
-	requiredAccountRefs @1 :List(UInt8);
+	delegateProgram @0 :Address;
 
-	createParams @2 :RequiredAccounts;
-	redeemParams @3 :RequiredAccounts;
-	refreshBasketParams @4 :RequiredAccounts;
+	requiredCreateParams @1 :RequiredAccounts;
+	requiredRedeemParams @2 :RequiredAccounts;
+	requiredRefreshBasketParams @3 :RequiredAccounts;
 
-	onlyWhenEmpty @5 :Bool;
+	onlyWhenEmpty @4 :Bool;
 }
 
 struct Basket {
 	union {
 		# simple etf-style pools should use this option.
-		# components must be sorted lexicographically by index
 		static @0 :List(BasketComponent);
 		dynamic :group {
 
-			# components must be sorted lexicographically by mint address
 			basket :group {
 				creationBasket @1 :List(BasketComponent);
 				redemptionBasket @2 :List(BasketComponent);
@@ -82,104 +75,97 @@ struct Basket {
 	}
 }
 
-struct ProxyState {
-	# dedup table for addresses. Must be sorted lexicographically by address.
-	addressTable @0 :List(Address);
+struct PoolTokenInfo {
+		mintAddress @0 :Address;
+		vaultAddress @1 :Address;
+		vaultSignerNonce @2 :UInt8;
+}
 
-	basket @1 :Basket;
+struct ProxyState {
+	basket @0 :Basket;
+
+	poolToken @3 :PoolTokenInfo;
 
 	# If non-null, the proxy will allow this key to change the basket.
-	adminKey @2 :Address;
+	adminKey @1 :Address;
 	# This is a safety feature to help protect the admin from accidentally
 	# bricking a pool by changing the admin key to a new address.
-	pendingAdminKey @3 :Address;
-
+	pendingAdminKey @2 :Address;
 }
 
 struct ProxyRequest {
-	stateAccountsRefs :union {
-		root @18 :UInt8;
-		indirect :union {
-			none @19 :Void;
-			some @20 :UInt8;
-		}
-	}
+	stateRoot @0 :AccountInfo;
 
-	retbufAccountRef @0 :UInt8;
-	retbufProgramIdRef @1 :UInt8;
+	retbufAccount @1 :AccountInfo;
+	retbufProgramId @2 :AccountInfo;
 
-	requiredParamsRange :group {
-		beginRef @2 :UInt8;
-		count @3 :UInt8;
-	}
+	requiredParams @3 :List(AccountInfo);
 
 	instruction :union {
 		refreshBasket @4 :Void;
-		createShares :group {
-			inputTokenAccountsRange :group {
-				beginRef @5 :UInt8;
-				count @6 :UInt8;
-			}
-			outputTokenAccountRef @7 :UInt8;
-		}
-		redeemShares :group {
-			inputTokenAccountRef @8 :UInt8;
-			outputTokenAccountsRange :group {
-				beginRef @9 :UInt8;
-				count @10 :UInt8;
-			}
-		}
+		createOrRedeem @5 :CreateOrRedeemRequest;
 		acceptAdmin :group {
-			pendingAdminSignatureRef @11 :UInt8;
+			pendingAdminSignature @6 :AccountInfo;
 		}
-		adminRequest :union {
-			adminSignatureRef @12 :UInt8;
-			setPendingAdmin :group {
-				newAdmin @13 :Address;
+		adminRequest :group {
+			adminSignature @7 :AccountInfo;
+			union {
+				setPendingAdmin @8 :Address;
+				setBasket @9 :Basket;
 			}
-			setBasket :group {
-				addressTable @14 :List(Address);
-				basket @15 :Basket;
-			}
-			setDelegationPolicy :group {
-				addressTable @16 :List(Address);
-				delegation @17 :DelegationPolicy;
-			}
+		}
+		initProxy :group {
+			basket @10 :Basket;
+			adminKey @11 :Address;
+			poolToken @12 :PoolTokenInfo;
 		}
 	}
 }
 
-# The ref fields are offsets into the &[AccountInfo] accompanying the request.
-# The ranges may overlap.
-struct ProxyToDelegateRequest {
-	retbufAccountRef @0 :UInt8;
-	retbufProgramIdRef @1 :UInt8;
-
-	requiredParamsRange :group {
-		beginRef @2 :UInt8;
-		count @3 :UInt8;
-	}
+struct CreateOrRedeemRequest {
 	union {
-		getBasket @4 :Void;
-		createShares :group {
-			inputTokenAccountsRange :group {
-				beginRef @5 :UInt8;
-				count @6 :UInt8;
-			}
-			outputTokenAccountRef @7 :UInt8;
+		create :group {
+			inputs @0 :List(CreationInput);
+			outputTokenAccount @1 :AccountInfo;
 		}
-		redeemShares :group {
-			inputTokenAccountRef @8 :UInt8;
-			outputTokenAccountsRange :group {
-				beginRef @9 :UInt8;
-				count @10 :UInt8;
+		redeem :group {
+			input :group {
+				tokenAccount @2 :AccountInfo;
+				signerRef @3 :AccountInfo;
 			}
+			outputs @4 :List(RedemptionOutput);
 		}
+	}
+
+	struct CreationInput {
+		tokenAccount @0 :AccountInfo;
+		signer @1 :AccountInfo;
+		maxQtyPerShare :group {
+			integerPart @3 :UInt64;
+			fractionalPart @2 :UInt64;
+		}
+	}
+
+	struct RedemptionOutput {
+		tokenAccount @0 :AccountInfo;
+		minQtyPerShare :group {
+			integerPart @2 :UInt64;
+			fractionalPart @1 :UInt64;
+		}
+	}
+}
+
+struct ProxyToDelegateRequest {
+	retbufAccount @0 :AccountInfo;
+	retbufProgram @1 :AccountInfo;
+
+	requiredParams @2 :List(AccountInfo);
+	union {
+		getBasket @3 :Void;
+		createOrRedeem @4 :CreateOrRedeemRequest;
 	}
 
 	struct GetBasketResponse {
-		# dedup table for addresses. Must be sorted lexicographically by address.
-		addressTable @0 :List(Address);
-		basket @1 :Basket;
+		basket @0 :Basket;
 	}
 }
