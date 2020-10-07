@@ -4,9 +4,10 @@ members = [
     "common",
     "common/tests",
     "crank",
-    "safe",
     "registry",
     "registry/cli",
+    "safe",
+    "safe/cli",
     "node",
     "node/json-rpc",
     "node/logging",
@@ -17,6 +18,7 @@ members = [
 ]
 exclude = [
     "dex",
+    "wl/program",
     "registry/program",
     "rewards/constant",
     "safe/program",

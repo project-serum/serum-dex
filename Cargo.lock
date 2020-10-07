@@ -2816,6 +2816,7 @@ dependencies = [
  "serum-node-crank",
  "serum-node-dev",
  "serum-node-json-rpc",
+ "serum-node-lockups",
  "serum-node-logging",
  "serum-node-registry",
  "tokio 0.2.22",
@@ -2878,6 +2879,21 @@ dependencies = [
  "serum-node-registry",
  "thiserror",
  "tokio 0.2.22",
+]
+
+[[package]]
+name = "serum-node-lockups"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap 3.0.0-beta.2",
+ "serde",
+ "serum-common",
+ "serum-node-context",
+ "serum-node-logging",
+ "serum-safe-cli",
+ "solana-client-gen",
+ "spl-token",
 ]
 
 [[package]]
@@ -2955,6 +2971,7 @@ dependencies = [
 name = "serum-safe"
 version = "0.1.0"
 dependencies = [
+ "arrayref",
  "bytemuck",
  "lazy_static",
  "num_enum",
@@ -2962,7 +2979,36 @@ dependencies = [
  "serde",
  "serum-common",
  "serum-common-tests",
+ "serum-wl-program",
  "solana-client-gen",
+ "spl-token",
+ "thiserror",
+]
+
+[[package]]
+name = "serum-safe-cli"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap 3.0.0-beta.2",
+ "serde",
+ "serum-common",
+ "serum-node-context",
+ "serum-safe",
+ "solana-client-gen",
+ "spl-token",
+]
+
+[[package]]
+name = "serum-wl-program"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "lazy_static",
+ "serde",
+ "serum-common",
+ "solana-client-gen",
+ "solana-sdk",
  "spl-token",
  "thiserror",
 ]

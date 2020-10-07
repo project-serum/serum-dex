@@ -1,12 +1,13 @@
 use rand::rngs::OsRng;
 use serum_common::pack::Pack;
-use serum_safe::accounts::Safe;
+use serum_safe::accounts::{Safe, Whitelist};
 use serum_safe::client::{Client, InitializeResponse};
 use serum_safe::error::SafeErrorCode;
 use solana_client_gen::solana_sdk;
 use solana_client_gen::solana_sdk::commitment_config::CommitmentConfig;
 use solana_client_gen::solana_sdk::instruction::AccountMeta;
 use solana_client_gen::solana_sdk::program_pack::Pack as TokenPack;
+use solana_client_gen::solana_sdk::pubkey::Pubkey;
 use solana_client_gen::solana_sdk::signature::{Keypair, Signer};
 
 mod common;
@@ -29,6 +30,7 @@ fn initialized() {
         nonce,
         vault_acc,
         vault_acc_authority,
+        whitelist,
         ..
     } = client
         .create_all_accounts_and_initialize(&accounts, &srm_mint.pubkey(), &safe_authority.pubkey())
@@ -50,6 +52,7 @@ fn initialized() {
         assert_eq!(safe_acc.authority, safe_authority.pubkey());
         assert_eq!(safe_acc.initialized, true);
         assert_eq!(safe_acc.nonce, nonce);
+        assert_eq!(safe_acc.whitelist, whitelist);
     }
     // Then.
     //
@@ -99,6 +102,7 @@ fn initialized_already() {
     // I try to initialize it for second time.
     let accounts_again = vec![
         AccountMeta::new(safe_acc.pubkey(), false),
+        AccountMeta::new(Pubkey::new_rand(), false),
         AccountMeta::new_readonly(srm_mint.pubkey(), false),
         rent_acc,
     ];

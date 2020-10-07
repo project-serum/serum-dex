@@ -125,6 +125,10 @@ impl<T: ClientGen> std::fmt::Debug for Genesis<T> {
 // Returns a solana-client-gen generated client from the environment.
 pub fn client<T: ClientGen>() -> T {
     let program_id = std::env::var(TEST_PROGRAM_ID).unwrap().parse().unwrap();
+    client_at(program_id)
+}
+
+pub fn client_at<T: ClientGen>(program_id: Pubkey) -> T {
     let payer_filepath = std::env::var(TEST_PAYER_FILEPATH).unwrap().clone();
     let cluster: Cluster = std::env::var(TEST_CLUSTER).unwrap().parse().unwrap();
 

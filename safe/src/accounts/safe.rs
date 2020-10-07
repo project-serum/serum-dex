@@ -1,9 +1,9 @@
+use serde::{Deserialize, Serialize};
 use serum_common::pack::*;
 use solana_client_gen::solana_sdk::pubkey::Pubkey;
 
-/// Safe is the account representing an instance of this program (akin to an
-/// SPL token's "mint").
-#[derive(Default, Debug, serde::Serialize, serde::Deserialize)]
+/// Safe is the account representing an instance of this program.
+#[derive(Default, Debug, Serialize, Deserialize)]
 pub struct Safe {
     /// The mint of the SPL token the safe is storing, e.g., the SRM mint.
     pub mint: Pubkey,
@@ -14,6 +14,8 @@ pub struct Safe {
     /// The nonce to use for the program-derived-address owning the Safe's
     /// token vault.
     pub nonce: u8,
+    /// The whitelist of valid programs the Safe can relay transactions to.
+    pub whitelist: Pubkey,
 }
 
 serum_common::packable!(Safe);
@@ -30,11 +32,13 @@ mod tests {
         let mint = Keypair::generate(&mut OsRng).pubkey();
         let authority = Keypair::generate(&mut OsRng).pubkey();
         let initialized = true;
+        let whitelist = Pubkey::new_rand();
         let safe = Safe {
             mint: mint.clone(),
             authority: authority.clone(),
             initialized,
             nonce: 33,
+            whitelist,
         };
 
         let mut dst = Vec::new();
@@ -48,6 +52,7 @@ mod tests {
         assert_eq!(new_safe.authority, authority);
         assert_eq!(new_safe.initialized, initialized);
         assert_eq!(new_safe.nonce, 33);
+        assert_eq!(new_safe.whitelist, whitelist);
     }
 
     #[test]

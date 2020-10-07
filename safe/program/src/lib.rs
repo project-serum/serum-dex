@@ -10,13 +10,16 @@ use solana_sdk::entrypoint::ProgramResult;
 use solana_sdk::info;
 use solana_sdk::pubkey::Pubkey;
 
-mod burn;
+mod claim;
 mod deposit;
 mod initialize;
 mod migrate;
-mod mint;
+mod redeem;
 mod set_authority;
-mod withdraw;
+mod whitelist_add;
+mod whitelist_delete;
+mod whitelist_deposit;
+mod whitelist_withdraw;
 
 solana_sdk::entrypoint!(process_instruction);
 fn process_instruction<'a>(
@@ -46,11 +49,21 @@ fn process_instruction<'a>(
             period_count,
             deposit_amount,
         ),
-        SafeInstruction::MintLocked {
-            token_account_owner,
-        } => mint::handler(program_id, accounts, token_account_owner),
-        SafeInstruction::Withdraw { amount } => withdraw::handler(program_id, accounts, amount),
-        SafeInstruction::BurnLocked => burn::handler(program_id, accounts),
+        SafeInstruction::Claim => claim::handler(program_id, accounts),
+        SafeInstruction::Redeem { amount } => redeem::handler(program_id, accounts, amount),
+        SafeInstruction::WhitelistWithdraw {
+            amount,
+            instruction_data,
+        } => whitelist_withdraw::handler(program_id, accounts, amount, instruction_data),
+        SafeInstruction::WhitelistDeposit { instruction_data } => {
+            whitelist_deposit::handler(program_id, accounts, instruction_data)
+        }
+        SafeInstruction::WhitelistAdd { program_id_to_add } => {
+            whitelist_add::handler(program_id, accounts, program_id_to_add)
+        }
+        SafeInstruction::WhitelistDelete {
+            program_id_to_delete,
+        } => whitelist_delete::handler(program_id, accounts, program_id_to_delete),
         SafeInstruction::SetAuthority { new_authority } => {
             set_authority::handler(program_id, accounts, new_authority)
         }

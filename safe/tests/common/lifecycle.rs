@@ -7,7 +7,7 @@
 
 use rand::rngs::OsRng;
 use serum_safe::accounts::Vesting;
-use serum_safe::client::{Client, ClientMint, InitializeResponse};
+use serum_safe::client::{Client, InitializeResponse};
 use solana_client_gen::solana_sdk;
 use solana_client_gen::solana_sdk::commitment_config::CommitmentConfig;
 use solana_client_gen::solana_sdk::instruction::AccountMeta;
@@ -41,6 +41,7 @@ pub fn initialize() -> Initialized {
         safe_acc,
         vault_acc,
         vault_acc_authority,
+        whitelist,
         ..
     } = client
         .create_all_accounts_and_initialize(
@@ -75,6 +76,7 @@ pub fn initialize() -> Initialized {
         depositor,
         depositor_balance_before,
         srm_mint,
+        whitelist,
     }
 }
 
@@ -87,6 +89,7 @@ pub struct Initialized {
     pub depositor: Keypair,
     pub depositor_balance_before: u64,
     pub srm_mint: Keypair,
+    pub whitelist: Pubkey,
 }
 
 pub fn deposit_with_schedule(deposit_amount: u64, end_slot: u64, period_count: u64) -> Deposited {
@@ -102,26 +105,22 @@ pub fn deposit_with_schedule(deposit_amount: u64, end_slot: u64, period_count: u
     } = initialize();
 
     let (vesting_acc, vesting_acc_beneficiary) = {
-        let deposit_accs = [
-            AccountMeta::new(depositor.pubkey(), false),
-            // Authority of the depositing SPL account.
-            AccountMeta::new(client.payer().pubkey(), true),
-            AccountMeta::new(safe_srm_vault.pubkey(), false),
-            AccountMeta::new(safe_acc.pubkey(), false),
-            AccountMeta::new(spl_token::ID, false),
-            AccountMeta::new_readonly(solana_sdk::sysvar::rent::ID, false),
-            AccountMeta::new_readonly(solana_sdk::sysvar::clock::ID, false),
-        ];
         let vesting_acc_beneficiary = Keypair::generate(&mut OsRng);
-        let (_signature, keypair) = client
-            .create_account_and_deposit(
-                &deposit_accs,
-                vesting_acc_beneficiary.pubkey(),
+        let decimals = 3;
+        let (_signature, keypair, mint) = client
+            .create_vesting_account(
+                &depositor.pubkey(),
+                &safe_acc.pubkey(),
+                &safe_srm_vault.pubkey(),
+                &safe_srm_vault_authority,
+                &vesting_acc_beneficiary.pubkey(),
                 end_slot,
                 period_count,
                 deposit_amount,
+                decimals,
             )
             .unwrap();
+
         (keypair, vesting_acc_beneficiary)
     };
 
@@ -152,84 +151,4 @@ pub struct Deposited {
     pub end_slot: u64,
     pub period_count: u64,
     pub deposit_amount: u64,
-}
-
-pub fn mint_lsrm(
-    nft_count: usize,
-    deposit_amount: u64,
-    end_slot: u64,
-    period_count: u64,
-) -> LsrmMinted {
-    let Deposited {
-        client,
-        vesting_acc,
-        vesting_acc_beneficiary,
-        safe_acc,
-        safe_srm_vault,
-        safe_srm_vault_authority,
-        srm_mint,
-        ..
-    } = deposit_with_schedule(deposit_amount, end_slot, period_count);
-
-    // Let the beneficiary be the owner for the NFTs.
-    let lsrm_token_acc_owner = Keypair::from_bytes(&vesting_acc_beneficiary.to_bytes()).unwrap();
-
-    let lsrm = {
-        let mint_lsrm_accs = vec![
-            AccountMeta::new(vesting_acc_beneficiary.pubkey(), true),
-            AccountMeta::new(vesting_acc, false),
-            AccountMeta::new_readonly(safe_acc, false),
-            AccountMeta::new(safe_srm_vault_authority, false),
-            AccountMeta::new(spl_token::ID, false),
-            AccountMeta::new_readonly(sysvar::rent::ID, false),
-        ];
-        let signers = vec![&vesting_acc_beneficiary, client.payer()];
-        let (_sig, lsrm_nfts) = client
-            .create_nfts_and_mint_locked_with_signers(
-                nft_count,
-                &lsrm_token_acc_owner.pubkey(),
-                signers,
-                mint_lsrm_accs,
-            )
-            .unwrap();
-        lsrm_nfts
-    };
-
-    // Sanity check we have 2 lSRM outstanding.
-    {
-        let vesting_acc: Vesting =
-            serum_common::client::rpc::account_unpacked(client.rpc(), &vesting_acc);
-        assert_eq!(vesting_acc.locked_outstanding, nft_count as u64);
-    }
-
-    LsrmMinted {
-        client,
-        vesting_acc,
-        vesting_acc_beneficiary,
-        srm_mint,
-        safe_acc,
-        safe_srm_vault,
-        safe_srm_vault_authority,
-        lsrm,
-        lsrm_token_acc_owner,
-        deposit_amount,
-        end_slot,
-        period_count,
-    }
-}
-
-pub struct LsrmMinted {
-    pub client: Client,
-    pub lsrm: Vec<ClientMint>,
-    pub vesting_acc: Pubkey,
-    pub vesting_acc_beneficiary: Keypair,
-    pub safe_acc: Pubkey,
-    pub safe_srm_vault: Keypair,
-    pub safe_srm_vault_authority: Pubkey,
-    pub srm_mint: Keypair,
-    // Authority/owner of all the token accounts holding lSRM NFTs.
-    pub lsrm_token_acc_owner: Keypair,
-    pub deposit_amount: u64,
-    pub end_slot: u64,
-    pub period_count: u64,
 }

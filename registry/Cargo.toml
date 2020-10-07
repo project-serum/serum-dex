@@ -1,7 +1,7 @@
 [package]
 name = "serum-registry"
 version = "0.1.0"
-description = "Serum Node Registry"
+description = "Serum Registry"
 repository = "https://github.com/project-serum/serum-dex"
 edition = "2018"
 

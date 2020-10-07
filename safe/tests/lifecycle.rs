@@ -45,9 +45,9 @@ fn lifecycle() {
         nft_mint,
     ) = {
         let vesting_acc_beneficiary = Keypair::generate(&mut OsRng);
+        let current_slot = client.rpc().get_slot().unwrap();
         let end_slot = {
             let end_slot_offset = 100;
-            let current_slot = client.rpc().get_slot().unwrap();
             end_slot_offset + current_slot
         };
         let period_count = 10;
@@ -251,18 +251,19 @@ fn lifecycle() {
 
     // Wait for a vesting period to lapse.
     {
-        blockchain::pass_time(client.rpc(), expected_end_slot / expected_period_count);
+        let current_slot = client.rpc().get_slot().unwrap();
+        blockchain::pass_time(client.rpc(), current_slot + 20);
     }
 
-    // Redeem
+    // Redeem 10 SRM.
     //
     // Current state:
     //
     // * original-deposit-amount 100
     // * balance: 97
-    // * stake-amount 3
-    // * vest-amount: 10
-    //
+    // * stake-amount/whitelist_owned: 3
+    // * vested-amount: ~10 (depends on variance in slot time as tests run, this
+    //                       is a lower bound.)
     {
         let bene_tok_acc = rpc::create_token_account(
             client.rpc(),
@@ -284,7 +285,7 @@ fn lifecycle() {
             AccountMeta::new_readonly(solana_sdk::sysvar::clock::ID, false),
         ];
         let signers = [client.payer(), &expected_beneficiary];
-        let redeem_amount = 50;
+        let redeem_amount = 10;
         let new_nft_amount = expected_deposit - redeem_amount;
         client
             .redeem_with_signers(&signers, &accounts, redeem_amount)

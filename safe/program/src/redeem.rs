@@ -14,7 +14,7 @@ pub fn handler<'a>(
     accounts: &'a [AccountInfo<'a>],
     amount: u64,
 ) -> Result<(), SafeError> {
-    info!("handler: withdraw");
+    info!("handler: redeem");
 
     let acc_infos = &mut accounts.iter();
 
@@ -24,6 +24,8 @@ pub fn handler<'a>(
     let safe_vault_acc_info = next_account_info(acc_infos)?;
     let safe_vault_authority_acc_info = next_account_info(acc_infos)?;
     let safe_acc_info = next_account_info(acc_infos)?;
+    let nft_token_acc_info = next_account_info(acc_infos)?;
+    let nft_mint_acc_info = next_account_info(acc_infos)?;
     let token_program_acc_info = next_account_info(acc_infos)?;
     let clock_acc_info = next_account_info(acc_infos)?;
 
@@ -34,6 +36,8 @@ pub fn handler<'a>(
         vesting_acc_info,
         safe_vault_acc_info,
         safe_acc_info,
+        nft_token_acc_info,
+        nft_mint_acc_info,
         token_program_acc_info,
         clock_acc_info,
     })?;
@@ -44,11 +48,15 @@ pub fn handler<'a>(
             state_transition(StateTransitionRequest {
                 amount,
                 vesting_acc,
+                accounts,
+                vesting_acc_beneficiary_info,
                 safe_vault_acc_info,
                 safe_vault_authority_acc_info,
                 beneficiary_token_acc_info,
                 safe_acc_info,
                 token_program_acc_info,
+                nft_token_acc_info,
+                nft_mint_acc_info,
             })
             .map_err(Into::into)
         },
@@ -57,7 +65,7 @@ pub fn handler<'a>(
 }
 
 fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), SafeError> {
-    info!("access-control: withdraw");
+    info!("access-control: redeem");
 
     let AccessControlRequest {
         program_id,
@@ -67,6 +75,8 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), SafeError> {
         safe_vault_acc_info,
         safe_acc_info,
         token_program_acc_info,
+        nft_token_acc_info,
+        nft_mint_acc_info,
         clock_acc_info,
     } = req;
 
@@ -131,6 +141,20 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), SafeError> {
         }
     }
 
+    // NFT Mint.
+    {
+        // todo
+        //
+        // mint must match the vesting account mint
+    }
+
+    // NFT Token.
+    {
+        // todo
+        //
+        // mint of the token must match the above mint
+    }
+
     // Token program.
     {
         if *token_program_acc_info.key != spl_token::ID {
@@ -149,16 +173,20 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), SafeError> {
 }
 
 fn state_transition<'a, 'b>(req: StateTransitionRequest<'a, 'b>) -> Result<(), SafeError> {
-    info!("state-transition: withdraw");
+    info!("state-transition: redeem");
 
     let StateTransitionRequest {
         vesting_acc,
+        vesting_acc_beneficiary_info,
         amount,
+        accounts,
         safe_vault_acc_info,
         safe_vault_authority_acc_info,
         beneficiary_token_acc_info,
         safe_acc_info,
         token_program_acc_info,
+        nft_token_acc_info,
+        nft_mint_acc_info,
     } = req;
 
     // Remove the withdrawn token from the vesting account.
@@ -166,10 +194,23 @@ fn state_transition<'a, 'b>(req: StateTransitionRequest<'a, 'b>) -> Result<(), S
         vesting_acc.deduct(amount);
     }
 
-    // Withdraw token from vault to the user address.
+    // Burn the NFT.
     {
-        info!("invoking withdrawal token transfer");
+        info!("burning token receipts");
+        let burn_instruction = spl_token::instruction::burn(
+            &spl_token::ID,
+            nft_token_acc_info.key,
+            nft_mint_acc_info.key,
+            &vesting_acc.beneficiary,
+            &[],
+            amount,
+        )?;
+        solana_sdk::program::invoke_signed(&burn_instruction, &accounts[..], &[])?;
+    }
 
+    // Transfer token from vault to the user address.
+    {
+        info!("invoking token transfer");
         let withdraw_instruction = spl_token::instruction::transfer(
             &spl_token::ID,
             safe_vault_acc_info.key,
@@ -179,9 +220,8 @@ fn state_transition<'a, 'b>(req: StateTransitionRequest<'a, 'b>) -> Result<(), S
             amount,
         )?;
 
-        let data = safe_acc_info.try_borrow_data()?;
-        let nonce = data[data.len() - 1];
-        let signer_seeds = TokenVault::signer_seeds(safe_acc_info.key, &nonce);
+        let safe = Safe::unpack(&safe_acc_info.try_borrow_data()?)?;
+        let signer_seeds = TokenVault::signer_seeds(safe_acc_info.key, &safe.nonce);
 
         solana_sdk::program::invoke_signed(
             &withdraw_instruction,
@@ -208,15 +248,21 @@ struct AccessControlRequest<'a> {
     safe_acc_info: &'a AccountInfo<'a>,
     safe_vault_acc_info: &'a AccountInfo<'a>,
     token_program_acc_info: &'a AccountInfo<'a>,
+    nft_token_acc_info: &'a AccountInfo<'a>,
+    nft_mint_acc_info: &'a AccountInfo<'a>,
     clock_acc_info: &'a AccountInfo<'a>,
 }
 
 struct StateTransitionRequest<'a, 'b> {
     amount: u64,
     vesting_acc: &'b mut Vesting,
+    accounts: &'a [AccountInfo<'a>],
+    vesting_acc_beneficiary_info: &'a AccountInfo<'a>,
     safe_acc_info: &'a AccountInfo<'a>,
     beneficiary_token_acc_info: &'a AccountInfo<'a>,
     safe_vault_acc_info: &'a AccountInfo<'a>,
     safe_vault_authority_acc_info: &'a AccountInfo<'a>,
     token_program_acc_info: &'a AccountInfo<'a>,
+    nft_token_acc_info: &'a AccountInfo<'a>,
+    nft_mint_acc_info: &'a AccountInfo<'a>,
 }

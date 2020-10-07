@@ -1,5 +1,5 @@
 use serum_common::pack::Pack;
-use serum_safe::accounts::{Safe, TokenVault};
+use serum_safe::accounts::{Safe, TokenVault, Whitelist};
 use serum_safe::error::{SafeError, SafeErrorCode};
 use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::info;
@@ -20,12 +20,14 @@ pub fn handler<'a>(
     let acc_infos = &mut accounts.iter();
 
     let safe_acc_info = next_account_info(acc_infos)?;
+    let whitelist_acc_info = next_account_info(acc_infos)?;
     let mint_acc_info = next_account_info(acc_infos)?;
     let rent_acc_info = next_account_info(acc_infos)?;
 
     access_control(AccessControlRequest {
         program_id,
         safe_acc_info,
+        whitelist_acc_info,
         mint_acc_info,
         rent_acc_info,
         nonce,
@@ -36,6 +38,7 @@ pub fn handler<'a>(
         &mut |safe: &mut Safe| {
             state_transition(StateTransitionRequest {
                 safe,
+                whitelist: whitelist_acc_info.key,
                 mint: mint_acc_info.key,
                 authority,
                 nonce,
@@ -55,6 +58,7 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), SafeError> {
         safe_acc_info,
         mint_acc_info,
         rent_acc_info,
+        whitelist_acc_info,
         nonce,
     } = req;
 
@@ -73,6 +77,17 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), SafeError> {
         let rent = Rent::from_account_info(rent_acc_info)?;
         if !rent.is_exempt(safe_acc_info.lamports(), safe_data.len()) {
             return Err(SafeErrorCode::NotRentExempt)?;
+        }
+    }
+
+    // Whitelist.
+    {
+        let wl = Whitelist::unpack(&whitelist_acc_info.try_borrow_data()?)?;
+        if wl.initialized {
+            return Err(SafeErrorCode::WhitelistAlreadyInitialized)?;
+        }
+        if whitelist_acc_info.owner != program_id {
+            return Err(SafeErrorCode::InvalidAccountOwner)?;
         }
     }
 
@@ -121,12 +136,14 @@ fn state_transition<'a>(req: StateTransitionRequest<'a>) -> Result<(), SafeError
         mint,
         authority,
         nonce,
+        whitelist,
     } = req;
 
-    safe.mint = *mint;
     safe.initialized = true;
+    safe.mint = *mint;
     safe.authority = authority;
     safe.nonce = nonce;
+    safe.whitelist = *whitelist;
 
     info!("state-transition: success");
 
@@ -136,6 +153,7 @@ fn state_transition<'a>(req: StateTransitionRequest<'a>) -> Result<(), SafeError
 struct AccessControlRequest<'a> {
     program_id: &'a Pubkey,
     safe_acc_info: &'a AccountInfo<'a>,
+    whitelist_acc_info: &'a AccountInfo<'a>,
     mint_acc_info: &'a AccountInfo<'a>,
     rent_acc_info: &'a AccountInfo<'a>,
     nonce: u8,
@@ -143,6 +161,7 @@ struct AccessControlRequest<'a> {
 
 struct StateTransitionRequest<'a> {
     safe: &'a mut Safe,
+    whitelist: &'a Pubkey,
     mint: &'a Pubkey,
     authority: Pubkey,
     nonce: u8,

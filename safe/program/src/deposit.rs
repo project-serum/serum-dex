@@ -27,6 +27,8 @@ pub fn handler<'a>(
     let depositor_authority_acc_info = next_account_info(acc_infos)?;
     let safe_vault_acc_info = next_account_info(acc_infos)?;
     let safe_acc_info = next_account_info(acc_infos)?;
+    let nft_mint_acc_info = next_account_info(acc_infos)?;
+    let safe_vault_authority_acc_info = next_account_info(acc_infos)?;
     let token_program_acc_info = next_account_info(acc_infos)?;
     let rent_acc_info = next_account_info(acc_infos)?;
     let clock_acc_info = next_account_info(acc_infos)?;
@@ -42,6 +44,8 @@ pub fn handler<'a>(
         depositor_acc_info,
         depositor_authority_acc_info,
         safe_vault_acc_info,
+        safe_vault_authority_acc_info,
+        nft_mint_acc_info,
         token_program_acc_info,
         rent_acc_info,
         clock_acc_info,
@@ -59,8 +63,10 @@ pub fn handler<'a>(
                 vesting_acc,
                 vesting_acc_beneficiary,
                 safe_acc_info,
+                nft_mint_acc_info,
                 depositor_acc_info,
                 safe_vault_acc_info,
+                safe_vault_authority_acc_info,
                 depositor_authority_acc_info,
                 token_program_acc_info,
             })
@@ -80,7 +86,9 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), SafeError> {
         period_count,
         deposit_amount,
         vesting_acc_info,
+        safe_vault_authority_acc_info,
         safe_acc_info,
+        nft_mint_acc_info,
         depositor_acc_info,
         safe_vault_acc_info,
         depositor_authority_acc_info,
@@ -173,6 +181,12 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), SafeError> {
             return Err(SafeErrorCode::InvalidDepositAmount)?;
         }
     }
+    // NFT Mint.
+    {
+        // TODO:
+        //
+        // mint authority must be the program derived address of this safe.
+    }
 
     // Depositor.
     {
@@ -200,7 +214,9 @@ fn state_transition<'a, 'b>(req: StateTransitionRequest<'a, 'b>) -> Result<(), S
         vesting_acc_beneficiary,
         safe_acc_info,
         depositor_acc_info,
+        nft_mint_acc_info,
         safe_vault_acc_info,
+        safe_vault_authority_acc_info,
         depositor_authority_acc_info,
         token_program_acc_info,
     } = req;
@@ -210,19 +226,20 @@ fn state_transition<'a, 'b>(req: StateTransitionRequest<'a, 'b>) -> Result<(), S
         vesting_acc.safe = safe_acc_info.key.clone();
         vesting_acc.beneficiary = vesting_acc_beneficiary;
         vesting_acc.initialized = true;
-        vesting_acc.locked_outstanding = 0;
+        vesting_acc.claimed = false;
         vesting_acc.period_count = period_count;
         vesting_acc.start_balance = deposit_amount;
         vesting_acc.end_slot = end_slot;
         vesting_acc.start_slot = clock_slot;
         vesting_acc.balance = deposit_amount;
+        vesting_acc.locked_nft_mint = *nft_mint_acc_info.key;
+        vesting_acc.whitelist_owned = 0;
     }
 
     // Now transfer SPL funds from the depositor, to the
     // program-controlled vault.
     {
         info!("invoke SPL token transfer");
-
         let deposit_instruction = spl_token::instruction::transfer(
             &spl_token::ID,
             depositor_acc_info.key,
@@ -258,6 +275,8 @@ struct AccessControlRequest<'a> {
     depositor_acc_info: &'a AccountInfo<'a>,
     depositor_authority_acc_info: &'a AccountInfo<'a>,
     safe_vault_acc_info: &'a AccountInfo<'a>,
+    nft_mint_acc_info: &'a AccountInfo<'a>,
+    safe_vault_authority_acc_info: &'a AccountInfo<'a>,
     token_program_acc_info: &'a AccountInfo<'a>,
     rent_acc_info: &'a AccountInfo<'a>,
     clock_acc_info: &'a AccountInfo<'a>,
@@ -276,4 +295,6 @@ struct StateTransitionRequest<'a, 'b> {
     safe_vault_acc_info: &'a AccountInfo<'a>,
     depositor_authority_acc_info: &'a AccountInfo<'a>,
     token_program_acc_info: &'a AccountInfo<'a>,
+    nft_mint_acc_info: &'a AccountInfo<'a>,
+    safe_vault_authority_acc_info: &'a AccountInfo<'a>,
 }

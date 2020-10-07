@@ -13,14 +13,14 @@ lazy_static::lazy_static! {
 /// a vesting schedule.
 #[derive(Default, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Vesting {
+    /// True iff the vesting account has been initialized via deposit.
+    pub initialized: bool,
+    /// One time token for claiming the vesting account.
+    pub claimed: bool,
     /// The Safe instance this account is associated with.
     pub safe: Pubkey,
     /// The *effective* owner of this Vesting account.
     pub beneficiary: Pubkey,
-    /// True iff the vesting account has been initialized via deposit.
-    pub initialized: bool,
-    /// The amount of locked SRM minted and in circulation.
-    pub locked_outstanding: u64,
     /// The outstanding SRM deposit backing this vesting account.
     pub balance: u64,
     /// The starting balance of this vesting account, i.e., how much was
@@ -34,6 +34,11 @@ pub struct Vesting {
     /// The number of times vesting will occur. For example, if vesting
     /// is once a year over seven years, this will be 7.
     pub period_count: u64,
+    /// The spl token mint associated with this vesting account. The supply
+    /// should always equal the `balance` field.
+    pub locked_nft_mint: Pubkey,
+    /// The amount of tokens in custody of whitelisted programs.
+    pub whitelist_owned: u64,
 }
 
 impl Vesting {
@@ -42,18 +47,21 @@ impl Vesting {
         self.balance -= amount;
     }
 
-    /// Returns the amount available for minting locked token NFTs.
-    pub fn available_for_mint(&self) -> u64 {
-        self.balance - self.locked_outstanding
-    }
-
     /// Returns the amount available for withdrawal as of the given slot.
     pub fn available_for_withdrawal(&self, current_slot: u64) -> u64 {
-        std::cmp::min(self.balance_vested(current_slot), self.available_for_mint())
+        std::cmp::min(
+            self.balance_vested(current_slot),
+            self.available_for_whitelist(),
+        )
     }
 
-    // The outstanding SRM deposit associated with this account that has not
-    // been withdraw. Does not consider outstanding lSRM in circulation.
+    /// Amount available for whitelisted programs to transfer.
+    pub fn available_for_whitelist(&self) -> u64 {
+        self.balance - self.whitelist_owned
+    }
+
+    // The amount vested that's theoretically available for withdrawal--i.e.,
+    // if self.whitelist_owned were 0.
     fn balance_vested(&self, current_slot: u64) -> u64 {
         self.total_vested(current_slot) - self.withdrawn_amount()
     }
@@ -114,22 +122,26 @@ mod tests {
         let safe = Keypair::generate(&mut OsRng).pubkey();
         let beneficiary = Keypair::generate(&mut OsRng).pubkey();
         let initialized = true;
-        let locked_outstanding = 99;
         let start_balance = 10;
         let balance = start_balance;
         let start_slot = 11;
         let end_slot = 12;
         let period_count = 13;
+        let locked_nft_mint = Pubkey::new_rand();
+        let whitelist_owned = 14;
+        let claimed = true;
         let vesting_acc = Vesting {
             safe,
+            claimed,
             beneficiary,
             initialized,
-            locked_outstanding,
             balance,
             start_balance,
             start_slot,
             end_slot,
             period_count,
+            locked_nft_mint,
+            whitelist_owned,
         };
 
         // When I pack it into a slice.
@@ -141,13 +153,14 @@ mod tests {
         let va = Vesting::unpack(&dst).unwrap();
         assert_eq!(va.safe, safe);
         assert_eq!(va.beneficiary, beneficiary);
-        assert_eq!(va.locked_outstanding, locked_outstanding);
         assert_eq!(va.initialized, initialized);
         assert_eq!(va.start_balance, start_balance);
         assert_eq!(va.balance, balance);
         assert_eq!(va.start_slot, start_slot);
         assert_eq!(va.end_slot, end_slot);
         assert_eq!(va.period_count, period_count);
+        assert_eq!(va.locked_nft_mint, locked_nft_mint);
+        assert_eq!(va.whitelist_owned, whitelist_owned);
     }
 
     #[test]
@@ -160,12 +173,16 @@ mod tests {
         let end_slot = 20;
         let period_count = 5;
         let initialized = true;
-        let locked_outstanding = 0;
+        let locked_nft_mint = Pubkey::new_rand();
+        let whitelist_owned = 0;
+        let claimed = true;
         let vesting_acc = Vesting {
             safe,
+            claimed,
             beneficiary,
             initialized,
-            locked_outstanding,
+            locked_nft_mint,
+            whitelist_owned,
             balance,
             start_balance,
             start_slot,
@@ -190,10 +207,12 @@ mod tests {
         assert_eq!(r.initialized, false);
         assert_eq!(r.safe, Pubkey::new(&[0; 32]));
         assert_eq!(r.beneficiary, Pubkey::new(&[0; 32]));
-        assert_eq!(r.locked_outstanding, 0);
         assert_eq!(r.balance, 0);
         assert_eq!(r.start_slot, 0);
         assert_eq!(r.end_slot, 0);
         assert_eq!(r.period_count, 0);
+        assert_eq!(r.claimed, false);
+        assert_eq!(r.whitelist_owned, 0);
+        assert_eq!(r.locked_nft_mint, Pubkey::new_from_array([0; 32]));
     }
 }
