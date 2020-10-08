@@ -5,12 +5,12 @@ use solana_client_gen::solana_sdk::pubkey::Pubkey;
 /// Safe is the account representing an instance of this program.
 #[derive(Default, Debug, Serialize, Deserialize)]
 pub struct Safe {
+    /// Is `true` if this structure has been initialized
+    pub initialized: bool,
     /// The mint of the SPL token the safe is storing, e.g., the SRM mint.
     pub mint: Pubkey,
     /// The key with the ability to migrate or change the authority.
     pub authority: Pubkey,
-    /// Is `true` if this structure has been initialized
-    pub initialized: bool,
     /// The nonce to use for the program-derived-address owning the Safe's
     /// token vault.
     pub nonce: u8,

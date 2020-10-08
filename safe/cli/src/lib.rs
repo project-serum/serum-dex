@@ -18,10 +18,6 @@ pub struct Opts {
 
 #[derive(Debug, Clap)]
 pub struct Command {
-    /// Program id of the deployed on-chain registrar
-    #[clap(long = "pid")]
-    pub registry_pid: Option<Pubkey>,
-
     #[clap(flatten)]
     pub sub_cmd: SubCommand,
 }
@@ -31,7 +27,12 @@ pub enum SubCommand {
     /// Commands to view program owned accounts.
     Accounts(AccountsCommand),
     /// Governance commands requiring an authority key.
-    Gov(GovCommand),
+    Gov {
+        #[clap(short = 'f', long)]
+        authority_file: String,
+        #[clap(flatten)]
+        cmd: GovCommand,
+    },
 }
 
 // AccountsComand defines the subcommand to view formatted account data
@@ -70,35 +71,113 @@ pub enum AccountsCommand {
 /// Governance commands requiring an authority key.
 #[derive(Debug, Clap)]
 pub enum GovCommand {
-    /// Initializes a registrar.
-    Init {
-        /// Not required if authority_file is present.
-        #[clap(short, long, required_unless_present("authority-file"))]
-        authority: Option<Pubkey>,
-        /// Not required if authority is present.
-        #[clap(short = 'f', long, required_unless_present("authority"))]
-        authority_file: Option<String>,
+    /// Initializes a safe.
+    Initialize,
+    /// Adds a program to the whitelist.
+    WhitelistAdd {
+        /// Safe to update.
+        #[clap(short, long)]
+        safe: Pubkey,
+        /// Program to add to the whitelist.
+        #[clap(short, long)]
+        program_id: Pubkey,
+    },
+    /// Removes a program from the whitelist.
+    WhitelistDelete {
+        /// Safe to update.
+        #[clap(short, long)]
+        safe: Pubkey,
+        /// Program to delete from the whitelist.
+        #[clap(short, long)]
+        program_id: Pubkey,
+    },
+    /// Sets a new authority on the safe instance.
+    SetAuthority {
+        /// Safe to update.
+        #[clap(short, long)]
+        safe: Pubkey,
+        /// Pubkey of the new safe authority.
+        #[clap(short, long)]
+        new_authority: Pubkey,
+    },
+    /// Migrates the safe sending all the funds to a new account.
+    Migrate {
+        /// Safe to migrate.
+        #[clap(short, long)]
+        safe: Pubkey,
+        /// Token account to send the safe to.
+        #[clap(short, long)]
+        new_token_account: Pubkey,
     },
 }
 
 pub fn run(opts: Opts) -> Result<()> {
     let ctx = &opts.ctx;
-    let registry_pid = opts.cmd.registry_pid;
 
     match opts.cmd.sub_cmd {
         SubCommand::Accounts(cmd) => account_cmd(ctx, cmd),
-        SubCommand::Gov(cmd) => gov_cmd(ctx, cmd),
+        SubCommand::Gov {
+            authority_file,
+            cmd,
+        } => gov_cmd(ctx, authority_file, cmd),
     }
 }
 
 fn account_cmd(ctx: &Context, cmd: AccountsCommand) -> Result<()> {
-    // todo
-
-    Ok(())
+    match cmd {
+        AccountsCommand::Safe { address } => {
+            // todo
+            Ok(())
+        }
+        AccountsCommand::Vesting {
+            address,
+            beneficiary,
+        } => {
+            // todo
+            Ok(())
+        }
+        AccountsCommand::Whitelist { safe } => {
+            // todo
+            Ok(())
+        }
+        AccountsCommand::Vault { safe } => {
+            // todo
+            Ok(())
+        }
+    }
 }
 
-fn gov_cmd(ctx: &Context, cmd: GovCommand) -> Result<()> {
-    // todo
-
-    Ok(())
+fn gov_cmd(ctx: &Context, authority_file: String, cmd: GovCommand) -> Result<()> {
+    match cmd {
+        GovCommand::Initialize => {
+            // todo
+            Ok(())
+        }
+        GovCommand::WhitelistAdd { safe, program_id } => {
+            // todo
+            Ok(())
+        }
+        GovCommand::WhitelistDelete { safe, program_id } => {
+            // todo
+            Ok(())
+        }
+        GovCommand::SetAuthority {
+            safe,
+            new_authority,
+        } => {
+            // todo
+            Ok(())
+        }
+        GovCommand::Migrate {
+            safe,
+            new_token_account,
+        } => {
+            // todo
+            Ok(())
+        }
+        _ => {
+            // todo
+            Ok(())
+        }
+    }
 }

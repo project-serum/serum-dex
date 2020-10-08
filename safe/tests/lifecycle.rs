@@ -80,7 +80,7 @@ fn lifecycle() {
     // Then.
     //
     // The vesting account is setup properly.
-    {
+    let vesting_acc = {
         let vesting_acc = {
             let account = client
                 .rpc()
@@ -97,7 +97,8 @@ fn lifecycle() {
         assert_eq!(vesting_acc.period_count, expected_period_count);
         assert_eq!(vesting_acc.locked_nft_mint, nft_mint);
         assert_eq!(vesting_acc.whitelist_owned, 0);
-    }
+        vesting_acc
+    };
     // Then.
     //
     // The depositor's SPL token account has funds reduced.
@@ -251,8 +252,8 @@ fn lifecycle() {
 
     // Wait for a vesting period to lapse.
     {
-        let current_slot = client.rpc().get_slot().unwrap();
-        blockchain::pass_time(client.rpc(), current_slot + 20);
+        let wait_slot = vesting_acc.start_slot + 10;
+        blockchain::pass_time(client.rpc(), wait_slot);
     }
 
     // Redeem 10 SRM.
