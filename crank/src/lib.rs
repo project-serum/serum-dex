@@ -59,15 +59,15 @@ fn read_keypair_file(s: &str) -> Result<Keypair> {
 }
 
 #[derive(Clap, Debug)]
-struct Opts {
+pub struct Opts {
     #[clap(default_value = "mainnet")]
-    cluster: Cluster,
+    pub cluster: Cluster,
     #[clap(subcommand)]
-    command: Command,
+    pub command: Command,
 }
 
 #[derive(Clap, Debug)]
-enum Command {
+pub enum Command {
     Genesis {
         #[clap(long, short)]
         payer: String,
@@ -198,9 +198,7 @@ impl Opts {
     }
 }
 
-fn main() -> Result<()> {
-    let opts = Opts::parse();
-
+pub fn start(opts: Opts) -> Result<()> {
     let client = opts.client();
 
     match opts.command {
