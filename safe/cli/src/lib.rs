@@ -18,6 +18,9 @@ pub struct Opts {
 
 #[derive(Debug, Clap)]
 pub struct Command {
+    /// Program id of lockups program.
+    #[clap(short, long = "pid")]
+    pub pid: Pubkey,
     #[clap(flatten)]
     pub sub_cmd: SubCommand,
 }
@@ -115,15 +118,15 @@ pub fn run(opts: Opts) -> Result<()> {
     let ctx = &opts.ctx;
 
     match opts.cmd.sub_cmd {
-        SubCommand::Accounts(cmd) => account_cmd(ctx, cmd),
+        SubCommand::Accounts(cmd) => account_cmd(ctx, opts.cmd.pid, cmd),
         SubCommand::Gov {
             authority_file,
             cmd,
-        } => gov_cmd(ctx, authority_file, cmd),
+        } => gov_cmd(ctx, opts.cmd.pid, authority_file, cmd),
     }
 }
 
-fn account_cmd(ctx: &Context, cmd: AccountsCommand) -> Result<()> {
+fn account_cmd(ctx: &Context, pid: Pubkey, cmd: AccountsCommand) -> Result<()> {
     match cmd {
         AccountsCommand::Safe { address } => {
             // todo
@@ -147,7 +150,7 @@ fn account_cmd(ctx: &Context, cmd: AccountsCommand) -> Result<()> {
     }
 }
 
-fn gov_cmd(ctx: &Context, authority_file: String, cmd: GovCommand) -> Result<()> {
+fn gov_cmd(ctx: &Context, pid: Pubkey, authority_file: String, cmd: GovCommand) -> Result<()> {
     match cmd {
         GovCommand::Initialize => {
             // todo
