@@ -14,7 +14,7 @@ default = []
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
-spl-token = { version = "=2.0.3", default-features = false }
+spl-token = { version = "2.0.6", default-features = false }
 num_enum = "0.5.0"
 thiserror = "1.0.20"
 solana-client-gen = { path = "../solana-client-gen" }

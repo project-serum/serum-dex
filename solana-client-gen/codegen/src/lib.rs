@@ -89,11 +89,11 @@ pub fn solana_client_gen(
 
         #[derive(Debug, Error)]
         pub enum ClientError {
-            #[error("Invalid keypair filename")]
+            #[error("Invalid keypair filename: {0}")]
             InvalidKeyPairFile(String),
-            #[error("Error invoking rpc")]
+            #[error("Error invoking rpc: {0}")]
             RpcError(#[from] solana_client::client_error::ClientError),
-            #[error("Raw error")]
+            #[error("{0}")]
             RawError(String),
         }
 
@@ -181,6 +181,10 @@ pub fn solana_client_gen(
                 &self.program_id
             }
 
+                        pub fn options(&self) -> &RequestOptions {
+                                &self.opts
+                        }
+
             #client_methods
         }
 
@@ -190,9 +194,9 @@ pub fn solana_client_gen(
                 program_id: Pubkey,
                 filename: &str,
                 url: &str,
-            ) -> Result<Client, String> {
+            ) -> anyhow::Result<Client> {
                 Client::from_keypair_file(program_id, filename, url)
-                    .map_err(|_| "Unable to read keypair file".to_string())
+                    .map_err(|e| anyhow::anyhow!(e.to_string()))
             }
             fn with_options(self, opts: solana_client_gen::prelude::RequestOptions) -> Client {
                 self.with_options(opts)

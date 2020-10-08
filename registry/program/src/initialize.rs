@@ -1,5 +1,5 @@
 use serum_common::pack::Pack;
-use serum_registry::accounts::{registry, Registry};
+use serum_registry::accounts::{registrar, Registrar};
 use serum_registry::error::{RegistryError, RegistryErrorCode};
 use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::info;
@@ -9,34 +9,27 @@ pub fn handler<'a>(
     program_id: &'a Pubkey,
     accounts: &'a [AccountInfo<'a>],
     authority: Pubkey,
-    nonce: u8,
+    withdrawal_timelock: u64,
 ) -> Result<(), RegistryError> {
-    info!("handler: registry");
+    info!("handler: initialize");
 
     let acc_infos = &mut accounts.iter();
 
-    let registry_acc_info = next_account_info(acc_infos)?;
-    let mint_acc_info = next_account_info(acc_infos)?;
-    let mega_mint_acc_info = next_account_info(acc_infos)?;
+    let registrar_acc_info = next_account_info(acc_infos)?;
     let rent_acc_info = next_account_info(acc_infos)?;
 
     access_control(AccessControlRequest {
-        registry_acc_info,
-        mint_acc_info,
-        mega_mint_acc_info,
+        registrar_acc_info,
         rent_acc_info,
-        nonce,
     })?;
 
-    Registry::unpack_mut(
-        &mut registry_acc_info.try_borrow_mut_data()?,
-        &mut |registry: &mut Registry| {
+    Registrar::unpack_mut(
+        &mut registrar_acc_info.try_borrow_mut_data()?,
+        &mut |registrar: &mut Registrar| {
             state_transition(StateTransitionRequest {
-                mint: mint_acc_info.key,
-                mega_mint: mega_mint_acc_info.key,
-                registry,
+                registrar,
                 authority,
-                nonce,
+                withdrawal_timelock,
             })
             .map_err(Into::into)
         },
@@ -46,14 +39,11 @@ pub fn handler<'a>(
 }
 
 fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), RegistryError> {
-    info!("access-control: registry");
+    info!("access-control: initialize");
 
     let AccessControlRequest {
-        registry_acc_info,
-        mint_acc_info,
-        mega_mint_acc_info,
+        registrar_acc_info,
         rent_acc_info,
-        nonce,
     } = req;
 
     // todo
@@ -67,21 +57,15 @@ fn state_transition<'a>(req: StateTransitionRequest<'a>) -> Result<(), RegistryE
     info!("state-transition: initialize");
 
     let StateTransitionRequest {
-        registry,
+        registrar,
         authority,
-        mint,
-        mega_mint,
-        nonce,
+        withdrawal_timelock,
     } = req;
 
-    registry.initialized = true;
-    registry.mint = *mint;
-    registry.mega_mint = *mega_mint;
-    registry.nonce = nonce;
-    registry.capabilities = [Pubkey::new_from_array([0; 32]); registry::CAPABILITIES_LEN];
-    registry.authority = authority;
-    registry.rewards = Pubkey::new_from_array([0; 32]);
-    registry.rewards_return_value = Pubkey::new_from_array([0; 32]);
+    registrar.initialized = true;
+    registrar.capabilities_fees_bps = [0; 32];
+    registrar.authority = authority;
+    registrar.withdrawal_timelock = withdrawal_timelock;
 
     info!("state-transition: success");
 
@@ -89,17 +73,12 @@ fn state_transition<'a>(req: StateTransitionRequest<'a>) -> Result<(), RegistryE
 }
 
 struct AccessControlRequest<'a> {
-    registry_acc_info: &'a AccountInfo<'a>,
-    mint_acc_info: &'a AccountInfo<'a>,
-    mega_mint_acc_info: &'a AccountInfo<'a>,
+    registrar_acc_info: &'a AccountInfo<'a>,
     rent_acc_info: &'a AccountInfo<'a>,
-    nonce: u8,
 }
 
 struct StateTransitionRequest<'a> {
-    registry: &'a mut Registry,
+    registrar: &'a mut Registrar,
     authority: Pubkey,
-    mint: &'a Pubkey,
-    mega_mint: &'a Pubkey,
-    nonce: u8,
+    withdrawal_timelock: u64,
 }

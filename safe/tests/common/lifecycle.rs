@@ -14,7 +14,7 @@ use solana_client_gen::solana_sdk::instruction::AccountMeta;
 use solana_client_gen::solana_sdk::pubkey::Pubkey;
 use solana_client_gen::solana_sdk::signature::{Keypair, Signer};
 use solana_client_gen::solana_sdk::sysvar;
-use spl_token::pack::Pack as TokenPack;
+use solana_sdk::program_pack::Pack as TokenPack;
 
 // Sets up the initial on-chain state for a serum safe.
 pub fn initialize() -> Initialized {

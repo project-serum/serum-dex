@@ -1,5 +1,5 @@
 use serum_common::pack::Pack;
-use serum_registry::accounts::{Entity, Stake};
+use serum_registry::accounts::{Entity, Member};
 use serum_registry::error::{RegistryError, RegistryErrorCode};
 use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::info;
@@ -9,49 +9,45 @@ pub fn handler<'a>(
     program_id: &'a Pubkey,
     accounts: &'a [AccountInfo<'a>],
     amount: u64,
-    beneficiary: Pubkey,
     is_mega: bool,
 ) -> Result<(), RegistryError> {
     info!("handler: stake");
 
     let acc_infos = &mut accounts.iter();
 
-    let stake_acc_info = next_account_info(acc_infos)?;
-    let staker_tok_authority_acc_info = next_account_info(acc_infos)?;
-    let staker_tok_acc_info = next_account_info(acc_infos)?;
-    let registry_acc_info = next_account_info(acc_infos)?;
-    let vault_acc_info = next_account_info(acc_infos)?;
+    let depositor_tok_owner_acc_info = next_account_info(acc_infos)?;
+    let depositor_tok_acc_info = next_account_info(acc_infos)?;
+    let member_acc_info = next_account_info(acc_infos)?;
+    let member_authority_acc_info = next_account_info(acc_infos)?;
     let entity_acc_info = next_account_info(acc_infos)?;
     let token_program_acc_info = next_account_info(acc_infos)?;
 
     access_control(AccessControlRequest {
-        staker_tok_authority_acc_info,
-        staker_tok_acc_info,
-        stake_acc_info,
-        registry_acc_info,
-        vault_acc_info,
+        depositor_tok_owner_acc_info,
+        depositor_tok_acc_info,
+        member_acc_info,
+        member_authority_acc_info,
         entity_acc_info,
         token_program_acc_info,
-        is_mega,
     })?;
 
     Entity::unpack_mut(
         &mut entity_acc_info.try_borrow_mut_data()?,
         &mut |entity: &mut Entity| {
-            Stake::unpack_mut(
-                &mut stake_acc_info.try_borrow_mut_data()?,
-                &mut |stake: &mut Stake| {
+            Member::unpack_mut(
+                &mut member_acc_info.try_borrow_mut_data()?,
+                &mut |member: &mut Member| {
                     state_transition(StateTransitionRequest {
                         entity,
-                        stake,
-                        entity_acc_info,
-                        staker_tok_authority_acc_info,
-                        staker_tok_acc_info,
-                        vault_acc_info,
-                        token_program_acc_info,
+                        member,
                         amount,
-                        beneficiary,
                         is_mega,
+                        depositor_tok_owner_acc_info,
+                        depositor_tok_acc_info,
+                        member_acc_info,
+                        member_authority_acc_info,
+                        entity_acc_info,
+                        token_program_acc_info,
                     })
                     .map_err(Into::into)
                 },
@@ -66,14 +62,12 @@ fn access_control(req: AccessControlRequest) -> Result<(), RegistryError> {
     info!("access-control: stake");
 
     let AccessControlRequest {
-        staker_tok_authority_acc_info,
-        staker_tok_acc_info,
-        stake_acc_info,
-        registry_acc_info,
-        vault_acc_info,
+        depositor_tok_owner_acc_info,
+        depositor_tok_acc_info,
+        member_acc_info,
+        member_authority_acc_info,
         entity_acc_info,
         token_program_acc_info,
-        is_mega,
     } = req;
 
     // todo
@@ -88,29 +82,28 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
 
     let StateTransitionRequest {
         entity,
-        stake,
-        entity_acc_info,
-        staker_tok_authority_acc_info,
-        staker_tok_acc_info,
-        vault_acc_info,
-        token_program_acc_info,
+        member,
         amount,
-        beneficiary,
         is_mega,
+        depositor_tok_owner_acc_info,
+        depositor_tok_acc_info,
+        member_acc_info,
+        member_authority_acc_info,
+        entity_acc_info,
+        token_program_acc_info,
     } = req;
 
-    // Stake account.
+    // Transfer funds into the staking pool.
     {
-        stake.initialized = true;
-        stake.beneficiary = beneficiary;
-        stake.entity_id = *entity_acc_info.key;
-        stake.amount = 0;
-        stake.mega_amount = 0;
+        // todo
+    }
 
+    // Member account.
+    {
         if is_mega {
-            stake.mega_amount = amount;
+            member.mega_amount += amount;
         } else {
-            stake.amount = amount;
+            member.amount = amount;
         }
     }
 
@@ -123,53 +116,29 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
         }
     }
 
-    // Transfer funds from staker to vault.
-    {
-        let deposit_instruction = spl_token::instruction::transfer(
-            &spl_token::ID,
-            staker_tok_acc_info.key,
-            vault_acc_info.key,
-            staker_tok_authority_acc_info.key,
-            &[],
-            amount,
-        )?;
-        solana_sdk::program::invoke_signed(
-            &deposit_instruction,
-            &[
-                staker_tok_acc_info.clone(),
-                staker_tok_authority_acc_info.clone(),
-                vault_acc_info.clone(),
-                token_program_acc_info.clone(),
-            ],
-            &[],
-        )?;
-    }
-
     info!("state-transition: success");
 
     Ok(())
 }
 
 struct AccessControlRequest<'a> {
-    staker_tok_authority_acc_info: &'a AccountInfo<'a>,
-    staker_tok_acc_info: &'a AccountInfo<'a>,
-    stake_acc_info: &'a AccountInfo<'a>,
-    registry_acc_info: &'a AccountInfo<'a>,
-    vault_acc_info: &'a AccountInfo<'a>,
+    depositor_tok_owner_acc_info: &'a AccountInfo<'a>,
+    depositor_tok_acc_info: &'a AccountInfo<'a>,
+    member_acc_info: &'a AccountInfo<'a>,
+    member_authority_acc_info: &'a AccountInfo<'a>,
     entity_acc_info: &'a AccountInfo<'a>,
     token_program_acc_info: &'a AccountInfo<'a>,
-    is_mega: bool,
 }
 
 struct StateTransitionRequest<'a, 'b> {
     entity: &'b mut Entity,
-    stake: &'b mut Stake,
-    entity_acc_info: &'a AccountInfo<'a>,
-    staker_tok_authority_acc_info: &'a AccountInfo<'a>,
-    staker_tok_acc_info: &'a AccountInfo<'a>,
-    token_program_acc_info: &'a AccountInfo<'a>,
-    vault_acc_info: &'a AccountInfo<'a>,
+    member: &'b mut Member,
     amount: u64,
-    beneficiary: Pubkey,
     is_mega: bool,
+    depositor_tok_owner_acc_info: &'a AccountInfo<'a>,
+    depositor_tok_acc_info: &'a AccountInfo<'a>,
+    member_acc_info: &'a AccountInfo<'a>,
+    member_authority_acc_info: &'a AccountInfo<'a>,
+    entity_acc_info: &'a AccountInfo<'a>,
+    token_program_acc_info: &'a AccountInfo<'a>,
 }

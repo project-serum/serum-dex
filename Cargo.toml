@@ -6,12 +6,14 @@ members = [
     "crank",
     "safe",
     "registry",
+    "registry/cli",
     "node",
     "node/json-rpc",
     "node/logging",
     "node/crank",
     "node/registry",
     "node/context",
+    "node/dev",
 ]
 exclude = [
     "dex",

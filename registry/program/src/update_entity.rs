@@ -8,6 +8,7 @@ use solana_sdk::pubkey::Pubkey;
 pub fn handler<'a>(
     program_id: &'a Pubkey,
     accounts: &'a [AccountInfo<'a>],
+    leader: Pubkey,
     capabilities: u32,
 ) -> Result<(), RegistryError> {
     info!("handler: update_entity");
@@ -28,6 +29,7 @@ pub fn handler<'a>(
             state_transition(StateTransitionRequest {
                 entity,
                 capabilities,
+                leader,
             })
             .map_err(Into::into)
         },
@@ -57,8 +59,10 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
     let StateTransitionRequest {
         entity,
         capabilities,
+        leader,
     } = req;
 
+    entity.leader = leader;
     entity.capabilities = capabilities;
 
     info!("state-transition: success");
@@ -74,4 +78,5 @@ struct AccessControlRequest<'a> {
 struct StateTransitionRequest<'a> {
     entity: &'a mut Entity,
     capabilities: u32,
+    leader: Pubkey,
 }

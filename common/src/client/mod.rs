@@ -30,6 +30,20 @@ impl FromStr for Cluster {
     }
 }
 
+impl std::fmt::Display for Cluster {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let clust_str = match self {
+            Cluster::Testnet => "testnet",
+            Cluster::Mainnet => "mainnet",
+            Cluster::VipMainnet => "vipmainnet",
+            Cluster::Devnet => "devnet",
+            Cluster::Localnet => "localnet",
+            Cluster::Debug => "debut",
+        };
+        write!(f, "{}", clust_str)
+    }
+}
+
 impl Cluster {
     pub fn url(&self) -> &'static str {
         match self {

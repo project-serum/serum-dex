@@ -60,3 +60,9 @@ pub fn get_logger(module: &'static str) -> slog::Logger {
         .unwrap()
         .new(slog::o!("module" => module))
 }
+
+/// Must be called when using std::process::exit so that the async drain
+/// can properly flush.
+pub fn stop() {
+    LOGGER.lock().unwrap().take();
+}

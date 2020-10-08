@@ -9,7 +9,7 @@ use solana_client_gen::solana_sdk::instruction::AccountMeta;
 use solana_client_gen::solana_sdk::pubkey::Pubkey;
 use solana_client_gen::solana_sdk::signers::Signers;
 use solana_client_gen::solana_sdk::system_instruction;
-use spl_token::pack::Pack as TokenPack;
+use solana_sdk::program_pack::Pack as TokenPack;
 
 // TODO: Use deterministic derived addresses for all accounts associated with
 //       the program. This will allow users to query on chain data with nothing

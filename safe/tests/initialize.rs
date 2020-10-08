@@ -6,8 +6,8 @@ use serum_safe::error::SafeErrorCode;
 use solana_client_gen::solana_sdk;
 use solana_client_gen::solana_sdk::commitment_config::CommitmentConfig;
 use solana_client_gen::solana_sdk::instruction::AccountMeta;
+use solana_client_gen::solana_sdk::program_pack::Pack as TokenPack;
 use solana_client_gen::solana_sdk::signature::{Keypair, Signer};
-use spl_token::pack::Pack as TokenPack;
 
 mod common;
 

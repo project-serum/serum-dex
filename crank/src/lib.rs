@@ -27,13 +27,13 @@ use solana_client::rpc_client::RpcClient;
 use solana_client::rpc_config::RpcSendTransactionConfig;
 use solana_sdk::commitment_config::CommitmentConfig;
 use solana_sdk::instruction::{AccountMeta, Instruction};
+use solana_sdk::program_pack::Pack;
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::Signature;
 use solana_sdk::signature::{Keypair, Signer};
 use solana_sdk::system_instruction::SystemInstruction;
 use solana_sdk::transaction::Transaction;
 use spl_token::instruction as token_instruction;
-use spl_token::pack::Pack;
 use std::borrow::Cow;
 use std::collections::BTreeSet;
 use std::mem::size_of;
@@ -984,9 +984,11 @@ fn list_market(
 
     debug_println!("Creating coin vault...");
     let coin_vault = create_token_account(client, coin_mint, &vault_signer_pk, payer)?;
+    debug_println!("Created account: {} ...", coin_vault.pubkey());
 
     debug_println!("Creating pc vault...");
     let pc_vault = create_token_account(client, pc_mint, &listing_keys.vault_signer_pk, payer)?;
+    debug_println!("Created account: {} ...", pc_vault.pubkey());
 
     let init_market_instruction = serum_dex::instruction::initialize_market(
         &market_key.pubkey(),

@@ -10,15 +10,14 @@ use solana_sdk::entrypoint::ProgramResult;
 use solana_sdk::info;
 use solana_sdk::pubkey::Pubkey;
 
-mod collect_rewards;
-mod complete_stake_withdrawal;
 mod create_entity;
 mod donate;
+mod end_stake_withdrawal;
 mod initialize;
-mod initiate_stake_withdrawal;
+mod join_entity;
 mod register_capability;
-mod set_rewards;
 mod stake;
+mod start_stake_withdrawal;
 mod update_entity;
 
 solana_sdk::entrypoint!(process_instruction);
@@ -33,49 +32,41 @@ fn process_instruction<'a>(
         .map_err(|_| RegistryError::ErrorCode(RegistryErrorCode::WrongSerialization))?;
 
     let result = match instruction {
-        RegistryInstruction::Initialize { authority, nonce } => {
-            initialize::handler(program_id, accounts, authority, nonce)
-        }
-        RegistryInstruction::SetRewards {
-            rewards,
-            rewards_return_value,
-        } => set_rewards::handler(program_id, accounts, rewards, rewards_return_value),
-        RegistryInstruction::Donate { amount } => donate::handler(program_id, accounts, amount),
+        RegistryInstruction::Initialize {
+            authority,
+            withdrawal_timelock,
+        } => initialize::handler(program_id, accounts, authority, withdrawal_timelock),
+        RegistryInstruction::RegisterCapability {
+            capability_id,
+            capability_fee_bps,
+        } => register_capability::handler(program_id, accounts, capability_id, capability_fee_bps),
         RegistryInstruction::CreateEntity {
             capabilities,
             stake_kind,
         } => create_entity::handler(program_id, accounts, capabilities, stake_kind),
-        RegistryInstruction::UpdateEntity { capabilities } => {
-            update_entity::handler(program_id, accounts, capabilities)
-        }
-        RegistryInstruction::RegisterCapability {
-            capability_id,
-            capability_program,
-        } => register_capability::handler(program_id, accounts, capability_id, capability_program),
-        RegistryInstruction::Stake {
-            amount,
+        RegistryInstruction::UpdateEntity {
+            leader,
+            capabilities,
+        } => update_entity::handler(program_id, accounts, leader, capabilities),
+        RegistryInstruction::JoinEntity {
             beneficiary,
-            is_mega,
-        } => stake::handler(program_id, accounts, amount, beneficiary, is_mega),
-        RegistryInstruction::CollectRewards => collect_rewards::handler(program_id, accounts),
-        RegistryInstruction::AddStake { amount } => Err(RegistryError::ErrorCode(
+            delegate,
+        } => join_entity::handler(program_id, accounts, beneficiary, delegate),
+        RegistryInstruction::Stake { amount, is_mega } => Err(RegistryError::ErrorCode(
             RegistryErrorCode::NotReadySeeNextMajorVersion,
         )),
-        RegistryInstruction::StakeLocked {
-            amount,
-            beneficiary,
-        } => Err(RegistryError::ErrorCode(
-            RegistryErrorCode::NotReadySeeNextMajorVersion,
-        )),
-        RegistryInstruction::InitiateStakeWithdrawal {
+        RegistryInstruction::StartStakeWithdrawal {
             amount,
             mega_amount,
         } => Err(RegistryError::ErrorCode(
             RegistryErrorCode::NotReadySeeNextMajorVersion,
         )),
-        RegistryInstruction::CompleteStakeWithdrawal { is_token, is_mega } => Err(
-            RegistryError::ErrorCode(RegistryErrorCode::NotReadySeeNextMajorVersion),
-        ),
+        RegistryInstruction::EndStakeWithdrawal => Err(RegistryError::ErrorCode(
+            RegistryErrorCode::NotReadySeeNextMajorVersion,
+        )),
+        RegistryInstruction::Donate { amount } => Err(RegistryError::ErrorCode(
+            RegistryErrorCode::NotReadySeeNextMajorVersion,
+        )),
     };
 
     result?;

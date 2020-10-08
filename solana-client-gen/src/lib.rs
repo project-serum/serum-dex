@@ -155,6 +155,8 @@ pub mod prelude {
     pub use solana_sdk::pubkey::Pubkey;
 
     #[cfg(feature = "client")]
+    pub use anyhow;
+    #[cfg(feature = "client")]
     pub use codegen::solana_client_gen;
     #[cfg(feature = "client")]
     pub use rand::rngs::OsRng;
@@ -186,11 +188,10 @@ pub mod prelude {
         pub tx: RpcSendTransactionConfig,
     }
 
-    // Used for tests.
     #[cfg(feature = "client")]
     pub trait ClientGen: std::marker::Sized {
         fn from_keypair_file(program_id: Pubkey, filename: &str, url: &str)
-            -> Result<Self, String>;
+            -> anyhow::Result<Self>;
         fn with_options(self, opts: RequestOptions) -> Self;
         fn rpc(&self) -> &RpcClient;
         fn payer(&self) -> &Keypair;
