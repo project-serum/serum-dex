@@ -2,12 +2,15 @@ pub use solana_sdk;
 
 pub mod schema;
 
+use arrayref::{array_refs, mut_array_refs};
+
 use std::ops::{Deref, DerefMut};
 
 use solana_sdk::{
     account_info::AccountInfo,
-    entrypoint::ProgramResult,
-    entrypoint_deprecated, info,
+    entrypoint::{ProgramResult},
+    entrypoint,
+    info,
     instruction::{AccountMeta, Instruction},
     program::invoke,
     program_error::ProgramError,
@@ -90,7 +93,7 @@ where
 }
 
 #[cfg(feature = "program")]
-entrypoint_deprecated!(entry);
+entrypoint!(entry);
 fn entry(program_id: &Pubkey, accounts: &[AccountInfo], instruction_data: &[u8]) -> ProgramResult {
     let context = ProgramContext {
         program_id,
@@ -121,6 +124,7 @@ impl<'a, 'b: 'a> ProgramContext<'a, 'b> {
         .map(|i| &self.accounts[i])
     }
 
+    #[inline(never)]
     fn process_instruction(&self) -> PoolResult<()> {
         let mut instruction_data_cursor = self.instruction_data;
         let msg_reader = read_message(
@@ -132,118 +136,117 @@ impl<'a, 'b: 'a> ProgramContext<'a, 'b> {
 
         let root_msg;
         let root_state_account;
-        let state_reader: proxy_account::Reader = {
+        let state_reader: Option<proxy_account::Reader> = {
             root_state_account = self.lookup_account_info(reader.get_state_root()?)?;
             if root_state_account.owner != self.program_id {
                 return Err("wrong account owner".into());
             }
             let root_state_ref = root_state_account.try_borrow_data()?;
-            let mut root_state_cursor: &[u8] = root_state_ref.deref();
-            root_msg = read_message(
-                &mut root_state_cursor,
-                capnp::message::DEFAULT_READER_OPTIONS,
-            )?;
-            root_msg.get_root()?
-        };
-        let state = state_reader.which().or(Err("invalid account state tag"))?;
 
-        let instruction = reader
+            let (init_tag, mut root_state_cursor) = array_refs![root_state_ref.deref(), 8; ..;];
+            if init_tag == &[0u8; 8] {
+                None
+            } else {
+                root_msg = read_message(
+                    &mut root_state_cursor,
+                    capnp::message::DEFAULT_READER_OPTIONS,
+                )?;
+                Some(root_msg.get_root()?)
+            }
+        };
+        let ref state = state_reader.map(|r| r.which().or(Err("invalid account state tag"))).transpose()?;
+
+        let ref instruction = reader
             .get_instruction()
             .which()
             .or(Err("invalid proxy instruction tag"))?;
         use proxy_request::instruction::Which as InstrTag;
         use proxy_account::Which as StateTag;
-        match (instruction, state) {
-            (InstrTag::RefreshBasket(()), StateTag::ProxyState(Ok(state))) => {
-                let basket = state.get_basket()?;
-                match basket.which().or(Err("invalid basket tag"))? {
-                    basket::Static(_) => Err("can't refresh a static basket".into()),
-                    basket::Dynamic(_) => Err(PoolError::Todo),
-                }
-            }
+        match state {
+            &Some(StateTag::ProxyState(ref state)) => {
+                let state = state.as_ref().map_err(|e| e.clone())?;
+                match instruction {
+                    &InstrTag::RefreshBasket(()) => {
+                        let basket = state.get_basket()?;
+                        match basket.which().or(Err("invalid basket tag"))? {
+                            basket::Static(_) => Err("can't refresh a static basket".into()),
+                            basket::Dynamic(_) => Err(PoolError::Todo),
+                        }
+                    }
+                    &InstrTag::CreateOrRedeem(_) => Err(PoolError::Todo),
+                    &InstrTag::AcceptAdmin(ref instr) => {
+                        let acceptor = self
+                            .lookup_account_info(
+                                instr.get_pending_admin_signature()?
+                            )?;
+                        let pending_admin_reader = state.get_pending_admin_key()?;
+                        let pending_admin = deserialize_address(pending_admin_reader);
+                        if acceptor.signer_key() != Some(&pending_admin) {
+                            return Err("not authorized to accept admin".into());
+                        }
+                        let mut msg_builder = message::Builder::new_default();
+                        {
+                            let proxy_account_builder: proxy_account::Builder = msg_builder.init_root();
+                            let mut proxy_state_builder = proxy_account_builder.init_proxy_state();
 
-            (InstrTag::CreateOrRedeem(_instr), StateTag::ProxyState(Ok(_state))) => Err(PoolError::Todo),
+                            proxy_state_builder.set_basket(state.get_basket()?)?;
+                            proxy_state_builder.set_admin_key(pending_admin_reader)?;
+                            proxy_state_builder.set_pool_token(state.get_pool_token()?)?;
+                        }
+                        let mut root_state_ref_mut = root_state_account.try_borrow_mut_data()?;
+                        let mut root_state_cursor = &mut root_state_ref_mut.deref_mut()[8..];
 
-            (InstrTag::AcceptAdmin(instr), StateTag::ProxyState(Ok(state))) => {
-                let acceptor = self
-                    .lookup_account_info(
-                        instr.get_pending_admin_signature()?
-                    )?;
-                let pending_admin_reader = state.get_pending_admin_key()?;
-                let pending_admin = deserialize_address(pending_admin_reader);
-                if acceptor.signer_key() != Some(&pending_admin) {
-                    return Err("not authorized to accept admin".into());
-                }
-                let mut msg_builder = message::Builder::new_default();
-                {
-                    let proxy_account_builder: proxy_account::Builder = msg_builder.init_root();
-                    let mut proxy_state_builder = proxy_account_builder.init_proxy_state();
-
-                    proxy_state_builder.set_basket(state.get_basket()?)?;
-                    proxy_state_builder.set_admin_key(pending_admin_reader)?;
-                    proxy_state_builder.set_pool_token(state.get_pool_token()?)?;
-                }
-                let mut root_state_ref_mut = root_state_account.try_borrow_mut_data()?;
-                let mut root_state_cursor = root_state_ref_mut.deref_mut();
-                Ok(write_message(&mut root_state_cursor, &msg_builder)?)
-            }
-
-            (InstrTag::AdminRequest(instr), StateTag::ProxyState(Ok(state))) => {
-                use proxy_request::instruction::admin_request;
-                {
-                    let signer = self
-                        .lookup_account_info(
-                            instr.get_admin_signature()?
-                        )?;
-                    let admin = deserialize_address(state.get_admin_key()?);
-                    if signer.signer_key() != Some(&admin) {
-                        return Err("invalid admin signature".into());
+                        Ok(write_message(&mut root_state_cursor, &msg_builder)?)
+                    }
+                    &InstrTag::AdminRequest(ref admin_request) => {
+                        let signing_admin = self
+                            .lookup_account_info(
+                                admin_request.get_admin_signature()?)?
+                            .signer_key();
+                        let expected_admin = deserialize_address(state.get_admin_key()?);
+                        if signing_admin != Some(&expected_admin) {
+                            return Err("unauthorized admin signature".into());
+                        }
+                        use proxy_request::instruction::admin_request::Which as AdminReqTag;
+                        match &admin_request.which().or(Err("invalid admin request tag"))? {
+                            AdminReqTag::SetPendingAdmin(_) => Err(PoolError::Todo),
+                            AdminReqTag::SetBasket(_) => Err(PoolError::Todo),
+                        }
+                    },
+                    &InstrTag::InitProxy(_) => {
+                        Err("account already initialized".into())
                     }
                 }
-
-                let mut msg_builder = message::Builder::new_default();
-                {
-                    let proxy_account_builder: proxy_account::Builder = msg_builder.init_root();
-                    let mut proxy_state_builder = proxy_account_builder.init_proxy_state();
-
-                    proxy_state_builder.set_pool_token(state.get_pool_token()?)?;
-                    proxy_state_builder.set_admin_key(state.get_admin_key()?)?;
-                    match instr.which().or(Err("invalid admin request"))? {
-                        admin_request::SetPendingAdmin(pending_admin) => {
-                            proxy_state_builder.set_pending_admin_key(pending_admin?)?;
-                            proxy_state_builder.set_basket(state.get_basket()?)?;
-                        }
-                        admin_request::SetBasket(new_basket) => {
-                            proxy_state_builder.set_pending_admin_key(state.get_pending_admin_key()?)?;
-                            proxy_state_builder.set_basket(new_basket?)?;
-                        },
-                    };
-                }
-                let mut root_state_ref_mut = root_state_account.try_borrow_mut_data()?;
-                let mut root_state_cursor = root_state_ref_mut.deref_mut();
-                Ok(write_message(&mut root_state_cursor, &msg_builder)?)
             }
+            &None => match instruction {
+                &InstrTag::InitProxy(ref init_proxy_reader) => {
+                    let mut msg_builder = message::Builder::new_default();
+                    {
+                        let proxy_account_builder: proxy_account::Builder = msg_builder.init_root();
+                        let mut proxy_state_builder = proxy_account_builder.init_proxy_state();
 
-            (InstrTag::InitProxy(init_proxy_reader), StateTag::Unset(())) => {
-                let mut msg_builder = message::Builder::new_default();
-                {
-                    let proxy_account_builder: proxy_account::Builder = msg_builder.init_root();
-                    let mut proxy_state_builder = proxy_account_builder.init_proxy_state();
+                        proxy_state_builder.set_basket(init_proxy_reader.get_basket()?)?;
+                        proxy_state_builder.set_admin_key(init_proxy_reader.get_admin_key()?)?;
 
-                    proxy_state_builder.set_basket(init_proxy_reader.get_basket()?)?;
-                    proxy_state_builder.set_admin_key(init_proxy_reader.get_admin_key()?)?;
-
-                    // TODO validate the pool token
-                    proxy_state_builder.set_pool_token(init_proxy_reader.get_pool_token()?)?;
+                        // TODO validate the pool token
+                        proxy_state_builder.set_pool_token(init_proxy_reader.get_pool_token()?)?;
+                    }
+                    let mut root_state_ref_mut = root_state_account.try_borrow_mut_data()?;
+                    let (len_prefix, tail) = mut_array_refs![root_state_ref_mut.deref_mut(), 8; ..;];
+                    let tail_len = tail.len();
+                    let mut root_state_cursor = &mut root_state_ref_mut[..];
+                    root_state_cursor[0] = 1;
+                    root_state_cursor = &mut root_state_cursor[8..];
+                    Ok(write_message(&mut root_state_cursor, &msg_builder)?)
                 }
-                let mut root_state_ref_mut = root_state_account.try_borrow_mut_data()?;
-                let mut root_state_cursor = root_state_ref_mut.deref_mut();
-                Ok(write_message(&mut root_state_cursor, &msg_builder)?)
-            }   
-
-            (_, StateTag::ProxyState(Err(e))) => return Err(e.into()),
-            (_, StateTag::ProxyState(_)) => Err("account already initialized".into()),
-            (_, StateTag::Unset(_)) => Err("account not initialized".into()),
+                _ => Err("account not initialized".into()),
+            }
+            &Some(StateTag::ProxyState(Err(ref e))) => {
+                return Err(e.clone().into());
+            }
+            &Some(StateTag::Unset(())) => {
+                return Err("BUG: account incorrectly initialized".into())
+            }
         }
     }
 }
