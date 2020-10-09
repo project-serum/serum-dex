@@ -1,8 +1,8 @@
 //! Client crate for the test stake program.
 
-use solana_client_gen::prelude::*;
-use serum_common::pack::*;
 use serde::{Deserialize, Serialize};
+use serum_common::pack::*;
+use solana_client_gen::prelude::*;
 
 /// Implements the lockup program's whitelist relay interface, allowing it
 /// to relay withdrawals and deposits to/from this program.

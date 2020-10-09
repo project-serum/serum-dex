@@ -243,9 +243,7 @@ fn account_cmd(ctx: &Context, pid: Pubkey, cmd: AccountsCommand) -> Result<()> {
             println!("{:#?}", safe);
             Ok(())
         }
-        AccountsCommand::Vesting {
-            address,
-        } => {
+        AccountsCommand::Vesting { address } => {
             let vault = client.vesting(&address)?;
             println!("{:#?}", vault);
 

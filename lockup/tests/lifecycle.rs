@@ -155,8 +155,11 @@ fn lifecycle() {
                 amount: stake_amount,
             };
             let mut relay_data = vec![0; stake_instr.size().unwrap() as usize];
-            serum_lockup_test_stake::instruction::StakeInstruction::pack(stake_instr, &mut relay_data)
-                .unwrap();
+            serum_lockup_test_stake::instruction::StakeInstruction::pack(
+                stake_instr,
+                &mut relay_data,
+            )
+            .unwrap();
 
             relay_data
         };
@@ -203,8 +206,11 @@ fn lifecycle() {
                 amount: stake_withdraw,
             };
             let mut relay_data = vec![0; stake_instr.size().unwrap() as usize];
-            serum_lockup_test_stake::instruction::StakeInstruction::pack(stake_instr, &mut relay_data)
-                .unwrap();
+            serum_lockup_test_stake::instruction::StakeInstruction::pack(
+                stake_instr,
+                &mut relay_data,
+            )
+            .unwrap();
             relay_data
         };
         // Send tx.
