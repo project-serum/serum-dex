@@ -112,10 +112,10 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), SafeError> {
     } = req;
 
     // Check before balance.
-		let before_amount = {
-				let vault = spl_token::state::Account::unpack(&safe_vault_acc_info.try_borrow_data()?)?;
-				vault.amount
-		};
+    let before_amount = {
+        let vault = spl_token::state::Account::unpack(&safe_vault_acc_info.try_borrow_data()?)?;
+        vault.amount
+    };
 
     // Invoke relay, signing with the program-derived-address.
     {

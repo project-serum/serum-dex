@@ -4,9 +4,9 @@
 
 #![cfg_attr(feature = "strict", deny(warnings))]
 
-use serum_lockup_test_stake::instruction::StakeInstruction;
-use serum_lockup_test_stake::accounts;
 use serum_common::pack::*;
+use serum_lockup_test_stake::accounts;
+use serum_lockup_test_stake::instruction::StakeInstruction;
 use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::entrypoint::ProgramResult;
 #[cfg(feature = "program")]

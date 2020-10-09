@@ -21,13 +21,13 @@ pub fn handler<'a>(
 
     let safe_acc_info = next_account_info(acc_infos)?;
     let whitelist_acc_info = next_account_info(acc_infos)?;
-		let vault_acc_info = next_account_info(acc_infos)?;
+    let vault_acc_info = next_account_info(acc_infos)?;
     let mint_acc_info = next_account_info(acc_infos)?;
     let rent_acc_info = next_account_info(acc_infos)?;
 
     access_control(AccessControlRequest {
         program_id,
-				vault_acc_info,
+        vault_acc_info,
         safe_acc_info,
         whitelist_acc_info,
         mint_acc_info,
@@ -42,7 +42,7 @@ pub fn handler<'a>(
                 safe,
                 whitelist: whitelist_acc_info.key,
                 mint: mint_acc_info.key,
-								vault: *vault_acc_info.key,
+                vault: *vault_acc_info.key,
                 authority,
                 nonce,
             })
@@ -60,7 +60,7 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), SafeError> {
         program_id,
         safe_acc_info,
         mint_acc_info,
-				vault_acc_info,
+        vault_acc_info,
         rent_acc_info,
         whitelist_acc_info,
         nonce,
@@ -123,7 +123,7 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), SafeError> {
         }
     }
 
-		// TODO: check vault is ok
+    // TODO: check vault is ok
 
     info!("access-control: success");
 
@@ -139,7 +139,7 @@ fn state_transition<'a>(req: StateTransitionRequest<'a>) -> Result<(), SafeError
         authority,
         nonce,
         whitelist,
-				vault,
+        vault,
     } = req;
 
     safe.initialized = true;
@@ -147,7 +147,7 @@ fn state_transition<'a>(req: StateTransitionRequest<'a>) -> Result<(), SafeError
     safe.authority = authority;
     safe.nonce = nonce;
     safe.whitelist = *whitelist;
-		safe.vault = vault;
+    safe.vault = vault;
 
     info!("state-transition: success");
 
@@ -169,6 +169,6 @@ struct StateTransitionRequest<'a> {
     whitelist: &'a Pubkey,
     mint: &'a Pubkey,
     authority: Pubkey,
-		vault: Pubkey,
+    vault: Pubkey,
     nonce: u8,
 }
