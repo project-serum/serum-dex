@@ -1,3 +1,4 @@
+use crate::access_control;
 use serum_common::pack::Pack;
 use serum_lockup::accounts::{Safe, TokenVault, Whitelist};
 use serum_lockup::error::{LockupError, LockupErrorCode};
@@ -69,6 +70,7 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), LockupError> 
     // Authorization: none.
 
     // Safe.
+    let rent = access_control::rent(rent_acc_info)?;
     {
         let safe_data = safe_acc_info.try_borrow_data()?;
         let safe = Safe::unpack(&safe_data)?;
@@ -78,7 +80,6 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), LockupError> 
         if safe_acc_info.owner != program_id {
             return Err(LockupErrorCode::NotOwnedByProgram)?;
         }
-        let rent = Rent::from_account_info(rent_acc_info)?;
         if !rent.is_exempt(safe_acc_info.lamports(), safe_data.len()) {
             return Err(LockupErrorCode::NotRentExempt)?;
         }
@@ -91,39 +92,32 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), LockupError> 
         }
     }
 
-    // Vault nonce.
+    // Vault.
     {
-        if Pubkey::create_program_address(
+        let vault_authority = Pubkey::create_program_address(
             &TokenVault::signer_seeds(safe_acc_info.key, &nonce),
             program_id,
         )
-        .is_err()
-        {
-            return Err(LockupErrorCode::InvalidVaultNonce)?;
+        .map_err(|_| LockupErrorCode::InvalidVaultNonce)?;
+        let vault_data_len = vault_acc_info.try_data_len()?;
+        let vault = spl_token::state::Account::unpack(&vault_acc_info.try_borrow_data()?)?;
+
+        if *vault_acc_info.owner != spl_token::ID {
+            return Err(LockupErrorCode::InvalidAccountOwner)?;
+        }
+        if vault.state != spl_token::state::AccountState::Initialized {
+            return Err(LockupErrorCode::NotInitialized)?;
+        }
+        if vault.owner != vault_authority {
+            return Err(LockupErrorCode::InvalidVault)?;
+        }
+        if !rent.is_exempt(vault_acc_info.lamports(), vault_data_len) {
+            return Err(LockupErrorCode::NotRentExempt)?;
         }
     }
 
     // Mint.
-    {
-        let mint = spl_token::state::Mint::unpack(&mint_acc_info.try_borrow_data()?)?;
-
-        if *mint_acc_info.owner != spl_token::ID {
-            return Err(LockupErrorCode::InvalidMint)?;
-        }
-
-        if !mint.is_initialized {
-            return Err(LockupErrorCode::UnitializedTokenMint)?;
-        }
-    }
-
-    // Rent sysvar.
-    {
-        if *rent_acc_info.key != solana_sdk::sysvar::rent::id() {
-            return Err(LockupErrorCode::InvalidRentSysvar)?;
-        }
-    }
-
-    // TODO: check vault is ok
+    let _ = access_control::mint(mint_acc_info)?;
 
     info!("access-control: success");
 

@@ -1,3 +1,4 @@
+use crate::access_control::{self, VestingGovRequest};
 use serum_common::pack::Pack;
 use serum_lockup::accounts::{Safe, TokenVault, Vesting};
 use serum_lockup::error::{LockupError, LockupErrorCode};
@@ -80,92 +81,31 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), LockupError> 
         clock_acc_info,
     } = req;
 
-    // Beneficiary authorization.
-    {
-        if !vesting_acc_beneficiary_info.is_signer {
-            return Err(LockupErrorCode::Unauthorized)?;
-        }
+    let vesting = Vesting::unpack(&vesting_acc_info.try_borrow_data()?)?;
+
+    access_control::vesting_gov(VestingGovRequest {
+        program_id,
+        vesting: &vesting,
+        safe_acc_info,
+        vesting_acc_info,
+        vesting_acc_beneficiary_info,
+    })?;
+
+    if !vesting.claimed {
+        return Err(LockupErrorCode::NotYetClaimed)?;
     }
 
-    // Safe.
-    let safe = Safe::unpack(&safe_acc_info.try_borrow_data()?)?;
-    {
-        if !safe.initialized {
-            return Err(LockupErrorCode::NotInitialized)?;
-        }
+    if vesting.locked_nft_mint != *nft_mint_acc_info.key {
+        return Err(LockupErrorCode::InvalidRedemptionMint)?;
     }
 
-    // Vault.
-    {
-        let safe_vault =
-            spl_token::state::Account::unpack(&safe_vault_acc_info.try_borrow_data()?)?;
-
-        if *safe_vault_acc_info.owner != spl_token::ID {
-            return Err(LockupErrorCode::InvalidVault)?;
-        }
-        if safe_vault.state != spl_token::state::AccountState::Initialized {
-            return Err(LockupErrorCode::InvalidVault)?;
-        }
-        let safe_vault_authority = Pubkey::create_program_address(
-            &TokenVault::signer_seeds(safe_acc_info.key, &safe.nonce),
-            program_id,
-        )
-        .map_err(|_| LockupErrorCode::InvalidVault)?;
-        if safe_vault.owner != safe_vault_authority {
-            return Err(LockupErrorCode::InvalidVault)?;
-        }
+    let clock = Clock::from_account_info(clock_acc_info)?;
+    if amount > vesting.available_for_withdrawal(clock.slot) {
+        return Err(LockupErrorCode::InsufficientWithdrawalBalance)?;
     }
 
-    // Vesting.
-    {
-        let vesting = Vesting::unpack(&vesting_acc_info.try_borrow_data()?)?;
-
-        if vesting_acc_info.owner != program_id {
-            return Err(LockupErrorCode::InvalidAccount)?;
-        }
-        if !vesting.initialized {
-            return Err(LockupErrorCode::NotInitialized)?;
-        }
-        // Match the signing beneficiary to this account.
-        if vesting.beneficiary != *vesting_acc_beneficiary_info.key {
-            return Err(LockupErrorCode::Unauthorized)?;
-        }
-        // Match the vesting account to the safe.
-        if vesting.safe != *safe_acc_info.key {
-            return Err(LockupErrorCode::WrongSafe)?;
-        }
-        // Do we have sufficient balance?
-        let clock = Clock::from_account_info(clock_acc_info)?;
-        if amount > vesting.available_for_withdrawal(clock.slot) {
-            return Err(LockupErrorCode::InsufficientWithdrawalBalance)?;
-        }
-    }
-
-    // NFT Mint.
-    {
-        // todo
-        //
-        // mint must match the vesting account mint
-    }
-
-    // NFT Token.
-    {
-        // todo
-        //
-        // mint of the token must match the above mint
-    }
-
-    // Token program.
-    {
-        if *token_program_acc_info.key != spl_token::ID {
-            return Err(LockupErrorCode::InvalidTokenProgram)?;
-        }
-    }
-
-    // Beneficiary token account.
-    {
-        // Allow the SPL token program to handle this.
-    }
+    // Expects all checks related to token transfer to be enforced by the SPL
+    // token program and the Solana runtime.
 
     info!("access-control: success");
 
@@ -208,7 +148,7 @@ fn state_transition<'a, 'b>(req: StateTransitionRequest<'a, 'b>) -> Result<(), L
         solana_sdk::program::invoke_signed(&burn_instruction, &accounts[..], &[])?;
     }
 
-    // Transfer token from vault to the user address.
+    // Transfer token from the vault to the user address.
     {
         info!("invoking token transfer");
         let withdraw_instruction = spl_token::instruction::transfer(

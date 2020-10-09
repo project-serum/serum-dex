@@ -1,3 +1,4 @@
+use crate::access_control::{self, WhitelistGovRequest};
 use serum_common::pack::Pack;
 use serum_lockup::accounts::{Safe, Whitelist};
 use serum_lockup::error::{LockupError, LockupErrorCode};
@@ -20,6 +21,7 @@ pub fn handler<'a>(
     let whitelist_acc_info = next_account_info(acc_infos)?;
 
     access_control(AccessControlRequest {
+        program_id,
         safe_authority_acc_info,
         safe_acc_info,
         whitelist_acc_info,
@@ -43,12 +45,18 @@ fn access_control(req: AccessControlRequest) -> Result<(), LockupError> {
     info!("access-control: whitelist_delete");
 
     let AccessControlRequest {
+        program_id,
         safe_authority_acc_info,
         safe_acc_info,
         whitelist_acc_info,
     } = req;
 
-    // todo
+    access_control::whitelist_gov(WhitelistGovRequest {
+        program_id,
+        safe_authority_acc_info,
+        safe_acc_info,
+        whitelist_acc_info,
+    })?;
 
     info!("access-control: success");
 
@@ -73,6 +81,7 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), LockupError> {
 }
 
 struct AccessControlRequest<'a> {
+    program_id: &'a Pubkey,
     safe_authority_acc_info: &'a AccountInfo<'a>,
     safe_acc_info: &'a AccountInfo<'a>,
     whitelist_acc_info: &'a AccountInfo<'a>,

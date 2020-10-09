@@ -134,6 +134,7 @@ pub fn create_vesting_account(
     mint_decimals: u8,
 ) -> Result<(Signature, Keypair, Pubkey), InnerClientError> {
     let mint_kp = Keypair::generate(&mut OsRng);
+
     let _tx_sig = rpc::create_and_init_mint(
         client.rpc(),
         client.payer(),
@@ -142,6 +143,7 @@ pub fn create_vesting_account(
         mint_decimals,
     )
     .map_err(|e| InnerClientError::RawError(e.to_string()))?;
+
     // The vesting account being created.
     let new_account = Keypair::generate(&mut OsRng);
     let deposit_accs = [

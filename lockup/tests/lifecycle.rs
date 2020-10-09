@@ -53,7 +53,6 @@ fn lifecycle() {
         };
         let period_count = 10;
         let deposit_amount = 100;
-        let decimals = 3;
 
         let CreateVestingResponse {
             tx: _,
@@ -68,7 +67,6 @@ fn lifecycle() {
                 end_slot,
                 period_count,
                 deposit_amount,
-                mint_decimals: decimals,
             })
             .unwrap();
         (

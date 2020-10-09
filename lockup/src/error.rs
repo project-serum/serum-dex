@@ -56,6 +56,12 @@ pub enum LockupErrorCode {
     WhitelistFull = 43,
     WhitelistProgramNotFound = 44,
     WhitelistDepositInvariantViolation = 45,
+    InvalidRedemptionMint = 46,
+    InvalidWhitelist = 47,
+    InvalidMintAuthority = 48,
+    InvalidMintSupply = 49,
+    NotYetClaimed = 50,
+    InvalidClockSysvar = 51,
     Unknown = 1000,
 }
 

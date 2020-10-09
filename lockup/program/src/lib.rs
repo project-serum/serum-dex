@@ -10,8 +10,9 @@ use solana_sdk::entrypoint::ProgramResult;
 use solana_sdk::info;
 use solana_sdk::pubkey::Pubkey;
 
+pub(crate) mod access_control;
 mod claim;
-mod deposit;
+mod create_vesting;
 mod initialize;
 mod migrate;
 mod redeem;
@@ -41,7 +42,7 @@ fn process_instruction<'a>(
             end_slot,
             period_count,
             deposit_amount,
-        } => deposit::handler(
+        } => create_vesting::handler(
             program_id,
             accounts,
             beneficiary,

@@ -33,7 +33,7 @@ jobs:
       script:
         - docker exec dev ./scripts/travis/dex-tests.sh
     - <<: *defaults
-      name: Safe tests
+      name: Lockup tests
       <<: *localnet
       script:
         - docker exec dev make -C lockup init-test features=strict

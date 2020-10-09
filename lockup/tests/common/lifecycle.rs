@@ -70,7 +70,6 @@ pub fn deposit_with_schedule(deposit_amount: u64, end_slot: u64, period_count: u
 
     let (vesting_acc, vesting_acc_beneficiary) = {
         let vesting_acc_beneficiary = Keypair::generate(&mut OsRng);
-        let decimals = 3;
         let resp = client
             .create_vesting(CreateVestingRequest {
                 depositor: depositor.pubkey(),
@@ -80,7 +79,6 @@ pub fn deposit_with_schedule(deposit_amount: u64, end_slot: u64, period_count: u
                 end_slot,
                 period_count,
                 deposit_amount,
-                mint_decimals: decimals,
             })
             .unwrap();
 

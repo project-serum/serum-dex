@@ -1,8 +1,10 @@
+use crate::access_control::{self, VestingGovRequest};
 use serum_common::pack::Pack;
 use serum_lockup::accounts::{Safe, TokenVault, Vesting};
 use serum_lockup::error::{LockupError, LockupErrorCode};
 use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::info;
+use solana_sdk::program_option::COption;
 use solana_sdk::program_pack::Pack as TokenPack;
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::sysvar::rent::Rent;
@@ -28,6 +30,8 @@ pub fn handler<'a>(
 
     access_control(AccessControlRequest {
         program_id,
+        safe_acc_info,
+        safe_vault_authority_acc_info,
         vesting_acc_info,
         vesting_acc_beneficiary_info,
         token_program_acc_info,
@@ -62,6 +66,8 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), LockupError> 
 
     let AccessControlRequest {
         program_id,
+        safe_acc_info,
+        safe_vault_authority_acc_info,
         vesting_acc_info,
         vesting_acc_beneficiary_info,
         token_program_acc_info,
@@ -70,70 +76,47 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), LockupError> 
         token_acc_info,
     } = req;
 
-    // Beneficiary authorization.
-    {
-        if !vesting_acc_beneficiary_info.is_signer {
-            return Err(LockupErrorCode::Unauthorized)?;
-        }
-    }
-
-    // Vesting.
     let vesting = Vesting::unpack(&vesting_acc_info.try_borrow_data()?)?;
-    {
-        if vesting_acc_info.owner != program_id {
-            return Err(LockupErrorCode::InvalidAccount)?;
-        }
-        if !vesting.initialized {
-            return Err(LockupErrorCode::NotInitialized)?;
-        }
-        if vesting.claimed {
-            return Err(LockupErrorCode::AlreadyClaimed)?;
-        }
-        // Match the signing beneficiary to this account.
-        if vesting.beneficiary != *vesting_acc_beneficiary_info.key {
-            return Err(LockupErrorCode::Unauthorized)?;
-        }
+
+    access_control::vesting_gov(VestingGovRequest {
+        program_id,
+        vesting: &vesting,
+        safe_acc_info,
+        vesting_acc_info,
+        vesting_acc_beneficiary_info,
+    })?;
+
+    if vesting.claimed {
+        return Err(LockupErrorCode::AlreadyClaimed)?;
     }
 
-    let rent = Rent::from_account_info(rent_acc_info)?;
+    // Rent sysvar.
+    let rent = access_control::rent(rent_acc_info)?;
 
-    // Token account.
+    // "NFT" token to set on the vesting account.
     {
-        // unpack_unchecked because it's not yet initialized.
-        let token_acc = spl_token::state::Account::unpack(&token_acc_info.try_borrow_data()?)?;
-        if *token_acc_info.owner != spl_token::ID {
-            return Err(LockupErrorCode::InvalidAccountOwner)?;
-        }
-        if !rent.is_exempt(token_acc_info.lamports(), token_acc_info.try_data_len()?) {
-            return Err(LockupErrorCode::NotRentExempt)?;
-        }
+        let token_acc = access_control::token(token_acc_info)?;
         if token_acc.owner != vesting.beneficiary {
             return Err(LockupErrorCode::InvalidTokenAccountOwner)?;
         }
-        if token_acc.mint != *mint_acc_info.key {
+        if token_acc.mint != vesting.locked_nft_mint {
             return Err(LockupErrorCode::InvalidTokenAccountMint)?;
+        }
+        if !rent.is_exempt(token_acc_info.lamports(), token_acc_info.try_data_len()?) {
+            return Err(LockupErrorCode::NotRentExempt)?;
         }
     }
 
     // Mint.
     {
-        // TODO: check mint authority is the program dervied addr
-        // TODO: check supply is zero
-    }
-
-    // Token program.
-    {
-        if *token_program_acc_info.key != spl_token::ID {
-            return Err(LockupErrorCode::InvalidTokenProgram)?;
+        let mint = access_control::mint(mint_acc_info)?;
+        if mint.mint_authority != COption::Some(*safe_vault_authority_acc_info.key) {
+            return Err(LockupErrorCode::InvalidMintAuthority)?;
         }
     }
 
-    // Rent sysvar.
-    {
-        if *rent_acc_info.key != solana_sdk::sysvar::rent::id() {
-            return Err(LockupErrorCode::InvalidRentSysvar)?;
-        }
-    }
+    // Expects all checks related to token mint to be enforced by the SPL
+    // token program and the Solana runtime.
 
     info!("access-control: success");
 
@@ -184,6 +167,8 @@ fn state_transition<'a, 'b>(req: StateTransitionRequest<'a, 'b>) -> Result<(), L
 
 struct AccessControlRequest<'a> {
     program_id: &'a Pubkey,
+    safe_acc_info: &'a AccountInfo<'a>,
+    safe_vault_authority_acc_info: &'a AccountInfo<'a>,
     vesting_acc_info: &'a AccountInfo<'a>,
     vesting_acc_beneficiary_info: &'a AccountInfo<'a>,
     token_program_acc_info: &'a AccountInfo<'a>,

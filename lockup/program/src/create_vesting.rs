@@ -1,13 +1,12 @@
+use crate::access_control;
 use serum_common::pack::Pack;
 use serum_lockup::accounts::{Safe, TokenVault, Vesting};
 use serum_lockup::error::{LockupError, LockupErrorCode};
 use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::info;
+use solana_sdk::program_option::COption;
 use solana_sdk::program_pack::Pack as TokenPack;
 use solana_sdk::pubkey::Pubkey;
-use solana_sdk::sysvar::clock::Clock;
-use solana_sdk::sysvar::rent::Rent;
-use solana_sdk::sysvar::Sysvar;
 use std::convert::Into;
 
 pub fn handler<'a>(
@@ -32,7 +31,7 @@ pub fn handler<'a>(
     let token_program_acc_info = next_account_info(acc_infos)?;
     let rent_acc_info = next_account_info(acc_infos)?;
     let clock_acc_info = next_account_info(acc_infos)?;
-    let clock_slot = Clock::from_account_info(clock_acc_info)?.slot;
+    let clock_slot = access_control::clock(&clock_acc_info)?.slot;
 
     access_control(AccessControlRequest {
         program_id,
@@ -106,63 +105,33 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), LockupError> 
     }
 
     // Safe.
-    let safe = Safe::unpack(&safe_acc_info.try_borrow_data()?)?;
-    {
-        if !safe.initialized {
-            return Err(LockupErrorCode::NotInitialized)?;
-        }
-    }
+    let safe = access_control::safe(safe_acc_info, program_id)?;
 
     // Vault.
     {
         let safe_vault =
             spl_token::state::Account::unpack(&safe_vault_acc_info.try_borrow_data()?)?;
-
-        if *safe_vault_acc_info.owner != spl_token::ID {
-            return Err(LockupErrorCode::InvalidVault)?;
-        }
-        if safe_vault.state != spl_token::state::AccountState::Initialized {
-            return Err(LockupErrorCode::NotInitialized)?;
-        }
-        let safe_vault_authority = Pubkey::create_program_address(
-            &TokenVault::signer_seeds(safe_acc_info.key, &safe.nonce),
-            program_id,
-        )
-        .map_err(|_| LockupErrorCode::InvalidVault)?;
-        if safe_vault.owner != safe_vault_authority {
+        if safe.vault != *safe_vault_acc_info.key {
             return Err(LockupErrorCode::InvalidVault)?;
         }
     }
 
     // Vesting.
     {
-        if vesting_acc_info.owner != program_id {
-            return Err(LockupErrorCode::NotOwnedByProgram)?;
-        }
         let vesting = Vesting::unpack(&vesting_acc_info.try_borrow_data()?)?;
+        let rent = access_control::rent(rent_acc_info)?;
+
         if vesting.initialized {
             return Err(LockupErrorCode::AlreadyInitialized)?;
         }
-        let rent = Rent::from_account_info(rent_acc_info)?;
+        if vesting_acc_info.owner != program_id {
+            return Err(LockupErrorCode::NotOwnedByProgram)?;
+        }
         if !rent.is_exempt(
             vesting_acc_info.lamports(),
             vesting_acc_info.try_data_len()?,
         ) {
             return Err(LockupErrorCode::NotRentExempt)?;
-        }
-    }
-
-    // Token program.
-    {
-        if *token_program_acc_info.key != spl_token::ID {
-            return Err(LockupErrorCode::InvalidTokenProgram)?;
-        }
-    }
-
-    // Rent sysvar.
-    {
-        if *rent_acc_info.key != solana_sdk::sysvar::rent::id() {
-            return Err(LockupErrorCode::InvalidRentSysvar)?;
         }
     }
 
@@ -181,20 +150,22 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), LockupError> 
             return Err(LockupErrorCode::InvalidDepositAmount)?;
         }
     }
-    // NFT Mint.
-    {
-        // TODO:
-        //
-        // mint authority must be the program derived address of this safe.
-    }
 
-    // Depositor.
+    // Vesting Mint.
     {
-        let depositor = spl_token::state::Account::unpack(&depositor_acc_info.try_borrow_data()?)?;
-        if safe.mint != depositor.mint {
-            return Err(LockupErrorCode::WrongCoinMint)?;
+        let mint = access_control::mint(nft_mint_acc_info)?;
+        let vault_authority = Pubkey::create_program_address(
+            &TokenVault::signer_seeds(&safe_acc_info.key, &safe.nonce),
+            program_id,
+        )
+        .map_err(|_| LockupErrorCode::InvalidVaultNonce)?;
+
+        if mint.mint_authority != COption::Some(vault_authority) {
+            return Err(LockupErrorCode::InvalidMintAuthority)?;
         }
-        // Let the spl token program handle the rest of the depositor.
+        if mint.supply != 0 {
+            return Err(LockupErrorCode::InvalidMintSupply)?;
+        }
     }
 
     info!("access-control: success");

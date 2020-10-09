@@ -171,7 +171,6 @@ pub fn run(opts: Opts) -> Result<()> {
             deposit_amount,
         } => {
             let client = ctx.connect::<Client>(opts.cmd.pid)?;
-            let mint_decimals = 3; // TODO: decide this.
             let resp = client.create_vesting(CreateVestingRequest {
                 depositor,
                 depositor_owner: &ctx.wallet()?,
@@ -180,7 +179,6 @@ pub fn run(opts: Opts) -> Result<()> {
                 end_slot,
                 period_count,
                 deposit_amount,
-                mint_decimals,
             })?;
             println!("{:#?}", resp);
             Ok(())

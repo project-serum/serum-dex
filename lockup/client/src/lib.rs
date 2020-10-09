@@ -35,6 +35,7 @@ impl Client {
         req: CreateVestingRequest,
     ) -> Result<CreateVestingResponse, ClientError> {
         let vault = self.safe(&req.safe)?.vault;
+        let mint_decimals = 3; // TODO: decide this.
         inner::create_vesting_account(
             &self.inner,
             &req.depositor,
@@ -46,7 +47,7 @@ impl Client {
             req.end_slot,
             req.period_count,
             req.deposit_amount,
-            req.mint_decimals,
+            mint_decimals,
         )
         .map_err(Into::into)
         .map(|r| CreateVestingResponse {
@@ -354,7 +355,6 @@ pub struct CreateVestingRequest<'a> {
     pub end_slot: u64,
     pub period_count: u64,
     pub deposit_amount: u64,
-    pub mint_decimals: u8,
 }
 
 #[derive(Debug)]
