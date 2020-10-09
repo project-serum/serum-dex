@@ -141,11 +141,11 @@ pub fn create_vesting_account(
         &safe_vault_authority,
         mint_decimals,
     )
-				.map_err(|e| InnerClientError::RawError(e.to_string()))?;
-		// The vesting account being created.
+    .map_err(|e| InnerClientError::RawError(e.to_string()))?;
+    // The vesting account being created.
     let new_account = Keypair::generate(&mut OsRng);
     let deposit_accs = [
-				AccountMeta::new(new_account.pubkey(), true),
+        AccountMeta::new(new_account.pubkey(), true),
         AccountMeta::new(*depositor, false),
         AccountMeta::new(depositor_owner.pubkey(), true), // Owner of depositor.
         AccountMeta::new(*safe_vault, false),
@@ -165,7 +165,7 @@ pub fn create_vesting_account(
             &client.payer().pubkey(),
             &new_account.pubkey(),
             lamports,
-						*serum_lockup::accounts::vesting::SIZE,
+            *serum_lockup::accounts::vesting::SIZE,
             client.program(),
         )
     };

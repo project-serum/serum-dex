@@ -17,7 +17,7 @@ use thiserror::Error;
 mod inner;
 
 pub struct Client {
-    pub inner: InnerClient, // todo make ethis private
+    inner: InnerClient,
 }
 
 impl Client {

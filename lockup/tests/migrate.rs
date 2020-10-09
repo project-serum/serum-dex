@@ -1,7 +1,7 @@
 use common::lifecycle;
-use solana_client_gen::prelude::*;
 use rand::rngs::OsRng;
 use serum_lockup_client::*;
+use solana_client_gen::prelude::*;
 use solana_client_gen::solana_sdk::signature::{Keypair, Signer};
 
 mod common;
@@ -40,11 +40,13 @@ fn migrate() {
     // When.
     //
     // I migrate the safe.
-		let _ = client.migrate(MigrateRequest {
-				authority: &safe_authority,
-				safe: safe_acc,
-				new_token_account: receiver_token_acc.pubkey(),
-		}).unwrap();
+    let _ = client
+        .migrate(MigrateRequest {
+            authority: &safe_authority,
+            safe: safe_acc,
+            new_token_account: receiver_token_acc.pubkey(),
+        })
+        .unwrap();
 
     // Then.
     //

@@ -28,9 +28,9 @@ fn initialized() {
         ..
     } = client
         .initialize(InitializeRequest {
-						mint: srm_mint.pubkey(),
-						authority: safe_authority.pubkey(),
-				})
+            mint: srm_mint.pubkey(),
+            authority: safe_authority.pubkey(),
+        })
         .unwrap();
 
     // Then.

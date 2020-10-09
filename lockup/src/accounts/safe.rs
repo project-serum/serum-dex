@@ -16,8 +16,8 @@ pub struct Safe {
     pub nonce: u8,
     /// The whitelist of valid programs the Safe can relay transactions to.
     pub whitelist: Pubkey,
-		/// Address of the token vault controlled by the Safe.
-		pub vault: Pubkey,
+    /// Address of the token vault controlled by the Safe.
+    pub vault: Pubkey,
 }
 
 serum_common::packable!(Safe);
@@ -42,7 +42,7 @@ mod tests {
             initialized,
             nonce: 33,
             whitelist,
-						vault,
+            vault,
         };
 
         let mut dst = Vec::new();
@@ -57,7 +57,7 @@ mod tests {
         assert_eq!(new_safe.initialized, initialized);
         assert_eq!(new_safe.nonce, 33);
         assert_eq!(new_safe.whitelist, whitelist);
-				assert_eq!(new_safe.vault, vault);
+        assert_eq!(new_safe.vault, vault);
     }
 
     #[test]
@@ -91,6 +91,6 @@ mod tests {
         assert_eq!(r.initialized, false);
         assert_eq!(r.authority, Pubkey::new(&[0; 32]));
         assert_eq!(r.nonce, 0);
-				assert_eq!(r.vault, Pubkey::new(&[0; 32]));
+        assert_eq!(r.vault, Pubkey::new(&[0; 32]));
     }
 }

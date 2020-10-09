@@ -2,9 +2,9 @@
 
 #![cfg_attr(feature = "strict", deny(warnings))]
 
+use serde::{Deserialize, Serialize};
 use serum_common::pack::*;
 use solana_client_gen::prelude::*;
-use serde::{Serialize, Deserialize};
 
 pub mod accounts;
 pub mod error;

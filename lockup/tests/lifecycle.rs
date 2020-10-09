@@ -4,8 +4,8 @@ use rand::rngs::OsRng;
 use serum_common::client::rpc;
 use serum_common::pack::Pack;
 use serum_lockup::accounts::{Vesting, Whitelist};
-use serum_wl_program::client::Client as StakeClient;
 use serum_lockup_client::*;
+use serum_wl_program::client::Client as StakeClient;
 use solana_client_gen::prelude::*;
 use solana_client_gen::solana_sdk::commitment_config::CommitmentConfig;
 use solana_client_gen::solana_sdk::instruction::AccountMeta;
@@ -55,18 +55,21 @@ fn lifecycle() {
         let deposit_amount = 100;
         let decimals = 3;
 
-        let CreateVestingResponse { tx: _, vesting, mint } =
-                client.create_vesting(CreateVestingRequest {
-										depositor: depositor.pubkey(),
-										depositor_owner: client.payer(),
-										safe: safe_acc,
-										beneficiary: vesting_acc_beneficiary.pubkey(),
-										end_slot,
-										period_count,
-										deposit_amount,
-										mint_decimals: decimals,
-								}
-            )
+        let CreateVestingResponse {
+            tx: _,
+            vesting,
+            mint,
+        } = client
+            .create_vesting(CreateVestingRequest {
+                depositor: depositor.pubkey(),
+                depositor_owner: client.payer(),
+                safe: safe_acc,
+                beneficiary: vesting_acc_beneficiary.pubkey(),
+                end_slot,
+                period_count,
+                deposit_amount,
+                mint_decimals: decimals,
+            })
             .unwrap();
         (
             vesting,
@@ -129,12 +132,14 @@ fn lifecycle() {
 
     // Add it to whitelist.
     {
-				let _ = client.whitelist_add(WhitelistAddRequest {
-						authority: &safe_authority,
-						safe: safe_acc,
-						program: staking_program_id,
-				}).unwrap();
-				// Check it.
+        let _ = client
+            .whitelist_add(WhitelistAddRequest {
+                authority: &safe_authority,
+                safe: safe_acc,
+                program: staking_program_id,
+            })
+            .unwrap();
+        // Check it.
         let whitelist = client.whitelist(&safe_acc).unwrap();
         let mut expected = Whitelist::default();
         expected.push(staking_program_id);
@@ -144,96 +149,96 @@ fn lifecycle() {
     let stake_amount = 98;
     // Transfer funds from the safe to the whitelisted program.
     {
-				// Instruction data to proxy to the whitelisted program.
-				let relay_data = {
-						let stake_instr = serum_wl_program::instruction::WlInstruction::Stake {
-								amount: stake_amount,
-						};
-						let mut relay_data = vec![0; stake_instr.size().unwrap() as usize];
-						serum_wl_program::instruction::WlInstruction::pack(stake_instr, &mut relay_data).unwrap();
+        // Instruction data to proxy to the whitelisted program.
+        let relay_data = {
+            let stake_instr = serum_wl_program::instruction::WlInstruction::Stake {
+                amount: stake_amount,
+            };
+            let mut relay_data = vec![0; stake_instr.size().unwrap() as usize];
+            serum_wl_program::instruction::WlInstruction::pack(stake_instr, &mut relay_data)
+                .unwrap();
 
-						relay_data
-				};
-				// Send tx.
-				let _ = client.whitelist_withdraw(WhitelistWithdrawRequest {
-						beneficiary: &expected_beneficiary,
-						vesting,
-						safe: safe_acc,
-						whitelist_program: staking_program_id,
-						vault: safe_srm_vault,
-						whitelist_vault: stake_init.vault,
-						whitelist_vault_authority: stake_init.vault_authority,
-						delegate_amount: stake_amount,
-						relay_data,
-						relay_accounts: vec![
-								AccountMeta::new(stake_init.instance, false),
-						],
-				});
+            relay_data
+        };
+        // Send tx.
+        let _ = client.whitelist_withdraw(WhitelistWithdrawRequest {
+            beneficiary: &expected_beneficiary,
+            vesting,
+            safe: safe_acc,
+            whitelist_program: staking_program_id,
+            vault: safe_srm_vault,
+            whitelist_vault: stake_init.vault,
+            whitelist_vault_authority: stake_init.vault_authority,
+            delegate_amount: stake_amount,
+            relay_data,
+            relay_accounts: vec![AccountMeta::new(stake_init.instance, false)],
+        });
 
-				// Checks.
-				{
-						// Safe's vault should be decremented.
-						let vault = client.vault(&safe_acc).unwrap();
-						let expected_amount = expected_deposit - stake_amount;
-						assert_eq!(vault.amount, expected_amount);
-						assert_eq!(vault.delegated_amount, 0);
-						assert_eq!(vault.delegate, COption::None);
+        // Checks.
+        {
+            // Safe's vault should be decremented.
+            let vault = client.vault(&safe_acc).unwrap();
+            let expected_amount = expected_deposit - stake_amount;
+            assert_eq!(vault.amount, expected_amount);
+            assert_eq!(vault.delegated_amount, 0);
+            assert_eq!(vault.delegate, COption::None);
 
-						// Vesting account should be updated.
-						let vesting = rpc::account_unpacked::<Vesting>(client.rpc(), &vesting);
-						assert_eq!(vesting.whitelist_owned, stake_amount);
+            // Vesting account should be updated.
+            let vesting = rpc::account_unpacked::<Vesting>(client.rpc(), &vesting);
+            assert_eq!(vesting.whitelist_owned, stake_amount);
 
-						// Staking program's vault should be incremented.
-						let vault = rpc::account_token_unpacked::<TokenAccount>(client.rpc(), &stake_init.vault);
-						assert_eq!(vault.amount, stake_amount);
-				}
-		}
+            // Staking program's vault should be incremented.
+            let vault =
+                rpc::account_token_unpacked::<TokenAccount>(client.rpc(), &stake_init.vault);
+            assert_eq!(vault.amount, stake_amount);
+        }
+    }
 
     // Transfer funds from the whitelisted program back to the Safe.
     {
-				let stake_withdraw = 95;
-				// Relay tx data.
-				let relay_data = {
-						let stake_instr = serum_wl_program::instruction::WlInstruction::Unstake {
-								amount: stake_withdraw,
-						};
-						let mut relay_data = vec![0; stake_instr.size().unwrap() as usize];
-						serum_wl_program::instruction::WlInstruction::pack(stake_instr, &mut relay_data).unwrap();
-						relay_data
-				};
-				// Send tx.
-				let _ = client.whitelist_deposit(WhitelistDepositRequest {
-						beneficiary: &expected_beneficiary,
-						vesting,
-						safe: safe_acc,
-						whitelist_program: staking_program_id,
-						vault: safe_srm_vault,
-						whitelist_vault: stake_init.vault,
-						whitelist_vault_authority: stake_init.vault_authority,
-						relay_data,
-						relay_accounts: vec![
-								AccountMeta::new(stake_init.instance, false),
-						],
-				});
+        let stake_withdraw = 95;
+        // Relay tx data.
+        let relay_data = {
+            let stake_instr = serum_wl_program::instruction::WlInstruction::Unstake {
+                amount: stake_withdraw,
+            };
+            let mut relay_data = vec![0; stake_instr.size().unwrap() as usize];
+            serum_wl_program::instruction::WlInstruction::pack(stake_instr, &mut relay_data)
+                .unwrap();
+            relay_data
+        };
+        // Send tx.
+        let _ = client.whitelist_deposit(WhitelistDepositRequest {
+            beneficiary: &expected_beneficiary,
+            vesting,
+            safe: safe_acc,
+            whitelist_program: staking_program_id,
+            vault: safe_srm_vault,
+            whitelist_vault: stake_init.vault,
+            whitelist_vault_authority: stake_init.vault_authority,
+            relay_data,
+            relay_accounts: vec![AccountMeta::new(stake_init.instance, false)],
+        });
 
-				// Checks.
-				{
-						// Safe vault should be incremented.
-						let vault = client.vault(&safe_acc).unwrap();
-						assert_eq!(
-								vault.amount,
-								expected_deposit - stake_amount + stake_withdraw
-						);
+        // Checks.
+        {
+            // Safe vault should be incremented.
+            let vault = client.vault(&safe_acc).unwrap();
+            assert_eq!(
+                vault.amount,
+                expected_deposit - stake_amount + stake_withdraw
+            );
 
-						// Vesting should be updated.
-						let vesting = client.vesting(&vesting).unwrap();
-						assert_eq!(vesting.whitelist_owned, stake_amount - stake_withdraw);
+            // Vesting should be updated.
+            let vesting = client.vesting(&vesting).unwrap();
+            assert_eq!(vesting.whitelist_owned, stake_amount - stake_withdraw);
 
-						// Stake vault should be decremented.
-						let vault = rpc::account_token_unpacked::<TokenAccount>(client.rpc(), &stake_init.vault);
-						assert_eq!(vault.amount, stake_amount - stake_withdraw);
-				}
-		}
+            // Stake vault should be decremented.
+            let vault =
+                rpc::account_token_unpacked::<TokenAccount>(client.rpc(), &stake_init.vault);
+            assert_eq!(vault.amount, stake_amount - stake_withdraw);
+        }
+    }
 
     let nft_tok_acc = rpc::create_token_account(
         client.rpc(),
@@ -245,13 +250,15 @@ fn lifecycle() {
 
     // Claim.
     {
-				let _ = client.claim(ClaimRequest {
-						beneficiary: &expected_beneficiary,
-						safe: safe_acc,
-						vesting: vesting,
-						locked_mint: nft_mint,
-						locked_token_account: nft_tok_acc.pubkey(),
-				}).unwrap();
+        let _ = client
+            .claim(ClaimRequest {
+                beneficiary: &expected_beneficiary,
+                safe: safe_acc,
+                vesting: vesting,
+                locked_mint: nft_mint,
+                locked_token_account: nft_tok_acc.pubkey(),
+            })
+            .unwrap();
         let nft = rpc::account_token_unpacked::<TokenAccount>(client.rpc(), &nft_tok_acc.pubkey());
         assert_eq!(nft.amount, expected_deposit);
     }
@@ -278,21 +285,23 @@ fn lifecycle() {
             &expected_beneficiary.pubkey(),
             client.payer(),
         )
-						.unwrap();
+        .unwrap();
 
         let redeem_amount = 10;
         let new_nft_amount = expected_deposit - redeem_amount;
 
-				let _ = client.redeem(RedeemRequest {
-						beneficiary: &expected_beneficiary,
-						vesting,
-						token_account: bene_tok_acc.pubkey(),
-						vault: safe_srm_vault,
-						safe: safe_acc,
-						locked_token_account: nft_tok_acc.pubkey(),
-						locked_mint: nft_mint,
-						amount: redeem_amount,
-				}).unwrap();
+        let _ = client
+            .redeem(RedeemRequest {
+                beneficiary: &expected_beneficiary,
+                vesting,
+                token_account: bene_tok_acc.pubkey(),
+                vault: safe_srm_vault,
+                safe: safe_acc,
+                locked_token_account: nft_tok_acc.pubkey(),
+                locked_mint: nft_mint,
+                amount: redeem_amount,
+            })
+            .unwrap();
 
         // The nft should be burnt for the redeem_amount.
         let nft = rpc::account_token_unpacked::<TokenAccount>(client.rpc(), &nft_tok_acc.pubkey());

@@ -1,7 +1,7 @@
 use common::lifecycle::{self, Initialized};
-use solana_client_gen::prelude::*;
-use serum_lockup_client::*;
 use serum_lockup::accounts::Safe;
+use serum_lockup_client::*;
+use solana_client_gen::prelude::*;
 use solana_client_gen::solana_sdk::instruction::AccountMeta;
 use solana_client_gen::solana_sdk::pubkey::Pubkey;
 use solana_client_gen::solana_sdk::signature::Signer;
@@ -24,11 +24,13 @@ fn set_authority() {
     //
     // I set the authority to someone new.
     let new_authority = Pubkey::new_rand();
-		let _ = client.set_authority(SetAuthorityRequest {
-				authority: &safe_authority,
-				safe: safe_acc,
-				new_authority,
-		}).unwrap();
+    let _ = client
+        .set_authority(SetAuthorityRequest {
+            authority: &safe_authority,
+            safe: safe_acc,
+            new_authority,
+        })
+        .unwrap();
 
     // Then.
     //
@@ -55,14 +57,12 @@ fn set_authority_zero() {
     //
     // I set the authority to zero.
     let new_authority = Pubkey::new_from_array([0; 32]);
-    let accounts = [
-        AccountMeta::new_readonly(safe_authority.pubkey(), true),
-        AccountMeta::new(safe_acc, false),
-    ];
-    let signers = [&safe_authority, client.payer()];
-    client
-				.inner
-        .set_authority_with_signers(&signers, &accounts, new_authority)
+    let _ = client
+        .set_authority(SetAuthorityRequest {
+            authority: &safe_authority,
+            safe: safe_acc,
+            new_authority,
+        })
         .unwrap();
 
     // Then.
