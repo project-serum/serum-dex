@@ -42,7 +42,7 @@ pub enum SubCommand {
     /// Initializes a Safe.
     Initialize {
         /// Authority to set on the new safe.
-				#[clap(short, long)]
+        #[clap(short, long)]
         authority: Pubkey,
     },
     /// Creates a vesting account.
@@ -99,12 +99,6 @@ pub enum AccountsCommand {
         /// Address of the vesting account.
         #[clap(short, long)]
         address: Pubkey,
-				/// Outputs the amount reedemable, if set.
-        #[clap(short, long)]
-				redeemable: bool,
-				/// Outputs the amount available for whitelisted programs, if set.
-        #[clap(short, long)]
-				whitelistable: bool,
     },
     /// View the Safe's whitelist.
     Whitelist {
@@ -249,18 +243,17 @@ fn account_cmd(ctx: &Context, pid: Pubkey, cmd: AccountsCommand) -> Result<()> {
             println!("{:#?}", safe);
             Ok(())
         }
-        AccountsCommand::Vesting { address, redeemable, whitelistable } => {
+        AccountsCommand::Vesting {
+            address,
+        } => {
             let vault = client.vesting(&address)?;
             println!("{:#?}", vault);
-						if redeemable {
-								let current_slot = client.rpc().get_slot()?;
-								let amount = vault.available_for_withdrawal(current_slot);
-								println!("Redeemable balance: {:?}", amount);
-						}
-						if whitelistable {
-								let amount = vault.available_for_whitelist();
-								println!("Whitelistable balance: {:?}", amount);
-						}
+
+            let current_slot = client.rpc().get_slot()?;
+            let amount = vault.available_for_withdrawal(current_slot);
+            println!("Redeemable balance: {:?}", amount);
+            println!("Whitelistable balance: {:?}", amount);
+
             Ok(())
         }
         AccountsCommand::Whitelist { safe } => {

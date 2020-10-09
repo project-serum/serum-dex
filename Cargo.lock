@@ -2816,7 +2816,7 @@ dependencies = [
  "serum-common",
  "serum-common-tests",
  "serum-lockup-client",
- "serum-wl-program",
+ "serum-lockup-test-stake",
  "solana-client-gen",
  "spl-token",
  "thiserror",
@@ -2846,6 +2846,20 @@ dependencies = [
  "serum-lockup",
  "solana-client",
  "solana-client-gen",
+ "spl-token",
+ "thiserror",
+]
+
+[[package]]
+name = "serum-lockup-test-stake"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "lazy_static",
+ "serde",
+ "serum-common",
+ "solana-client-gen",
+ "solana-sdk",
  "spl-token",
  "thiserror",
 ]
@@ -3012,20 +3026,6 @@ dependencies = [
  "solana-sdk",
  "spl-token",
  "tokio 0.2.22",
-]
-
-[[package]]
-name = "serum-wl-program"
-version = "0.1.0"
-dependencies = [
- "bytemuck",
- "lazy_static",
- "serde",
- "serum-common",
- "solana-client-gen",
- "solana-sdk",
- "spl-token",
- "thiserror",
 ]
 
 [[package]]

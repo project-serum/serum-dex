@@ -16,11 +16,11 @@ members = [
     "node/registry",
     "node/context",
     "node/dev",
+    "lockup/tests/stake",
 ]
 exclude = [
     "dex",
-    "wl/program",
     "registry/program",
-    "rewards/constant",
     "lockup/program",
+    "lockup/tests/stake/program",
 ]

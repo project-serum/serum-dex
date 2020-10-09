@@ -68,7 +68,8 @@ impl Vesting {
         self.total_vested(current_slot) - self.withdrawn_amount()
     }
 
-    // Returns the total vested amount up to the given slot.
+    // Returns the total vested amount up to the given slot, assuming no tokens
+		// have been pulled out of the program.
     fn total_vested(&self, current_slot: u64) -> u64 {
         assert!(current_slot >= self.start_slot);
 

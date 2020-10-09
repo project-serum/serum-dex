@@ -16,9 +16,7 @@ pub struct Whitelist {
 
 impl Whitelist {
     pub fn new(programs: [Pubkey; 10]) -> Self {
-        Self {
-            programs,
-        }
+        Self { programs }
     }
 
     pub fn get_at(&self, index: usize) -> &Pubkey {

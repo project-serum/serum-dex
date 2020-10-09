@@ -5,7 +5,7 @@ use serum_common::client::rpc;
 use serum_common::pack::Pack;
 use serum_lockup::accounts::{Vesting, Whitelist};
 use serum_lockup_client::*;
-use serum_wl_program::client::Client as StakeClient;
+use serum_lockup_test_stake::client::Client as StakeClient;
 use solana_client_gen::prelude::*;
 use solana_client_gen::solana_sdk::commitment_config::CommitmentConfig;
 use solana_client_gen::solana_sdk::instruction::AccountMeta;
@@ -151,11 +151,11 @@ fn lifecycle() {
     {
         // Instruction data to proxy to the whitelisted program.
         let relay_data = {
-            let stake_instr = serum_wl_program::instruction::WlInstruction::Stake {
+            let stake_instr = serum_lockup_test_stake::instruction::StakeInstruction::Stake {
                 amount: stake_amount,
             };
             let mut relay_data = vec![0; stake_instr.size().unwrap() as usize];
-            serum_wl_program::instruction::WlInstruction::pack(stake_instr, &mut relay_data)
+            serum_lockup_test_stake::instruction::StakeInstruction::pack(stake_instr, &mut relay_data)
                 .unwrap();
 
             relay_data
@@ -199,11 +199,11 @@ fn lifecycle() {
         let stake_withdraw = 95;
         // Relay tx data.
         let relay_data = {
-            let stake_instr = serum_wl_program::instruction::WlInstruction::Unstake {
+            let stake_instr = serum_lockup_test_stake::instruction::StakeInstruction::Unstake {
                 amount: stake_withdraw,
             };
             let mut relay_data = vec![0; stake_instr.size().unwrap() as usize];
-            serum_wl_program::instruction::WlInstruction::pack(stake_instr, &mut relay_data)
+            serum_lockup_test_stake::instruction::StakeInstruction::pack(stake_instr, &mut relay_data)
                 .unwrap();
             relay_data
         };

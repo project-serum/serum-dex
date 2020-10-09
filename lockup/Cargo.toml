@@ -29,5 +29,5 @@ lazy_static = { version = "1.4.0", optional = true }
 [dev-dependencies]
 rand = { version = "0.7.3" }
 serum-common-tests = { path = "../common/tests" }
-serum-wl-program = { path = "../wl/program", features = ["client"] }
 serum-lockup-client = { path = "./client" }
+serum-lockup-test-stake = { path = "./tests/stake", features = ["client"] }
