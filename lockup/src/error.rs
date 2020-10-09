@@ -3,16 +3,16 @@ use solana_client_gen::solana_sdk::program_error::ProgramError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
-pub enum SafeError {
+pub enum LockupError {
     #[error(transparent)]
     ProgramError(#[from] ProgramError),
     #[error("{0:?}")]
-    ErrorCode(#[from] SafeErrorCode),
+    ErrorCode(#[from] LockupErrorCode),
 }
 
 #[derive(Debug, IntoPrimitive, Clone, Copy)]
 #[repr(u32)]
-pub enum SafeErrorCode {
+pub enum LockupErrorCode {
     WrongSerialization = 0,
     NotRentExempt = 1,
     AlreadyInitialized = 2,
@@ -59,19 +59,19 @@ pub enum SafeErrorCode {
     Unknown = 1000,
 }
 
-impl std::fmt::Display for SafeErrorCode {
+impl std::fmt::Display for LockupErrorCode {
     fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
         <Self as std::fmt::Debug>::fmt(self, fmt)
     }
 }
 
-impl std::error::Error for SafeErrorCode {}
+impl std::error::Error for LockupErrorCode {}
 
-impl std::convert::From<SafeError> for ProgramError {
-    fn from(e: SafeError) -> ProgramError {
+impl std::convert::From<LockupError> for ProgramError {
+    fn from(e: LockupError) -> ProgramError {
         match e {
-            SafeError::ProgramError(e) => e,
-            SafeError::ErrorCode(c) => ProgramError::Custom(c.into()),
+            LockupError::ProgramError(e) => e,
+            LockupError::ErrorCode(c) => ProgramError::Custom(c.into()),
         }
     }
 }

@@ -1,6 +1,6 @@
 use serum_common::pack::Pack;
 use serum_lockup::accounts::{Safe, TokenVault, Whitelist};
-use serum_lockup::error::{SafeError, SafeErrorCode};
+use serum_lockup::error::{LockupError, LockupErrorCode};
 use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::info;
 use solana_sdk::program_pack::Pack as TokenPack;
@@ -14,7 +14,7 @@ pub fn handler<'a>(
     accounts: &'a [AccountInfo<'a>],
     authority: Pubkey,
     nonce: u8,
-) -> Result<(), SafeError> {
+) -> Result<(), LockupError> {
     info!("handler: initialize");
 
     let acc_infos = &mut accounts.iter();
@@ -53,7 +53,7 @@ pub fn handler<'a>(
     Ok(())
 }
 
-fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), SafeError> {
+fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), LockupError> {
     info!("access-control: initialize");
 
     let AccessControlRequest {
@@ -73,21 +73,21 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), SafeError> {
         let safe_data = safe_acc_info.try_borrow_data()?;
         let safe = Safe::unpack(&safe_data)?;
         if safe.initialized {
-            return Err(SafeErrorCode::AlreadyInitialized)?;
+            return Err(LockupErrorCode::AlreadyInitialized)?;
         }
         if safe_acc_info.owner != program_id {
-            return Err(SafeErrorCode::NotOwnedByProgram)?;
+            return Err(LockupErrorCode::NotOwnedByProgram)?;
         }
         let rent = Rent::from_account_info(rent_acc_info)?;
         if !rent.is_exempt(safe_acc_info.lamports(), safe_data.len()) {
-            return Err(SafeErrorCode::NotRentExempt)?;
+            return Err(LockupErrorCode::NotRentExempt)?;
         }
     }
 
     // Whitelist.
     {
         if whitelist_acc_info.owner != program_id {
-            return Err(SafeErrorCode::InvalidAccountOwner)?;
+            return Err(LockupErrorCode::InvalidAccountOwner)?;
         }
     }
 
@@ -99,7 +99,7 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), SafeError> {
         )
         .is_err()
         {
-            return Err(SafeErrorCode::InvalidVaultNonce)?;
+            return Err(LockupErrorCode::InvalidVaultNonce)?;
         }
     }
 
@@ -108,18 +108,18 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), SafeError> {
         let mint = spl_token::state::Mint::unpack(&mint_acc_info.try_borrow_data()?)?;
 
         if *mint_acc_info.owner != spl_token::ID {
-            return Err(SafeErrorCode::InvalidMint)?;
+            return Err(LockupErrorCode::InvalidMint)?;
         }
 
         if !mint.is_initialized {
-            return Err(SafeErrorCode::UnitializedTokenMint)?;
+            return Err(LockupErrorCode::UnitializedTokenMint)?;
         }
     }
 
     // Rent sysvar.
     {
         if *rent_acc_info.key != solana_sdk::sysvar::rent::id() {
-            return Err(SafeErrorCode::InvalidRentSysvar)?;
+            return Err(LockupErrorCode::InvalidRentSysvar)?;
         }
     }
 
@@ -130,7 +130,7 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), SafeError> {
     Ok(())
 }
 
-fn state_transition<'a>(req: StateTransitionRequest<'a>) -> Result<(), SafeError> {
+fn state_transition<'a>(req: StateTransitionRequest<'a>) -> Result<(), LockupError> {
     info!("state-transition: initialize");
 
     let StateTransitionRequest {

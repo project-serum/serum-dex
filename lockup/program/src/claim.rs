@@ -1,6 +1,6 @@
 use serum_common::pack::Pack;
 use serum_lockup::accounts::{Safe, TokenVault, Vesting};
-use serum_lockup::error::{SafeError, SafeErrorCode};
+use serum_lockup::error::{LockupError, LockupErrorCode};
 use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::info;
 use solana_sdk::program_pack::Pack as TokenPack;
@@ -12,7 +12,7 @@ use std::convert::Into;
 pub fn handler<'a>(
     program_id: &'a Pubkey,
     accounts: &'a [AccountInfo<'a>],
-) -> Result<(), SafeError> {
+) -> Result<(), LockupError> {
     info!("handler: mint_locked");
 
     let acc_infos = &mut accounts.iter();
@@ -57,7 +57,7 @@ pub fn handler<'a>(
     Ok(())
 }
 
-fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), SafeError> {
+fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), LockupError> {
     info!("access-control: mint");
 
     let AccessControlRequest {
@@ -73,7 +73,7 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), SafeError> {
     // Beneficiary authorization.
     {
         if !vesting_acc_beneficiary_info.is_signer {
-            return Err(SafeErrorCode::Unauthorized)?;
+            return Err(LockupErrorCode::Unauthorized)?;
         }
     }
 
@@ -81,17 +81,17 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), SafeError> {
     let vesting = Vesting::unpack(&vesting_acc_info.try_borrow_data()?)?;
     {
         if vesting_acc_info.owner != program_id {
-            return Err(SafeErrorCode::InvalidAccount)?;
+            return Err(LockupErrorCode::InvalidAccount)?;
         }
         if !vesting.initialized {
-            return Err(SafeErrorCode::NotInitialized)?;
+            return Err(LockupErrorCode::NotInitialized)?;
         }
         if vesting.claimed {
-            return Err(SafeErrorCode::AlreadyClaimed)?;
+            return Err(LockupErrorCode::AlreadyClaimed)?;
         }
         // Match the signing beneficiary to this account.
         if vesting.beneficiary != *vesting_acc_beneficiary_info.key {
-            return Err(SafeErrorCode::Unauthorized)?;
+            return Err(LockupErrorCode::Unauthorized)?;
         }
     }
 
@@ -102,16 +102,16 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), SafeError> {
         // unpack_unchecked because it's not yet initialized.
         let token_acc = spl_token::state::Account::unpack(&token_acc_info.try_borrow_data()?)?;
         if *token_acc_info.owner != spl_token::ID {
-            return Err(SafeErrorCode::InvalidAccountOwner)?;
+            return Err(LockupErrorCode::InvalidAccountOwner)?;
         }
         if !rent.is_exempt(token_acc_info.lamports(), token_acc_info.try_data_len()?) {
-            return Err(SafeErrorCode::NotRentExempt)?;
+            return Err(LockupErrorCode::NotRentExempt)?;
         }
         if token_acc.owner != vesting.beneficiary {
-            return Err(SafeErrorCode::InvalidTokenAccountOwner)?;
+            return Err(LockupErrorCode::InvalidTokenAccountOwner)?;
         }
         if token_acc.mint != *mint_acc_info.key {
-            return Err(SafeErrorCode::InvalidTokenAccountMint)?;
+            return Err(LockupErrorCode::InvalidTokenAccountMint)?;
         }
     }
 
@@ -124,14 +124,14 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), SafeError> {
     // Token program.
     {
         if *token_program_acc_info.key != spl_token::ID {
-            return Err(SafeErrorCode::InvalidTokenProgram)?;
+            return Err(LockupErrorCode::InvalidTokenProgram)?;
         }
     }
 
     // Rent sysvar.
     {
         if *rent_acc_info.key != solana_sdk::sysvar::rent::id() {
-            return Err(SafeErrorCode::InvalidRentSysvar)?;
+            return Err(LockupErrorCode::InvalidRentSysvar)?;
         }
     }
 
@@ -140,7 +140,7 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), SafeError> {
     Ok(())
 }
 
-fn state_transition<'a, 'b>(req: StateTransitionRequest<'a, 'b>) -> Result<(), SafeError> {
+fn state_transition<'a, 'b>(req: StateTransitionRequest<'a, 'b>) -> Result<(), LockupError> {
     info!("state-transition: mint");
 
     let StateTransitionRequest {

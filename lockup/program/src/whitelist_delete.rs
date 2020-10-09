@@ -1,6 +1,6 @@
 use serum_common::pack::Pack;
 use serum_lockup::accounts::{Safe, Whitelist};
-use serum_lockup::error::{SafeError, SafeErrorCode};
+use serum_lockup::error::{LockupError, LockupErrorCode};
 use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::info;
 use solana_sdk::pubkey::Pubkey;
@@ -10,7 +10,7 @@ pub fn handler<'a>(
     program_id: &'a Pubkey,
     accounts: &'a [AccountInfo<'a>],
     program_id_to_add: Pubkey,
-) -> Result<(), SafeError> {
+) -> Result<(), LockupError> {
     info!("handler: whitelist_delete");
 
     let acc_infos = &mut accounts.iter();
@@ -39,7 +39,7 @@ pub fn handler<'a>(
     Ok(())
 }
 
-fn access_control(req: AccessControlRequest) -> Result<(), SafeError> {
+fn access_control(req: AccessControlRequest) -> Result<(), LockupError> {
     info!("access-control: whitelist_delete");
 
     let AccessControlRequest {
@@ -55,7 +55,7 @@ fn access_control(req: AccessControlRequest) -> Result<(), SafeError> {
     Ok(())
 }
 
-fn state_transition(req: StateTransitionRequest) -> Result<(), SafeError> {
+fn state_transition(req: StateTransitionRequest) -> Result<(), LockupError> {
     info!("state-transition: whitelist_delete");
 
     let StateTransitionRequest {
@@ -65,7 +65,7 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), SafeError> {
 
     whitelist
         .delete(program_id_to_add)
-        .ok_or(SafeErrorCode::WhitelistProgramNotFound)?;
+        .ok_or(LockupErrorCode::WhitelistProgramNotFound)?;
 
     info!("state-transition: success");
 

@@ -3,8 +3,8 @@
 #![cfg_attr(feature = "strict", deny(warnings))]
 
 use serum_common::pack::Pack;
-use serum_lockup::error::{SafeError, SafeErrorCode};
-use serum_lockup::instruction::SafeInstruction;
+use serum_lockup::error::{LockupError, LockupErrorCode};
+use serum_lockup::instruction::LockupInstruction;
 use solana_sdk::account_info::AccountInfo;
 use solana_sdk::entrypoint::ProgramResult;
 use solana_sdk::info;
@@ -29,14 +29,14 @@ fn process_instruction<'a>(
 ) -> ProgramResult {
     info!("process-instruction");
 
-    let instruction: SafeInstruction = SafeInstruction::unpack(instruction_data)
-        .map_err(|_| SafeError::ErrorCode(SafeErrorCode::WrongSerialization))?;
+    let instruction: LockupInstruction = LockupInstruction::unpack(instruction_data)
+        .map_err(|_| LockupError::ErrorCode(LockupErrorCode::WrongSerialization))?;
 
     let result = match instruction {
-        SafeInstruction::Initialize { authority, nonce } => {
+        LockupInstruction::Initialize { authority, nonce } => {
             initialize::handler(program_id, accounts, authority, nonce)
         }
-        SafeInstruction::CreateVesting {
+        LockupInstruction::CreateVesting {
             beneficiary,
             end_slot,
             period_count,
@@ -49,25 +49,25 @@ fn process_instruction<'a>(
             period_count,
             deposit_amount,
         ),
-        SafeInstruction::Claim => claim::handler(program_id, accounts),
-        SafeInstruction::Redeem { amount } => redeem::handler(program_id, accounts, amount),
-        SafeInstruction::WhitelistWithdraw {
+        LockupInstruction::Claim => claim::handler(program_id, accounts),
+        LockupInstruction::Redeem { amount } => redeem::handler(program_id, accounts, amount),
+        LockupInstruction::WhitelistWithdraw {
             amount,
             instruction_data,
         } => whitelist_withdraw::handler(program_id, accounts, amount, instruction_data),
-        SafeInstruction::WhitelistDeposit { instruction_data } => {
+        LockupInstruction::WhitelistDeposit { instruction_data } => {
             whitelist_deposit::handler(program_id, accounts, instruction_data)
         }
-        SafeInstruction::WhitelistAdd { program_id_to_add } => {
+        LockupInstruction::WhitelistAdd { program_id_to_add } => {
             whitelist_add::handler(program_id, accounts, program_id_to_add)
         }
-        SafeInstruction::WhitelistDelete {
+        LockupInstruction::WhitelistDelete {
             program_id_to_delete,
         } => whitelist_delete::handler(program_id, accounts, program_id_to_delete),
-        SafeInstruction::SetAuthority { new_authority } => {
+        LockupInstruction::SetAuthority { new_authority } => {
             set_authority::handler(program_id, accounts, new_authority)
         }
-        SafeInstruction::Migrate => migrate::handler(program_id, accounts),
+        LockupInstruction::Migrate => migrate::handler(program_id, accounts),
     };
 
     result?;

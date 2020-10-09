@@ -1,6 +1,6 @@
 use serum_common::pack::Pack;
 use serum_lockup::accounts::{Safe, TokenVault, Vesting};
-use serum_lockup::error::{SafeError, SafeErrorCode};
+use serum_lockup::error::{LockupError, LockupErrorCode};
 use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::info;
 use solana_sdk::program_pack::Pack as TokenPack;
@@ -17,7 +17,7 @@ pub fn handler<'a>(
     end_slot: u64,
     period_count: u64,
     deposit_amount: u64,
-) -> Result<(), SafeError> {
+) -> Result<(), LockupError> {
     info!("handler: deposit");
 
     let acc_infos = &mut accounts.iter();
@@ -77,7 +77,7 @@ pub fn handler<'a>(
     Ok(())
 }
 
-fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), SafeError> {
+fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), LockupError> {
     info!("access-control: deposit");
 
     let AccessControlRequest {
@@ -101,7 +101,7 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), SafeError> {
     // Depositor authorization.
     {
         if !depositor_authority_acc_info.is_signer {
-            return Err(SafeErrorCode::Unauthorized)?;
+            return Err(LockupErrorCode::Unauthorized)?;
         }
     }
 
@@ -109,7 +109,7 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), SafeError> {
     let safe = Safe::unpack(&safe_acc_info.try_borrow_data()?)?;
     {
         if !safe.initialized {
-            return Err(SafeErrorCode::NotInitialized)?;
+            return Err(LockupErrorCode::NotInitialized)?;
         }
     }
 
@@ -119,66 +119,66 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), SafeError> {
             spl_token::state::Account::unpack(&safe_vault_acc_info.try_borrow_data()?)?;
 
         if *safe_vault_acc_info.owner != spl_token::ID {
-            return Err(SafeErrorCode::InvalidVault)?;
+            return Err(LockupErrorCode::InvalidVault)?;
         }
         if safe_vault.state != spl_token::state::AccountState::Initialized {
-            return Err(SafeErrorCode::NotInitialized)?;
+            return Err(LockupErrorCode::NotInitialized)?;
         }
         let safe_vault_authority = Pubkey::create_program_address(
             &TokenVault::signer_seeds(safe_acc_info.key, &safe.nonce),
             program_id,
         )
-        .map_err(|_| SafeErrorCode::InvalidVault)?;
+        .map_err(|_| LockupErrorCode::InvalidVault)?;
         if safe_vault.owner != safe_vault_authority {
-            return Err(SafeErrorCode::InvalidVault)?;
+            return Err(LockupErrorCode::InvalidVault)?;
         }
     }
 
     // Vesting.
     {
         if vesting_acc_info.owner != program_id {
-            return Err(SafeErrorCode::NotOwnedByProgram)?;
+            return Err(LockupErrorCode::NotOwnedByProgram)?;
         }
         let vesting = Vesting::unpack(&vesting_acc_info.try_borrow_data()?)?;
         if vesting.initialized {
-            return Err(SafeErrorCode::AlreadyInitialized)?;
+            return Err(LockupErrorCode::AlreadyInitialized)?;
         }
         let rent = Rent::from_account_info(rent_acc_info)?;
         if !rent.is_exempt(
             vesting_acc_info.lamports(),
             vesting_acc_info.try_data_len()?,
         ) {
-            return Err(SafeErrorCode::NotRentExempt)?;
+            return Err(LockupErrorCode::NotRentExempt)?;
         }
     }
 
     // Token program.
     {
         if *token_program_acc_info.key != spl_token::ID {
-            return Err(SafeErrorCode::InvalidTokenProgram)?;
+            return Err(LockupErrorCode::InvalidTokenProgram)?;
         }
     }
 
     // Rent sysvar.
     {
         if *rent_acc_info.key != solana_sdk::sysvar::rent::id() {
-            return Err(SafeErrorCode::InvalidRentSysvar)?;
+            return Err(LockupErrorCode::InvalidRentSysvar)?;
         }
     }
 
     // Vesting schedule.
     {
         if *clock_acc_info.key != solana_sdk::sysvar::clock::id() {
-            return Err(SafeErrorCode::InvalidClock)?;
+            return Err(LockupErrorCode::InvalidClock)?;
         }
         if end_slot <= clock_slot {
-            return Err(SafeErrorCode::InvalidSlot)?;
+            return Err(LockupErrorCode::InvalidSlot)?;
         }
         if period_count == 0 {
-            return Err(SafeErrorCode::InvalidPeriod)?;
+            return Err(LockupErrorCode::InvalidPeriod)?;
         }
         if deposit_amount == 0 {
-            return Err(SafeErrorCode::InvalidDepositAmount)?;
+            return Err(LockupErrorCode::InvalidDepositAmount)?;
         }
     }
     // NFT Mint.
@@ -192,7 +192,7 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), SafeError> {
     {
         let depositor = spl_token::state::Account::unpack(&depositor_acc_info.try_borrow_data()?)?;
         if safe.mint != depositor.mint {
-            return Err(SafeErrorCode::WrongCoinMint)?;
+            return Err(LockupErrorCode::WrongCoinMint)?;
         }
         // Let the spl token program handle the rest of the depositor.
     }
@@ -202,7 +202,7 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), SafeError> {
     Ok(())
 }
 
-fn state_transition<'a, 'b>(req: StateTransitionRequest<'a, 'b>) -> Result<(), SafeError> {
+fn state_transition<'a, 'b>(req: StateTransitionRequest<'a, 'b>) -> Result<(), LockupError> {
     info!("state-transition: deposit");
 
     let StateTransitionRequest {

@@ -13,7 +13,7 @@ pub mod error;
 pub mod instruction {
     use super::*;
     #[derive(Serialize, Deserialize)]
-    pub enum SafeInstruction {
+    pub enum LockupInstruction {
         /// Initializes a safe instance for use.
         ///
         /// Similar to a token mint, this must be included in the same
@@ -103,25 +103,11 @@ pub mod instruction {
         /// 8. `[]`         SPL token program.
         /// 9. `[]`         Clock sysvar.
         Redeem { amount: u64 },
-        /// We can't use this directly until Solana increases their
-        /// cross program call depth limit to be greater than one.
-        /// In the mean time, break this up into three transactions.
-        ///
-        /// * WhitelistWithdrawStart
-        /// * Call whitelisted program directly to perform the transfer
-        /// * WhitelistWithdrawEnd
-        ///
-        /// The above implementation is insecure.
-        ///
         /// Invokes an opaque instruction on a whitelisted program address,
-        /// giving it the ability to send `amount` funds to itself.
-        /// For example, a user would call this with the staking program
-        /// to send locked SRM to it without ever having custody of the
-        /// token.
-        ///
-        /// The program should "Approve" the whitelisted program as a delegate
-        /// for the given amount. And then "Revoke" the progam once the
-        /// relay instruction is complete.
+        /// giving it delegate access to send `amount` funds to itself.
+        /// For example, a user could call this with a staking program
+        /// instruction to send locked SRM to it custody ever leaving an on-
+        /// chain program.
         ///
         /// Accounts:
         ///
@@ -144,7 +130,7 @@ pub mod instruction {
         WhitelistWithdraw {
             /// Amount of funds the whitelisted program is approved to
             /// transfer to itself. Must be less than or equal to the vesting
-            /// account's balance.
+            /// account's whitelistable balance.
             amount: u64,
             /// Opaque instruction data to relay to the whitelisted program.
             instruction_data: Vec<u8>,
@@ -199,4 +185,4 @@ pub mod instruction {
     }
 }
 
-serum_common::packable!(crate::instruction::SafeInstruction);
+serum_common::packable!(instruction::LockupInstruction);

@@ -1,6 +1,6 @@
 use serum_common::pack::Pack;
 use serum_lockup::accounts::{Safe, TokenVault, Vesting, Whitelist};
-use serum_lockup::error::{SafeError, SafeErrorCode};
+use serum_lockup::error::{LockupError, LockupErrorCode};
 use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::info;
 use solana_sdk::instruction::{AccountMeta, Instruction};
@@ -14,7 +14,7 @@ pub fn handler<'a>(
     program_id: &'a Pubkey,
     accounts: &'a [AccountInfo<'a>],
     instruction_data: Vec<u8>,
-) -> Result<(), SafeError> {
+) -> Result<(), LockupError> {
     info!("handler: whitelist_deposit");
 
     let acc_infos = &mut accounts.iter();
@@ -71,7 +71,7 @@ pub fn handler<'a>(
     Ok(())
 }
 
-fn access_control(req: AccessControlRequest) -> Result<(), SafeError> {
+fn access_control(req: AccessControlRequest) -> Result<(), LockupError> {
     info!("access-control: whitelist_deposit");
 
     let AccessControlRequest {
@@ -93,7 +93,7 @@ fn access_control(req: AccessControlRequest) -> Result<(), SafeError> {
     Ok(())
 }
 
-fn state_transition(req: StateTransitionRequest) -> Result<(), SafeError> {
+fn state_transition(req: StateTransitionRequest) -> Result<(), LockupError> {
     info!("state-transition: whitelist_deposit");
 
     let StateTransitionRequest {
@@ -149,7 +149,7 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), SafeError> {
         // If we hit this, there's a bug in this or the whitelisted program.
         // This should never happen.
         if deposit_amount > vesting.whitelist_owned {
-            return Err(SafeErrorCode::WhitelistDepositInvariantViolation)?;
+            return Err(LockupErrorCode::WhitelistDepositInvariantViolation)?;
         }
         vesting.whitelist_owned -= deposit_amount;
     }

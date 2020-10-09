@@ -1,6 +1,6 @@
 use serum_common::pack::Pack;
 use serum_lockup::accounts::Safe;
-use serum_lockup::error::{SafeError, SafeErrorCode};
+use serum_lockup::error::{LockupError, LockupErrorCode};
 use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::info;
 use solana_sdk::pubkey::Pubkey;
@@ -10,7 +10,7 @@ pub fn handler<'a>(
     program_id: &'a Pubkey,
     accounts: &'a [AccountInfo<'a>],
     new_authority: Pubkey,
-) -> Result<(), SafeError> {
+) -> Result<(), LockupError> {
     info!("handler: set_authority");
 
     let acc_infos = &mut accounts.iter();
@@ -38,7 +38,7 @@ pub fn handler<'a>(
     Ok(())
 }
 
-fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), SafeError> {
+fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), LockupError> {
     info!("access-control: set-authority");
 
     let AccessControlRequest {
@@ -50,7 +50,7 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), SafeError> {
     // Safe authority authorization.
     {
         if !safe_authority_acc_info.is_signer {
-            return Err(SafeErrorCode::Unauthorized)?;
+            return Err(LockupErrorCode::Unauthorized)?;
         }
     }
 
@@ -59,13 +59,13 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), SafeError> {
         let safe_acc = Safe::unpack(&safe_acc_info.try_borrow_data()?)?;
         // Match the safe to the authority.
         if safe_acc.authority != *safe_authority_acc_info.key {
-            return Err(SafeErrorCode::Unauthorized)?;
+            return Err(LockupErrorCode::Unauthorized)?;
         }
         if !safe_acc.initialized {
-            return Err(SafeErrorCode::NotInitialized)?;
+            return Err(LockupErrorCode::NotInitialized)?;
         }
         if safe_acc_info.owner != program_id {
-            return Err(SafeErrorCode::InvalidAccountOwner)?;
+            return Err(LockupErrorCode::InvalidAccountOwner)?;
         }
     }
 
@@ -80,7 +80,7 @@ struct AccessControlRequest<'a> {
     safe_authority_acc_info: &'a AccountInfo<'a>,
 }
 
-fn state_transition<'a>(req: StateTransitionRequest<'a>) -> Result<(), SafeError> {
+fn state_transition<'a>(req: StateTransitionRequest<'a>) -> Result<(), LockupError> {
     info!("state-transition: set-authority");
 
     let StateTransitionRequest {
