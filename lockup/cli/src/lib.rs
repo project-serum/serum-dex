@@ -1,11 +1,9 @@
 use anyhow::{anyhow, Result};
 use clap::Clap;
 use serum_common::client::rpc;
-use serum_lockup::accounts::{Safe, Vesting};
 use serum_lockup_client::*;
 use serum_node_context::Context;
 use solana_client_gen::prelude::*;
-use spl_token::state::Account as TokenAccount;
 
 #[derive(Debug, Clap)]
 #[clap(name = "Serum Lockup CLI")]
@@ -44,6 +42,7 @@ pub enum SubCommand {
     /// Initializes a Safe.
     Initialize {
         /// Authority to set on the new safe.
+				#[clap(short, long)]
         authority: Pubkey,
     },
     /// Creates a vesting account.
@@ -100,6 +99,12 @@ pub enum AccountsCommand {
         /// Address of the vesting account.
         #[clap(short, long)]
         address: Pubkey,
+				/// Outputs the amount reedemable, if set.
+        #[clap(short, long)]
+				redeemable: bool,
+				/// Outputs the amount available for whitelisted programs, if set.
+        #[clap(short, long)]
+				whitelistable: bool,
     },
     /// View the Safe's whitelist.
     Whitelist {
@@ -240,22 +245,31 @@ fn account_cmd(ctx: &Context, pid: Pubkey, cmd: AccountsCommand) -> Result<()> {
     let client = Client::new(ctx.connect(pid)?);
     match cmd {
         AccountsCommand::Safe { address } => {
-            let safe = client.safe(&address);
+            let safe = client.safe(&address)?;
             println!("{:#?}", safe);
             Ok(())
         }
-        AccountsCommand::Vesting { address } => {
-            let vault = client.vesting(&address);
+        AccountsCommand::Vesting { address, redeemable, whitelistable } => {
+            let vault = client.vesting(&address)?;
             println!("{:#?}", vault);
+						if redeemable {
+								let current_slot = client.rpc().get_slot()?;
+								let amount = vault.available_for_withdrawal(current_slot);
+								println!("Redeemable balance: {:?}", amount);
+						}
+						if whitelistable {
+								let amount = vault.available_for_whitelist();
+								println!("Whitelistable balance: {:?}", amount);
+						}
             Ok(())
         }
         AccountsCommand::Whitelist { safe } => {
-            let whitelist = client.whitelist(&safe);
+            let whitelist = client.whitelist(&safe)?;
             println!("{:#?}", whitelist);
             Ok(())
         }
         AccountsCommand::Vault { safe } => {
-            let vault = client.vault(&safe);
+            let vault = client.vault(&safe)?;
             println!("{:#?}", vault);
             Ok(())
         }

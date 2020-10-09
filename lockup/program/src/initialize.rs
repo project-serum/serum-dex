@@ -86,10 +86,6 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), SafeError> {
 
     // Whitelist.
     {
-        let wl = Whitelist::unpack(&whitelist_acc_info.try_borrow_data()?)?;
-        if wl.initialized {
-            return Err(SafeErrorCode::WhitelistAlreadyInitialized)?;
-        }
         if whitelist_acc_info.owner != program_id {
             return Err(SafeErrorCode::InvalidAccountOwner)?;
         }

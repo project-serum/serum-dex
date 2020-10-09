@@ -4,21 +4,19 @@ use serum_common::pack::*;
 use solana_client_gen::solana_sdk::pubkey::Pubkey;
 use std::io::Read;
 
-pub const SIZE: usize = 321;
+pub const SIZE: usize = 320;
 
 // TODO: decide on this number. 10 is arbitrary.
 //
 // TODO: use a macro so we don't have to manually expand eveerything here.
 #[derive(Default, Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Whitelist {
-    pub initialized: bool,
     pub programs: [Pubkey; 10],
 }
 
 impl Whitelist {
-    pub fn new(initialized: bool, programs: [Pubkey; 10]) -> Self {
+    pub fn new(programs: [Pubkey; 10]) -> Self {
         Self {
-            initialized,
             programs,
         }
     }
@@ -70,14 +68,8 @@ impl Pack for Whitelist {
 
         let mut whitelist = Whitelist::default();
 
-        whitelist.initialized = match new_src[0] {
-            0 => false,
-            1 => true,
-            _ => return Err(ProgramError::InvalidAccountData),
-        };
-
         for k in 0..10 {
-            let start = (32 * k) + 1;
+            let start = 32 * k;
             let end = start + 32;
             let pid = Pubkey::new(&new_src[start..end]);
             whitelist.add_at(k, pid);
@@ -88,10 +80,9 @@ impl Pack for Whitelist {
 
     fn pack(src: Whitelist, dst: &mut [u8]) -> Result<(), ProgramError> {
         let dst = array_mut_ref![dst, 0, SIZE];
-        let (initialized, zero, one, two, three, four, five, six, seven, eight, nine) =
-            mut_array_refs![dst, 1, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32];
+        let (zero, one, two, three, four, five, six, seven, eight, nine) =
+            mut_array_refs![dst, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32];
 
-        initialized[0] = src.initialized as u8;
         zero.copy_from_slice(src.get_at(0).as_ref());
         one.copy_from_slice(src.get_at(1).as_ref());
         two.copy_from_slice(src.get_at(2).as_ref());
@@ -118,7 +109,6 @@ mod tests {
     #[test]
     fn pack_unpack() {
         let whitelist = Whitelist {
-            initialized: true,
             programs: [
                 Pubkey::new_rand(),
                 Pubkey::new_rand(),
