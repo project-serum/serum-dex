@@ -6,8 +6,9 @@ members = [
     "crank",
     "registry",
     "registry/cli",
-    "safe",
-    "safe/cli",
+    "lockup",
+    "lockup/cli",
+    "lockup/client",
     "node",
     "node/json-rpc",
     "node/logging",
@@ -21,5 +22,5 @@ exclude = [
     "wl/program",
     "registry/program",
     "rewards/constant",
-    "safe/program",
+    "lockup/program",
 ]
