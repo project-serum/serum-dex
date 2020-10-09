@@ -1,15 +1,7 @@
-//! The lifecycle module defines common functions used in safe tests to bring
-//! the program up to a certain state or point in time. For example, immediately
-//! for every deposit test, we want to skip the boilerplate and have everything
-//! already initialized.
-//!
-//! Each stage here builds on eachother. Genesis -> Initialization -> Deposit, etc.
-
 use rand::rngs::OsRng;
 use serum_lockup_client::*;
 use solana_client_gen::prelude::*;
 
-// Sets up the initial on-chain state for a serum safe.
 pub fn initialize() -> Initialized {
     let serum_common_tests::Genesis {
         client,
