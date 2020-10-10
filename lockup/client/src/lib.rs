@@ -117,13 +117,14 @@ impl Client {
             delegate_amount,
             relay_data,
         } = req;
-
+        let whitelist = self.safe(&safe)?.whitelist;
         let mut accounts = vec![
             AccountMeta::new_readonly(beneficiary.pubkey(), true),
             AccountMeta::new(vesting, false),
             AccountMeta::new_readonly(safe, false),
             AccountMeta::new_readonly(self.vault_authority(safe)?, false),
             AccountMeta::new_readonly(whitelist_program, false),
+            AccountMeta::new_readonly(whitelist, false),
             // Below are relay accounts.
             AccountMeta::new(vault, false),
             AccountMeta::new(whitelist_vault, false),
@@ -157,13 +158,14 @@ impl Client {
             whitelist_vault_authority,
             relay_data,
         } = req;
-
+        let whitelist = self.safe(&safe)?.whitelist;
         let mut accounts = vec![
             AccountMeta::new_readonly(beneficiary.pubkey(), true),
             AccountMeta::new(vesting, false),
             AccountMeta::new_readonly(safe, false),
             AccountMeta::new_readonly(self.vault_authority(safe)?, false),
             AccountMeta::new_readonly(whitelist_program, false),
+            AccountMeta::new_readonly(whitelist, false),
             // Below are relay accounts.
             AccountMeta::new(vault, false),
             AccountMeta::new(whitelist_vault, false),
@@ -196,7 +198,6 @@ impl Client {
             AccountMeta::new_readonly(safe, false),
             AccountMeta::new_readonly(self.vault_authority(safe)?, false),
             AccountMeta::new_readonly(spl_token::ID, false),
-            AccountMeta::new_readonly(solana_sdk::sysvar::rent::ID, false),
             AccountMeta::new(locked_mint, false),
             AccountMeta::new(locked_token_account, false),
         ];

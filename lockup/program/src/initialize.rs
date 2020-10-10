@@ -69,19 +69,20 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), LockupError> 
 
     // Authorization: none.
 
-    // Safe.
+    // Rent.
     let rent = access_control::rent(rent_acc_info)?;
+
+    // Safe.
     {
-        let safe_data = safe_acc_info.try_borrow_data()?;
-        let safe = Safe::unpack(&safe_data)?;
-        if safe.initialized {
-            return Err(LockupErrorCode::AlreadyInitialized)?;
-        }
+        let safe = Safe::unpack(&safe_acc_info.try_borrow_data()?)?;
         if safe_acc_info.owner != program_id {
             return Err(LockupErrorCode::NotOwnedByProgram)?;
         }
-        if !rent.is_exempt(safe_acc_info.lamports(), safe_data.len()) {
+        if !rent.is_exempt(safe_acc_info.lamports(), safe_acc_info.try_data_len()?) {
             return Err(LockupErrorCode::NotRentExempt)?;
+        }
+        if safe.initialized {
+            return Err(LockupErrorCode::AlreadyInitialized)?;
         }
     }
 
@@ -90,28 +91,27 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), LockupError> 
         if whitelist_acc_info.owner != program_id {
             return Err(LockupErrorCode::InvalidAccountOwner)?;
         }
+        if !rent.is_exempt(
+            whitelist_acc_info.lamports(),
+            whitelist_acc_info.try_data_len()?,
+        ) {
+            return Err(LockupErrorCode::NotRentExempt)?;
+        }
     }
 
     // Vault.
     {
+        let vault = access_control::token(vault_acc_info)?;
         let vault_authority = Pubkey::create_program_address(
             &TokenVault::signer_seeds(safe_acc_info.key, &nonce),
             program_id,
         )
         .map_err(|_| LockupErrorCode::InvalidVaultNonce)?;
-        let vault_data_len = vault_acc_info.try_data_len()?;
-        let vault = spl_token::state::Account::unpack(&vault_acc_info.try_borrow_data()?)?;
 
-        if *vault_acc_info.owner != spl_token::ID {
-            return Err(LockupErrorCode::InvalidAccountOwner)?;
-        }
-        if vault.state != spl_token::state::AccountState::Initialized {
-            return Err(LockupErrorCode::NotInitialized)?;
-        }
         if vault.owner != vault_authority {
             return Err(LockupErrorCode::InvalidVault)?;
         }
-        if !rent.is_exempt(vault_acc_info.lamports(), vault_data_len) {
+        if !rent.is_exempt(vault_acc_info.lamports(), vault_acc_info.try_data_len()?) {
             return Err(LockupErrorCode::NotRentExempt)?;
         }
     }

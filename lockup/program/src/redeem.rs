@@ -1,4 +1,4 @@
-use crate::access_control::{self, VestingGovRequest};
+use crate::access_control;
 use serum_common::pack::Pack;
 use serum_lockup::accounts::{Safe, TokenVault, Vesting};
 use serum_lockup::error::{LockupError, LockupErrorCode};
@@ -36,6 +36,7 @@ pub fn handler<'a>(
         vesting_acc_beneficiary_info,
         vesting_acc_info,
         safe_vault_acc_info,
+        safe_vault_authority_acc_info,
         safe_acc_info,
         nft_token_acc_info,
         nft_mint_acc_info,
@@ -74,6 +75,7 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), LockupError> 
         vesting_acc_beneficiary_info,
         vesting_acc_info,
         safe_vault_acc_info,
+        safe_vault_authority_acc_info,
         safe_acc_info,
         token_program_acc_info,
         nft_token_acc_info,
@@ -81,31 +83,43 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), LockupError> 
         clock_acc_info,
     } = req;
 
-    let vesting = Vesting::unpack(&vesting_acc_info.try_borrow_data()?)?;
+    // Beneficiary authorization.
+    if !vesting_acc_beneficiary_info.is_signer {
+        return Err(LockupErrorCode::Unauthorized)?;
+    }
 
-    access_control::vesting_gov(VestingGovRequest {
-        program_id,
-        vesting: &vesting,
+    // Account validation.
+    let _ = access_control::safe(safe_acc_info, program_id)?;
+    let _ = access_control::vault(
+        safe_vault_acc_info,
+        safe_vault_authority_acc_info,
         safe_acc_info,
+        program_id,
+    )?;
+    let vesting = access_control::vesting(
+        program_id,
+        safe_acc_info.key,
         vesting_acc_info,
         vesting_acc_beneficiary_info,
-    })?;
+    )?;
+    let _ = access_control::locked_token(
+        nft_token_acc_info,
+        nft_mint_acc_info,
+        safe_vault_authority_acc_info.key,
+        &vesting,
+    )?;
 
-    if !vesting.claimed {
-        return Err(LockupErrorCode::NotYetClaimed)?;
+    // Redemption checks.
+    {
+        let clock = access_control::clock(clock_acc_info)?;
+
+        if !vesting.claimed {
+            return Err(LockupErrorCode::NotYetClaimed)?;
+        }
+        if amount > vesting.available_for_withdrawal(clock.slot) {
+            return Err(LockupErrorCode::InsufficientWithdrawalBalance)?;
+        }
     }
-
-    if vesting.locked_nft_mint != *nft_mint_acc_info.key {
-        return Err(LockupErrorCode::InvalidRedemptionMint)?;
-    }
-
-    let clock = Clock::from_account_info(clock_acc_info)?;
-    if amount > vesting.available_for_withdrawal(clock.slot) {
-        return Err(LockupErrorCode::InsufficientWithdrawalBalance)?;
-    }
-
-    // Expects all checks related to token transfer to be enforced by the SPL
-    // token program and the Solana runtime.
 
     info!("access-control: success");
 
@@ -187,6 +201,7 @@ struct AccessControlRequest<'a> {
     vesting_acc_info: &'a AccountInfo<'a>,
     safe_acc_info: &'a AccountInfo<'a>,
     safe_vault_acc_info: &'a AccountInfo<'a>,
+    safe_vault_authority_acc_info: &'a AccountInfo<'a>,
     token_program_acc_info: &'a AccountInfo<'a>,
     nft_token_acc_info: &'a AccountInfo<'a>,
     nft_mint_acc_info: &'a AccountInfo<'a>,

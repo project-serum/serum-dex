@@ -24,10 +24,10 @@ pub fn handler<'a>(
     let vesting_acc_info = next_account_info(acc_infos)?;
     let depositor_acc_info = next_account_info(acc_infos)?;
     let depositor_authority_acc_info = next_account_info(acc_infos)?;
-    let safe_vault_acc_info = next_account_info(acc_infos)?;
+    let vault_acc_info = next_account_info(acc_infos)?;
     let safe_acc_info = next_account_info(acc_infos)?;
     let nft_mint_acc_info = next_account_info(acc_infos)?;
-    let safe_vault_authority_acc_info = next_account_info(acc_infos)?;
+    let vault_authority_acc_info = next_account_info(acc_infos)?;
     let token_program_acc_info = next_account_info(acc_infos)?;
     let rent_acc_info = next_account_info(acc_infos)?;
     let clock_acc_info = next_account_info(acc_infos)?;
@@ -42,8 +42,8 @@ pub fn handler<'a>(
         safe_acc_info,
         depositor_acc_info,
         depositor_authority_acc_info,
-        safe_vault_acc_info,
-        safe_vault_authority_acc_info,
+        vault_acc_info,
+        vault_authority_acc_info,
         nft_mint_acc_info,
         token_program_acc_info,
         rent_acc_info,
@@ -64,8 +64,8 @@ pub fn handler<'a>(
                 safe_acc_info,
                 nft_mint_acc_info,
                 depositor_acc_info,
-                safe_vault_acc_info,
-                safe_vault_authority_acc_info,
+                vault_acc_info,
+                vault_authority_acc_info,
                 depositor_authority_acc_info,
                 token_program_acc_info,
             })
@@ -85,11 +85,11 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), LockupError> 
         period_count,
         deposit_amount,
         vesting_acc_info,
-        safe_vault_authority_acc_info,
+        vault_authority_acc_info,
         safe_acc_info,
         nft_mint_acc_info,
         depositor_acc_info,
-        safe_vault_acc_info,
+        vault_acc_info,
         depositor_authority_acc_info,
         token_program_acc_info,
         rent_acc_info,
@@ -98,73 +98,65 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), LockupError> 
     } = req;
 
     // Depositor authorization.
-    {
-        if !depositor_authority_acc_info.is_signer {
-            return Err(LockupErrorCode::Unauthorized)?;
-        }
+    if !depositor_authority_acc_info.is_signer {
+        return Err(LockupErrorCode::Unauthorized)?;
     }
 
-    // Safe.
+    // Account validation.
+    let rent = access_control::rent(rent_acc_info)?;
     let safe = access_control::safe(safe_acc_info, program_id)?;
+    let vault = access_control::vault(
+        vault_acc_info,
+        vault_authority_acc_info,
+        safe_acc_info,
+        program_id,
+    )?;
 
-    // Vault.
+    // Initialize checks.
     {
-        let safe_vault =
-            spl_token::state::Account::unpack(&safe_vault_acc_info.try_borrow_data()?)?;
-        if safe.vault != *safe_vault_acc_info.key {
-            return Err(LockupErrorCode::InvalidVault)?;
-        }
-    }
+        // Vesting account.
+        {
+            let vesting = Vesting::unpack(&vesting_acc_info.try_borrow_data()?)?;
 
-    // Vesting.
-    {
-        let vesting = Vesting::unpack(&vesting_acc_info.try_borrow_data()?)?;
-        let rent = access_control::rent(rent_acc_info)?;
-
-        if vesting.initialized {
-            return Err(LockupErrorCode::AlreadyInitialized)?;
+            if vesting_acc_info.owner != program_id {
+                return Err(LockupErrorCode::NotOwnedByProgram)?;
+            }
+            if !rent.is_exempt(
+                vesting_acc_info.lamports(),
+                vesting_acc_info.try_data_len()?,
+            ) {
+                return Err(LockupErrorCode::NotRentExempt)?;
+            }
+            if vesting.initialized {
+                return Err(LockupErrorCode::AlreadyInitialized)?;
+            }
         }
-        if vesting_acc_info.owner != program_id {
-            return Err(LockupErrorCode::NotOwnedByProgram)?;
+        // Vesting schedule.
+        {
+            if end_slot <= clock_slot {
+                return Err(LockupErrorCode::InvalidSlot)?;
+            }
+            if period_count == 0 {
+                return Err(LockupErrorCode::InvalidPeriod)?;
+            }
+            if deposit_amount == 0 {
+                return Err(LockupErrorCode::InvalidDepositAmount)?;
+            }
         }
-        if !rent.is_exempt(
-            vesting_acc_info.lamports(),
-            vesting_acc_info.try_data_len()?,
-        ) {
-            return Err(LockupErrorCode::NotRentExempt)?;
-        }
-    }
-
-    // Vesting schedule.
-    {
-        if *clock_acc_info.key != solana_sdk::sysvar::clock::id() {
-            return Err(LockupErrorCode::InvalidClock)?;
-        }
-        if end_slot <= clock_slot {
-            return Err(LockupErrorCode::InvalidSlot)?;
-        }
-        if period_count == 0 {
-            return Err(LockupErrorCode::InvalidPeriod)?;
-        }
-        if deposit_amount == 0 {
-            return Err(LockupErrorCode::InvalidDepositAmount)?;
-        }
-    }
-
-    // Vesting Mint.
-    {
-        let mint = access_control::mint(nft_mint_acc_info)?;
-        let vault_authority = Pubkey::create_program_address(
-            &TokenVault::signer_seeds(&safe_acc_info.key, &safe.nonce),
-            program_id,
-        )
-        .map_err(|_| LockupErrorCode::InvalidVaultNonce)?;
-
-        if mint.mint_authority != COption::Some(vault_authority) {
-            return Err(LockupErrorCode::InvalidMintAuthority)?;
-        }
-        if mint.supply != 0 {
-            return Err(LockupErrorCode::InvalidMintSupply)?;
+        // Vesting Mint.
+        {
+            let mint = access_control::mint(nft_mint_acc_info)?;
+            let vault_authority = Pubkey::create_program_address(
+                &TokenVault::signer_seeds(&safe_acc_info.key, &safe.nonce),
+                program_id,
+            )
+            .map_err(|_| LockupErrorCode::InvalidVaultNonce)?;
+            if mint.mint_authority != COption::Some(vault_authority) {
+                return Err(LockupErrorCode::InvalidMintAuthority)?;
+            }
+            if mint.supply != 0 {
+                return Err(LockupErrorCode::InvalidMintSupply)?;
+            }
         }
     }
 
@@ -186,8 +178,8 @@ fn state_transition<'a, 'b>(req: StateTransitionRequest<'a, 'b>) -> Result<(), L
         safe_acc_info,
         depositor_acc_info,
         nft_mint_acc_info,
-        safe_vault_acc_info,
-        safe_vault_authority_acc_info,
+        vault_acc_info,
+        vault_authority_acc_info,
         depositor_authority_acc_info,
         token_program_acc_info,
     } = req;
@@ -214,7 +206,7 @@ fn state_transition<'a, 'b>(req: StateTransitionRequest<'a, 'b>) -> Result<(), L
         let deposit_instruction = spl_token::instruction::transfer(
             &spl_token::ID,
             depositor_acc_info.key,
-            safe_vault_acc_info.key,
+            vault_acc_info.key,
             depositor_authority_acc_info.key,
             &[],
             deposit_amount,
@@ -224,7 +216,7 @@ fn state_transition<'a, 'b>(req: StateTransitionRequest<'a, 'b>) -> Result<(), L
             &[
                 depositor_acc_info.clone(),
                 depositor_authority_acc_info.clone(),
-                safe_vault_acc_info.clone(),
+                vault_acc_info.clone(),
                 token_program_acc_info.clone(),
             ],
             &[],
@@ -245,9 +237,9 @@ struct AccessControlRequest<'a> {
     safe_acc_info: &'a AccountInfo<'a>,
     depositor_acc_info: &'a AccountInfo<'a>,
     depositor_authority_acc_info: &'a AccountInfo<'a>,
-    safe_vault_acc_info: &'a AccountInfo<'a>,
+    vault_acc_info: &'a AccountInfo<'a>,
     nft_mint_acc_info: &'a AccountInfo<'a>,
-    safe_vault_authority_acc_info: &'a AccountInfo<'a>,
+    vault_authority_acc_info: &'a AccountInfo<'a>,
     token_program_acc_info: &'a AccountInfo<'a>,
     rent_acc_info: &'a AccountInfo<'a>,
     clock_acc_info: &'a AccountInfo<'a>,
@@ -263,9 +255,9 @@ struct StateTransitionRequest<'a, 'b> {
     vesting_acc_beneficiary: Pubkey,
     safe_acc_info: &'a AccountInfo<'a>,
     depositor_acc_info: &'a AccountInfo<'a>,
-    safe_vault_acc_info: &'a AccountInfo<'a>,
+    vault_acc_info: &'a AccountInfo<'a>,
     depositor_authority_acc_info: &'a AccountInfo<'a>,
     token_program_acc_info: &'a AccountInfo<'a>,
     nft_mint_acc_info: &'a AccountInfo<'a>,
-    safe_vault_authority_acc_info: &'a AccountInfo<'a>,
+    vault_authority_acc_info: &'a AccountInfo<'a>,
 }

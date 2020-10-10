@@ -24,7 +24,6 @@ pub fn handler<'a>(
     let safe_acc_info = next_account_info(acc_infos)?;
     let safe_vault_authority_acc_info = next_account_info(acc_infos)?;
     let token_program_acc_info = next_account_info(acc_infos)?;
-    let rent_acc_info = next_account_info(acc_infos)?;
     let mint_acc_info = next_account_info(acc_infos)?;
     let token_acc_info = next_account_info(acc_infos)?;
 
@@ -35,7 +34,6 @@ pub fn handler<'a>(
         vesting_acc_info,
         vesting_acc_beneficiary_info,
         token_program_acc_info,
-        rent_acc_info,
         mint_acc_info,
         token_acc_info,
     })?;
@@ -71,52 +69,40 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), LockupError> 
         vesting_acc_info,
         vesting_acc_beneficiary_info,
         token_program_acc_info,
-        rent_acc_info,
         mint_acc_info,
         token_acc_info,
     } = req;
 
-    let vesting = Vesting::unpack(&vesting_acc_info.try_borrow_data()?)?;
+    // Beneficiary authorization.
+    if !vesting_acc_beneficiary_info.is_signer {
+        return Err(LockupErrorCode::Unauthorized)?;
+    }
 
-    access_control::vesting_gov(VestingGovRequest {
+    // Account validation.
+    let safe = access_control::safe(safe_acc_info, program_id)?;
+    let _ = access_control::vault_authority(
+        safe_vault_authority_acc_info,
+        &safe_acc_info.key,
+        &safe,
         program_id,
-        vesting: &vesting,
-        safe_acc_info,
+    )?;
+    let vesting = access_control::vesting(
+        program_id,
+        safe_acc_info.key,
         vesting_acc_info,
         vesting_acc_beneficiary_info,
-    })?;
+    )?;
+    let _ = access_control::locked_token(
+        token_acc_info,
+        mint_acc_info,
+        safe_vault_authority_acc_info.key,
+        &vesting,
+    )?;
 
+    // Claim checks.
     if vesting.claimed {
         return Err(LockupErrorCode::AlreadyClaimed)?;
     }
-
-    // Rent sysvar.
-    let rent = access_control::rent(rent_acc_info)?;
-
-    // "NFT" token to set on the vesting account.
-    {
-        let token_acc = access_control::token(token_acc_info)?;
-        if token_acc.owner != vesting.beneficiary {
-            return Err(LockupErrorCode::InvalidTokenAccountOwner)?;
-        }
-        if token_acc.mint != vesting.locked_nft_mint {
-            return Err(LockupErrorCode::InvalidTokenAccountMint)?;
-        }
-        if !rent.is_exempt(token_acc_info.lamports(), token_acc_info.try_data_len()?) {
-            return Err(LockupErrorCode::NotRentExempt)?;
-        }
-    }
-
-    // Mint.
-    {
-        let mint = access_control::mint(mint_acc_info)?;
-        if mint.mint_authority != COption::Some(*safe_vault_authority_acc_info.key) {
-            return Err(LockupErrorCode::InvalidMintAuthority)?;
-        }
-    }
-
-    // Expects all checks related to token mint to be enforced by the SPL
-    // token program and the Solana runtime.
 
     info!("access-control: success");
 
@@ -137,9 +123,9 @@ fn state_transition<'a, 'b>(req: StateTransitionRequest<'a, 'b>) -> Result<(), L
         nonce,
     } = req;
 
-    // Mint all the tokens associated with the NFT. They're just
-    // receipts and can't be redeemed for anything without the
-    // beneficiary signing off.
+    // Mint all the tokens associated with the locked token receipt. They're
+    // can't actualy be redeemed for anything without the beneficiary signing
+    // off.
     {
         info!("invoke: spl_token::instruction::mint_to");
 
@@ -172,7 +158,6 @@ struct AccessControlRequest<'a> {
     vesting_acc_info: &'a AccountInfo<'a>,
     vesting_acc_beneficiary_info: &'a AccountInfo<'a>,
     token_program_acc_info: &'a AccountInfo<'a>,
-    rent_acc_info: &'a AccountInfo<'a>,
     mint_acc_info: &'a AccountInfo<'a>,
     token_acc_info: &'a AccountInfo<'a>,
 }

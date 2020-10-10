@@ -1,4 +1,4 @@
-use crate::access_control::{self, WhitelistGovRequest};
+use crate::access_control;
 use serum_common::pack::Pack;
 use serum_lockup::accounts::{Safe, Whitelist};
 use serum_lockup::error::{LockupError, LockupErrorCode};
@@ -10,7 +10,7 @@ use std::convert::Into;
 pub fn handler<'a>(
     program_id: &'a Pubkey,
     accounts: &'a [AccountInfo<'a>],
-    program_id_to_add: Pubkey,
+    program_id_to_delete: Pubkey,
 ) -> Result<(), LockupError> {
     info!("handler: whitelist_delete");
 
@@ -25,6 +25,7 @@ pub fn handler<'a>(
         safe_authority_acc_info,
         safe_acc_info,
         whitelist_acc_info,
+        program_id_to_delete,
     })?;
 
     Whitelist::unpack_mut(
@@ -32,7 +33,7 @@ pub fn handler<'a>(
         &mut |whitelist: &mut Whitelist| {
             state_transition(StateTransitionRequest {
                 whitelist,
-                program_id_to_add,
+                program_id_to_delete,
             })
             .map_err(Into::into)
         },
@@ -49,14 +50,17 @@ fn access_control(req: AccessControlRequest) -> Result<(), LockupError> {
         safe_authority_acc_info,
         safe_acc_info,
         whitelist_acc_info,
+        program_id_to_delete,
     } = req;
 
-    access_control::whitelist_gov(WhitelistGovRequest {
-        program_id,
-        safe_authority_acc_info,
-        safe_acc_info,
-        whitelist_acc_info,
-    })?;
+    // Governance authorization.
+    let safe = access_control::governance(program_id, safe_acc_info, safe_authority_acc_info)?;
+
+    // WhitelistDelete checks.
+    let whitelist = access_control::whitelist(whitelist_acc_info, &safe, program_id)?;
+    if !whitelist.contains(&program_id_to_delete) {
+        return Err(LockupErrorCode::WhitelistProgramNotFound)?;
+    }
 
     info!("access-control: success");
 
@@ -68,11 +72,11 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), LockupError> {
 
     let StateTransitionRequest {
         whitelist,
-        program_id_to_add,
+        program_id_to_delete,
     } = req;
 
     whitelist
-        .delete(program_id_to_add)
+        .delete(program_id_to_delete)
         .ok_or(LockupErrorCode::WhitelistProgramNotFound)?;
 
     info!("state-transition: success");
@@ -82,6 +86,7 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), LockupError> {
 
 struct AccessControlRequest<'a> {
     program_id: &'a Pubkey,
+    program_id_to_delete: Pubkey,
     safe_authority_acc_info: &'a AccountInfo<'a>,
     safe_acc_info: &'a AccountInfo<'a>,
     whitelist_acc_info: &'a AccountInfo<'a>,
@@ -89,5 +94,5 @@ struct AccessControlRequest<'a> {
 
 struct StateTransitionRequest<'a> {
     whitelist: &'a mut Whitelist,
-    program_id_to_add: Pubkey,
+    program_id_to_delete: Pubkey,
 }

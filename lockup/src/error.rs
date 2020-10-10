@@ -62,6 +62,7 @@ pub enum LockupErrorCode {
     InvalidMintSupply = 49,
     NotYetClaimed = 50,
     InvalidClockSysvar = 51,
+    InsufficientWhitelistBalance = 52,
     Unknown = 1000,
 }
 

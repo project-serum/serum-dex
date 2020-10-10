@@ -1,3 +1,4 @@
+use crate::access_control;
 use serum_common::pack::Pack;
 use serum_lockup::accounts::{Safe, TokenVault};
 use serum_lockup::error::{LockupError, LockupErrorCode};
@@ -60,34 +61,8 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), LockupError> 
         token_program_acc_info,
     } = req;
 
-    // Safe authority authorization.
-    {
-        if !safe_authority_acc_info.is_signer {
-            return Err(LockupErrorCode::Unauthorized)?;
-        }
-    }
-
-    // Safe.
-    {
-        let safe_acc = Safe::unpack(&safe_acc_info.try_borrow_data()?)?;
-        // Match the safe to the authority.
-        if safe_acc.authority != *safe_authority_acc_info.key {
-            return Err(LockupErrorCode::Unauthorized)?;
-        }
-        if !safe_acc.initialized {
-            return Err(LockupErrorCode::NotInitialized)?;
-        }
-        if safe_acc_info.owner != program_id {
-            return Err(LockupErrorCode::InvalidAccountOwner)?;
-        }
-    }
-
-    // Token program.
-    {
-        if *token_program_acc_info.key != spl_token::ID {
-            return Err(LockupErrorCode::InvalidTokenProgram)?;
-        }
-    }
+    // Governance authorization.
+    let _ = access_control::governance(program_id, safe_acc_info, safe_authority_acc_info)?;
 
     info!("access-control: success");
 

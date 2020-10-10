@@ -1,4 +1,4 @@
-use crate::access_control::{self, WhitelistGovRequest};
+use crate::access_control;
 use serum_common::pack::Pack;
 use serum_lockup::accounts::{Safe, Whitelist};
 use serum_lockup::error::{LockupError, LockupErrorCode};
@@ -51,12 +51,11 @@ fn access_control(req: AccessControlRequest) -> Result<(), LockupError> {
         whitelist_acc_info,
     } = req;
 
-    access_control::whitelist_gov(WhitelistGovRequest {
-        program_id,
-        safe_authority_acc_info,
-        safe_acc_info,
-        whitelist_acc_info,
-    })?;
+    // Governance authorization.
+    let safe = access_control::governance(program_id, safe_acc_info, safe_authority_acc_info)?;
+
+    // WhitelistAdd checks.
+    let _ = access_control::whitelist(whitelist_acc_info, &safe, program_id)?;
 
     info!("access-control: success");
 

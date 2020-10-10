@@ -1,3 +1,4 @@
+use crate::access_control;
 use serum_common::pack::Pack;
 use serum_lockup::accounts::{Safe, TokenVault, Vesting, Whitelist};
 use serum_lockup::error::{LockupError, LockupErrorCode};
@@ -24,6 +25,7 @@ pub fn handler<'a>(
     let safe_acc_info = next_account_info(acc_infos)?;
     let safe_vault_auth_acc_info = next_account_info(acc_infos)?;
     let wl_prog_acc_info = next_account_info(acc_infos)?;
+    let wl_acc_info = next_account_info(acc_infos)?;
 
     // Below accounts are relayed.
 
@@ -35,15 +37,14 @@ pub fn handler<'a>(
     let remaining_relay_accs: Vec<&AccountInfo> = acc_infos.collect();
 
     access_control(AccessControlRequest {
+        program_id,
         beneficiary_acc_info,
         vesting_acc_info,
-        wl_prog_vault_acc_info,
-        wl_prog_vault_authority_acc_info,
+        wl_acc_info,
         wl_prog_acc_info,
         safe_acc_info,
         safe_vault_auth_acc_info,
         safe_vault_acc_info,
-        tok_prog_acc_info,
     })?;
 
     Vesting::unpack_mut(
@@ -75,18 +76,44 @@ fn access_control(req: AccessControlRequest) -> Result<(), LockupError> {
     info!("access-control: whitelist_deposit");
 
     let AccessControlRequest {
+        program_id,
         beneficiary_acc_info,
         vesting_acc_info,
-        wl_prog_vault_acc_info,
-        wl_prog_vault_authority_acc_info,
+        wl_acc_info,
         wl_prog_acc_info,
         safe_acc_info,
         safe_vault_auth_acc_info,
         safe_vault_acc_info,
-        tok_prog_acc_info,
     } = req;
 
-    // TODO
+    // Beneficiary authorization.
+    if !beneficiary_acc_info.is_signer {
+        return Err(LockupErrorCode::Unauthorized)?;
+    }
+
+    // Account validation.
+    let safe = access_control::safe(safe_acc_info, program_id)?;
+    let whitelist = access_control::whitelist(wl_acc_info, &safe, program_id)?;
+    let _ = access_control::vault(
+        safe_vault_acc_info,
+        safe_vault_auth_acc_info,
+        safe_acc_info,
+        program_id,
+    )?;
+    let vesting = access_control::vesting(
+        program_id,
+        safe_acc_info.key,
+        vesting_acc_info,
+        beneficiary_acc_info,
+    )?;
+
+    // WhitelistDeposit checks.
+    if !vesting.claimed {
+        return Err(LockupErrorCode::NotYetClaimed)?;
+    }
+    if !whitelist.contains(wl_prog_acc_info.key) {
+        return Err(LockupErrorCode::WhitelistProgramNotFound)?;
+    }
 
     info!("access-control: success");
 
@@ -145,12 +172,9 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), LockupError> {
     // Update vesting account.
     {
         let vault = spl_token::state::Account::unpack(&safe_vault_acc_info.try_borrow_data()?)?;
+        assert!(vault.amount > before_amount);
         let deposit_amount = vault.amount - before_amount;
-        // If we hit this, there's a bug in this or the whitelisted program.
-        // This should never happen.
-        if deposit_amount > vesting.whitelist_owned {
-            return Err(LockupErrorCode::WhitelistDepositInvariantViolation)?;
-        }
+        assert!(deposit_amount <= vesting.whitelist_owned);
         vesting.whitelist_owned -= deposit_amount;
     }
 
@@ -160,15 +184,14 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), LockupError> {
 }
 
 struct AccessControlRequest<'a> {
+    program_id: &'a Pubkey,
+    wl_acc_info: &'a AccountInfo<'a>,
+    wl_prog_acc_info: &'a AccountInfo<'a>,
     beneficiary_acc_info: &'a AccountInfo<'a>,
     vesting_acc_info: &'a AccountInfo<'a>,
     safe_acc_info: &'a AccountInfo<'a>,
     safe_vault_acc_info: &'a AccountInfo<'a>,
     safe_vault_auth_acc_info: &'a AccountInfo<'a>,
-    wl_prog_acc_info: &'a AccountInfo<'a>,
-    wl_prog_vault_acc_info: &'a AccountInfo<'a>,
-    wl_prog_vault_authority_acc_info: &'a AccountInfo<'a>,
-    tok_prog_acc_info: &'a AccountInfo<'a>,
 }
 
 struct StateTransitionRequest<'a, 'b> {

@@ -81,9 +81,8 @@ pub mod instruction {
         /// 2. `[]`         Safe instance.
         /// 3. `[]`         Safe's vault authority, a program derived address.
         /// 4. `[]`         SPL token program.
-        /// 5. `[]`         Rent sysvar.
-        /// 6. `[writable]` Token mint representing the lSRM receipt.
-        /// 7  `[writable]` Token account associated with the mint.
+        /// 5. `[writable]` Token mint representing the lSRM receipt.
+        /// 6  `[writable]` Token account associated with the mint.
         Claim,
         /// Withdraw withdraws the given amount from the given vesting
         /// account subject to a vesting schedule.
@@ -116,14 +115,15 @@ pub mod instruction {
         /// 2. `[]`         Safe (containing the nonce).
         /// 3. `[]`         Safe vault authority.
         /// 4. `[]`         Whitelisted program to invoke.
+        /// 5. `[]`         Whitelist.
         ///
         /// All accounts below will be relayed to the whitelisted program.
         ///
-        /// 5. `[writable]` Safe vault.
-        /// 6. `[writable]` Whitelisted program's vault which will receive
+        /// 6. `[writable]` Safe vault.
+        /// 7. `[writable]` Whitelisted program's vault which will receive
         ///                 funds (it will trasfer to itself via delegate).
-        /// 7. `[]`         Whitelisted program's vault authority.
-        /// 8. `[]`         Token program id.
+        /// 8. `[]`         Whitelisted program's vault authority.
+        /// 9. `[]`         Token program id.
         /// .. `[writable]` Variable number of program specific accounts to
         ///                 relay to the program, along with the above
         ///                 whitelisted accounts and Safe vault.

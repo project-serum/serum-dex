@@ -55,6 +55,15 @@ impl Whitelist {
             idx
         })
     }
+
+    pub fn contains(&self, p: &Pubkey) -> bool {
+        for pk in self.programs.iter() {
+            if pk == p {
+                return true;
+            }
+        }
+        false
+    }
 }
 
 impl Pack for Whitelist {
