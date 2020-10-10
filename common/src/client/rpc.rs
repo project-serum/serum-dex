@@ -3,6 +3,8 @@ use anyhow::{anyhow, Result};
 use rand::rngs::OsRng;
 use solana_client::rpc_client::RpcClient;
 use solana_client::rpc_config::RpcSendTransactionConfig;
+use solana_client::rpc_request::RpcRequest;
+use solana_client::rpc_response::{RpcResult, RpcSimulateTransactionResult};
 use solana_sdk::commitment_config::CommitmentConfig;
 use solana_sdk::program_pack::Pack as TokenPack;
 use solana_sdk::pubkey::Pubkey;
@@ -184,6 +186,21 @@ pub fn send_txn(client: &RpcClient, txn: &Transaction, _simulate: bool) -> Resul
             preflight_commitment: None,
         },
     )?)
+}
+
+pub fn simulate_transaction(
+    client: &RpcClient,
+    transaction: &Transaction,
+    sig_verify: bool,
+    cfg: CommitmentConfig,
+) -> RpcResult<RpcSimulateTransactionResult> {
+    let serialized_encoded = bs58::encode(bincode::serialize(transaction).unwrap()).into_string();
+    client.send(
+        RpcRequest::SimulateTransaction,
+        serde_json::json!([serialized_encoded, {
+            "sigVerify": sig_verify, "commitment": cfg.commitment
+        }]),
+    )
 }
 
 pub fn get_token_account<T: TokenPack>(client: &RpcClient, addr: &Pubkey) -> Result<T> {
