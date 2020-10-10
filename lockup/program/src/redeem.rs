@@ -4,10 +4,7 @@ use serum_lockup::accounts::{Safe, TokenVault, Vesting};
 use serum_lockup::error::{LockupError, LockupErrorCode};
 use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::info;
-use solana_sdk::program_pack::Pack as TokenPack;
 use solana_sdk::pubkey::Pubkey;
-use solana_sdk::sysvar::clock::Clock;
-use solana_sdk::sysvar::Sysvar;
 use std::convert::Into;
 
 pub fn handler<'a>(
@@ -40,7 +37,6 @@ pub fn handler<'a>(
         safe_acc_info,
         nft_token_acc_info,
         nft_mint_acc_info,
-        token_program_acc_info,
         clock_acc_info,
     })?;
 
@@ -51,7 +47,6 @@ pub fn handler<'a>(
                 amount,
                 vesting_acc,
                 accounts,
-                vesting_acc_beneficiary_info,
                 safe_vault_acc_info,
                 safe_vault_authority_acc_info,
                 beneficiary_token_acc_info,
@@ -77,7 +72,6 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), LockupError> 
         safe_vault_acc_info,
         safe_vault_authority_acc_info,
         safe_acc_info,
-        token_program_acc_info,
         nft_token_acc_info,
         nft_mint_acc_info,
         clock_acc_info,
@@ -131,7 +125,6 @@ fn state_transition<'a, 'b>(req: StateTransitionRequest<'a, 'b>) -> Result<(), L
 
     let StateTransitionRequest {
         vesting_acc,
-        vesting_acc_beneficiary_info,
         amount,
         accounts,
         safe_vault_acc_info,
@@ -202,7 +195,6 @@ struct AccessControlRequest<'a> {
     safe_acc_info: &'a AccountInfo<'a>,
     safe_vault_acc_info: &'a AccountInfo<'a>,
     safe_vault_authority_acc_info: &'a AccountInfo<'a>,
-    token_program_acc_info: &'a AccountInfo<'a>,
     nft_token_acc_info: &'a AccountInfo<'a>,
     nft_mint_acc_info: &'a AccountInfo<'a>,
     clock_acc_info: &'a AccountInfo<'a>,
@@ -212,7 +204,6 @@ struct StateTransitionRequest<'a, 'b> {
     amount: u64,
     vesting_acc: &'b mut Vesting,
     accounts: &'a [AccountInfo<'a>],
-    vesting_acc_beneficiary_info: &'a AccountInfo<'a>,
     safe_acc_info: &'a AccountInfo<'a>,
     beneficiary_token_acc_info: &'a AccountInfo<'a>,
     safe_vault_acc_info: &'a AccountInfo<'a>,

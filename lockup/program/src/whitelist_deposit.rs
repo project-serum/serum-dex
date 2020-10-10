@@ -1,14 +1,12 @@
 use crate::access_control;
 use serum_common::pack::Pack;
-use serum_lockup::accounts::{Safe, TokenVault, Vesting, Whitelist};
+use serum_lockup::accounts::{Safe, TokenVault, Vesting};
 use serum_lockup::error::{LockupError, LockupErrorCode};
 use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::info;
 use solana_sdk::instruction::{AccountMeta, Instruction};
 use solana_sdk::program_pack::Pack as TokenPack;
 use solana_sdk::pubkey::Pubkey;
-use solana_sdk::sysvar::rent::Rent;
-use solana_sdk::sysvar::Sysvar;
 use std::convert::Into;
 
 pub fn handler<'a>(
@@ -60,7 +58,6 @@ pub fn handler<'a>(
                 wl_prog_vault_acc_info,
                 wl_prog_vault_authority_acc_info,
                 safe_vault_acc_info,
-                safe_vault_auth_acc_info,
                 tok_prog_acc_info,
                 vesting,
                 remaining_relay_accs: remaining_relay_accs.clone(),
@@ -135,7 +132,6 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), LockupError> {
         wl_prog_vault_authority_acc_info,
         remaining_relay_accs,
         tok_prog_acc_info,
-        safe_vault_auth_acc_info,
     } = req;
 
     // Check before balance.
@@ -201,7 +197,6 @@ struct StateTransitionRequest<'a, 'b> {
     nonce: u8,
     safe_acc: &'a Pubkey,
     safe_vault_acc_info: &'a AccountInfo<'a>,
-    safe_vault_auth_acc_info: &'a AccountInfo<'a>,
     wl_prog_acc_info: &'a AccountInfo<'a>,
     wl_prog_vault_acc_info: &'a AccountInfo<'a>,
     wl_prog_vault_authority_acc_info: &'a AccountInfo<'a>,

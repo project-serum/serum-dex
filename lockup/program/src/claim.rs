@@ -1,21 +1,17 @@
-use crate::access_control::{self, VestingGovRequest};
+use crate::access_control;
 use serum_common::pack::Pack;
 use serum_lockup::accounts::{Safe, TokenVault, Vesting};
 use serum_lockup::error::{LockupError, LockupErrorCode};
 use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::info;
-use solana_sdk::program_option::COption;
-use solana_sdk::program_pack::Pack as TokenPack;
 use solana_sdk::pubkey::Pubkey;
-use solana_sdk::sysvar::rent::Rent;
-use solana_sdk::sysvar::Sysvar;
 use std::convert::Into;
 
 pub fn handler<'a>(
     program_id: &'a Pubkey,
     accounts: &'a [AccountInfo<'a>],
 ) -> Result<(), LockupError> {
-    info!("handler: mint_locked");
+    info!("handler: claim");
 
     let acc_infos = &mut accounts.iter();
 
@@ -23,7 +19,7 @@ pub fn handler<'a>(
     let vesting_acc_info = next_account_info(acc_infos)?;
     let safe_acc_info = next_account_info(acc_infos)?;
     let safe_vault_authority_acc_info = next_account_info(acc_infos)?;
-    let token_program_acc_info = next_account_info(acc_infos)?;
+    let _token_prog_acc_info = next_account_info(acc_infos)?;
     let mint_acc_info = next_account_info(acc_infos)?;
     let token_acc_info = next_account_info(acc_infos)?;
 
@@ -33,7 +29,6 @@ pub fn handler<'a>(
         safe_vault_authority_acc_info,
         vesting_acc_info,
         vesting_acc_beneficiary_info,
-        token_program_acc_info,
         mint_acc_info,
         token_acc_info,
     })?;
@@ -44,7 +39,6 @@ pub fn handler<'a>(
             let safe = Safe::unpack(&safe_acc_info.try_borrow_data()?)?;
             state_transition(StateTransitionRequest {
                 accounts,
-                vesting_acc_info,
                 vesting_acc,
                 safe_acc_info,
                 safe_vault_authority_acc_info,
@@ -60,7 +54,7 @@ pub fn handler<'a>(
 }
 
 fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), LockupError> {
-    info!("access-control: mint");
+    info!("access-control: claim");
 
     let AccessControlRequest {
         program_id,
@@ -68,7 +62,6 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), LockupError> 
         safe_vault_authority_acc_info,
         vesting_acc_info,
         vesting_acc_beneficiary_info,
-        token_program_acc_info,
         mint_acc_info,
         token_acc_info,
     } = req;
@@ -110,11 +103,10 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), LockupError> 
 }
 
 fn state_transition<'a, 'b>(req: StateTransitionRequest<'a, 'b>) -> Result<(), LockupError> {
-    info!("state-transition: mint");
+    info!("state-transition: claim");
 
     let StateTransitionRequest {
         accounts,
-        vesting_acc_info,
         safe_acc_info,
         safe_vault_authority_acc_info,
         mint_acc_info,
@@ -123,7 +115,7 @@ fn state_transition<'a, 'b>(req: StateTransitionRequest<'a, 'b>) -> Result<(), L
         nonce,
     } = req;
 
-    // Mint all the tokens associated with the locked token receipt. They're
+    // Mint all the tokens associated with the locked token receipt. They
     // can't actualy be redeemed for anything without the beneficiary signing
     // off.
     {
@@ -157,14 +149,12 @@ struct AccessControlRequest<'a> {
     safe_vault_authority_acc_info: &'a AccountInfo<'a>,
     vesting_acc_info: &'a AccountInfo<'a>,
     vesting_acc_beneficiary_info: &'a AccountInfo<'a>,
-    token_program_acc_info: &'a AccountInfo<'a>,
     mint_acc_info: &'a AccountInfo<'a>,
     token_acc_info: &'a AccountInfo<'a>,
 }
 
 struct StateTransitionRequest<'a, 'b> {
     accounts: &'a [AccountInfo<'a>],
-    vesting_acc_info: &'a AccountInfo<'a>,
     safe_acc_info: &'a AccountInfo<'a>,
     safe_vault_authority_acc_info: &'a AccountInfo<'a>,
     mint_acc_info: &'a AccountInfo<'a>,

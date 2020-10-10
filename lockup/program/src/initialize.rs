@@ -1,13 +1,10 @@
 use crate::access_control;
 use serum_common::pack::Pack;
-use serum_lockup::accounts::{Safe, TokenVault, Whitelist};
+use serum_lockup::accounts::{Safe, TokenVault};
 use serum_lockup::error::{LockupError, LockupErrorCode};
 use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::info;
-use solana_sdk::program_pack::Pack as TokenPack;
 use solana_sdk::pubkey::Pubkey;
-use solana_sdk::sysvar::rent::Rent;
-use solana_sdk::sysvar::Sysvar;
 use std::convert::Into;
 
 pub fn handler<'a>(

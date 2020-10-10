@@ -1,7 +1,7 @@
 use crate::access_control;
 use serum_common::pack::Pack;
 use serum_lockup::accounts::{Safe, TokenVault};
-use serum_lockup::error::{LockupError, LockupErrorCode};
+use serum_lockup::error::LockupError;
 use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::info;
 use solana_sdk::program_pack::Pack as TokenPack;
@@ -27,7 +27,6 @@ pub fn handler<'a>(
         program_id,
         safe_acc_info,
         safe_authority_acc_info,
-        token_program_acc_info,
     })?;
 
     Safe::unpack_mut(
@@ -58,7 +57,6 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), LockupError> 
         program_id,
         safe_acc_info,
         safe_authority_acc_info,
-        token_program_acc_info,
     } = req;
 
     // Governance authorization.
@@ -114,7 +112,6 @@ struct AccessControlRequest<'a> {
     program_id: &'a Pubkey,
     safe_acc_info: &'a AccountInfo<'a>,
     safe_authority_acc_info: &'a AccountInfo<'a>,
-    token_program_acc_info: &'a AccountInfo<'a>,
 }
 
 struct StateTransitionRequest<'a, 'b> {

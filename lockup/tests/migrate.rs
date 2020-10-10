@@ -19,8 +19,6 @@ fn migrate() {
     let lifecycle::Deposited {
         client,
         safe_acc,
-        safe_srm_vault,
-        safe_srm_vault_authority,
         srm_mint,
         safe_authority,
         ..

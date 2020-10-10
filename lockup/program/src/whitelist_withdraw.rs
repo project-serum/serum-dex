@@ -1,14 +1,12 @@
 use crate::access_control;
 use serum_common::pack::Pack;
-use serum_lockup::accounts::{Safe, TokenVault, Vesting, Whitelist};
+use serum_lockup::accounts::{Safe, TokenVault, Vesting};
 use serum_lockup::error::{LockupError, LockupErrorCode};
 use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::info;
 use solana_sdk::instruction::{AccountMeta, Instruction};
 use solana_sdk::program_pack::Pack as TokenPack;
 use solana_sdk::pubkey::Pubkey;
-use solana_sdk::sysvar::rent::Rent;
-use solana_sdk::sysvar::Sysvar;
 use std::convert::Into;
 
 pub fn handler<'a>(
@@ -42,13 +40,10 @@ pub fn handler<'a>(
         beneficiary_acc_info,
         vesting_acc_info,
         wl_acc_info,
-        wl_prog_vault_acc_info,
-        wl_prog_vault_authority_acc_info,
         wl_prog_acc_info,
         safe_acc_info,
         safe_vault_auth_acc_info,
         safe_vault_acc_info,
-        tok_prog_acc_info,
         amount,
     })?;
 
@@ -86,13 +81,10 @@ fn access_control(req: AccessControlRequest) -> Result<(), LockupError> {
         beneficiary_acc_info,
         vesting_acc_info,
         wl_acc_info,
-        wl_prog_vault_acc_info,
-        wl_prog_vault_authority_acc_info,
         wl_prog_acc_info,
         safe_acc_info,
         safe_vault_auth_acc_info,
         safe_vault_acc_info,
-        tok_prog_acc_info,
         amount,
     } = req;
 
@@ -225,9 +217,6 @@ struct AccessControlRequest<'a> {
     safe_vault_auth_acc_info: &'a AccountInfo<'a>,
     wl_acc_info: &'a AccountInfo<'a>,
     wl_prog_acc_info: &'a AccountInfo<'a>,
-    wl_prog_vault_acc_info: &'a AccountInfo<'a>,
-    wl_prog_vault_authority_acc_info: &'a AccountInfo<'a>,
-    tok_prog_acc_info: &'a AccountInfo<'a>,
     amount: u64,
 }
 

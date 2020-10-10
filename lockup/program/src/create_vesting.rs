@@ -1,11 +1,10 @@
 use crate::access_control;
 use serum_common::pack::Pack;
-use serum_lockup::accounts::{Safe, TokenVault, Vesting};
+use serum_lockup::accounts::{TokenVault, Vesting};
 use serum_lockup::error::{LockupError, LockupErrorCode};
 use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::info;
 use solana_sdk::program_option::COption;
-use solana_sdk::program_pack::Pack as TokenPack;
 use solana_sdk::pubkey::Pubkey;
 use std::convert::Into;
 
@@ -17,7 +16,7 @@ pub fn handler<'a>(
     period_count: u64,
     deposit_amount: u64,
 ) -> Result<(), LockupError> {
-    info!("handler: deposit");
+    info!("handler: create_vesting");
 
     let acc_infos = &mut accounts.iter();
 
@@ -40,14 +39,11 @@ pub fn handler<'a>(
         deposit_amount,
         vesting_acc_info,
         safe_acc_info,
-        depositor_acc_info,
         depositor_authority_acc_info,
         vault_acc_info,
         vault_authority_acc_info,
         nft_mint_acc_info,
-        token_program_acc_info,
         rent_acc_info,
-        clock_acc_info,
         clock_slot,
     })?;
 
@@ -65,7 +61,6 @@ pub fn handler<'a>(
                 nft_mint_acc_info,
                 depositor_acc_info,
                 vault_acc_info,
-                vault_authority_acc_info,
                 depositor_authority_acc_info,
                 token_program_acc_info,
             })
@@ -77,7 +72,7 @@ pub fn handler<'a>(
 }
 
 fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), LockupError> {
-    info!("access-control: deposit");
+    info!("access-control: create_vesting");
 
     let AccessControlRequest {
         program_id,
@@ -88,12 +83,9 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), LockupError> 
         vault_authority_acc_info,
         safe_acc_info,
         nft_mint_acc_info,
-        depositor_acc_info,
         vault_acc_info,
         depositor_authority_acc_info,
-        token_program_acc_info,
         rent_acc_info,
-        clock_acc_info,
         clock_slot,
     } = req;
 
@@ -105,7 +97,7 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), LockupError> 
     // Account validation.
     let rent = access_control::rent(rent_acc_info)?;
     let safe = access_control::safe(safe_acc_info, program_id)?;
-    let vault = access_control::vault(
+    let _ = access_control::vault(
         vault_acc_info,
         vault_authority_acc_info,
         safe_acc_info,
@@ -166,7 +158,7 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), LockupError> 
 }
 
 fn state_transition<'a, 'b>(req: StateTransitionRequest<'a, 'b>) -> Result<(), LockupError> {
-    info!("state-transition: deposit");
+    info!("state-transition: create_vesting");
 
     let StateTransitionRequest {
         clock_slot,
@@ -179,7 +171,6 @@ fn state_transition<'a, 'b>(req: StateTransitionRequest<'a, 'b>) -> Result<(), L
         depositor_acc_info,
         nft_mint_acc_info,
         vault_acc_info,
-        vault_authority_acc_info,
         depositor_authority_acc_info,
         token_program_acc_info,
     } = req;
@@ -235,14 +226,11 @@ struct AccessControlRequest<'a> {
     deposit_amount: u64,
     vesting_acc_info: &'a AccountInfo<'a>,
     safe_acc_info: &'a AccountInfo<'a>,
-    depositor_acc_info: &'a AccountInfo<'a>,
     depositor_authority_acc_info: &'a AccountInfo<'a>,
     vault_acc_info: &'a AccountInfo<'a>,
     nft_mint_acc_info: &'a AccountInfo<'a>,
     vault_authority_acc_info: &'a AccountInfo<'a>,
-    token_program_acc_info: &'a AccountInfo<'a>,
     rent_acc_info: &'a AccountInfo<'a>,
-    clock_acc_info: &'a AccountInfo<'a>,
     clock_slot: u64,
 }
 
@@ -259,5 +247,4 @@ struct StateTransitionRequest<'a, 'b> {
     depositor_authority_acc_info: &'a AccountInfo<'a>,
     token_program_acc_info: &'a AccountInfo<'a>,
     nft_mint_acc_info: &'a AccountInfo<'a>,
-    vault_authority_acc_info: &'a AccountInfo<'a>,
 }

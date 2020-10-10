@@ -72,13 +72,6 @@ pub fn vesting(
     Ok(vesting)
 }
 
-pub struct VestingGovRequest<'a> {
-    pub program_id: &'a Pubkey,
-    pub safe_acc_info: &'a AccountInfo<'a>,
-    pub vesting_acc_info: &'a AccountInfo<'a>,
-    pub vesting_acc_beneficiary_info: &'a AccountInfo<'a>,
-}
-
 pub fn rent(acc_info: &AccountInfo) -> Result<Rent, LockupError> {
     if *acc_info.key != solana_sdk::sysvar::rent::id() {
         return Err(LockupErrorCode::InvalidRentSysvar)?;

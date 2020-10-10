@@ -1,7 +1,7 @@
 use crate::access_control;
 use serum_common::pack::Pack;
 use serum_lockup::accounts::Safe;
-use serum_lockup::error::{LockupError, LockupErrorCode};
+use serum_lockup::error::LockupError;
 use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::info;
 use solana_sdk::pubkey::Pubkey;
@@ -40,7 +40,7 @@ pub fn handler<'a>(
 }
 
 fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), LockupError> {
-    info!("access-control: set-authority");
+    info!("access-control: set_authority");
 
     let AccessControlRequest {
         program_id,
@@ -63,7 +63,7 @@ struct AccessControlRequest<'a> {
 }
 
 fn state_transition<'a>(req: StateTransitionRequest<'a>) -> Result<(), LockupError> {
-    info!("state-transition: set-authority");
+    info!("state-transition: set_authority");
 
     let StateTransitionRequest {
         safe_acc,

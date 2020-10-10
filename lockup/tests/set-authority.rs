@@ -1,10 +1,7 @@
 use common::lifecycle::{self, Initialized};
 use serum_lockup::accounts::Safe;
 use serum_lockup_client::*;
-use solana_client_gen::prelude::*;
-use solana_client_gen::solana_sdk::instruction::AccountMeta;
 use solana_client_gen::solana_sdk::pubkey::Pubkey;
-use solana_client_gen::solana_sdk::signature::Signer;
 
 mod common;
 

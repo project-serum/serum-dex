@@ -9,7 +9,6 @@ use solana_client_gen::prelude::*;
 use solana_client_gen::solana_sdk;
 use solana_client_gen::solana_sdk::instruction::AccountMeta;
 use solana_client_gen::solana_sdk::pubkey::Pubkey;
-use solana_client_gen::solana_sdk::signers::Signers;
 use solana_client_gen::solana_sdk::system_instruction;
 
 pub fn create_all_accounts_and_initialize(
