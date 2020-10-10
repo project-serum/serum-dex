@@ -1,5 +1,3 @@
-//! The client_ext module extends the auto-generated program client.
-
 use crate::InitializeResponse;
 use serum_common::client::rpc;
 use serum_common::pack::Pack;
@@ -148,7 +146,7 @@ pub fn create_vesting_account(
     let deposit_accs = [
         AccountMeta::new(new_account.pubkey(), true),
         AccountMeta::new(*depositor, false),
-        AccountMeta::new(depositor_owner.pubkey(), true), // Owner of depositor.
+        AccountMeta::new(depositor_owner.pubkey(), true),
         AccountMeta::new(*safe_vault, false),
         AccountMeta::new(*safe_acc, false),
         AccountMeta::new(mint_kp.pubkey(), false),

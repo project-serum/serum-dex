@@ -22,8 +22,8 @@ mod whitelist_delete;
 mod whitelist_deposit;
 mod whitelist_withdraw;
 
-solana_sdk::entrypoint!(process_instruction);
-fn process_instruction<'a>(
+solana_sdk::entrypoint!(entry);
+fn entry<'a>(
     program_id: &'a Pubkey,
     accounts: &'a [AccountInfo<'a>],
     instruction_data: &[u8],

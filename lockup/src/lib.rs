@@ -1,4 +1,4 @@
-//! serum-safe defines the interface for the serum safe program.
+//! serum-lockup defines the interface for the Serum Lockup program.
 
 #![cfg_attr(feature = "strict", deny(warnings))]
 
@@ -84,8 +84,9 @@ pub mod instruction {
         /// 5. `[writable]` Token mint representing the lSRM receipt.
         /// 6  `[writable]` Token account associated with the mint.
         Claim,
-        /// Withdraw withdraws the given amount from the given vesting
-        /// account subject to a vesting schedule.
+        /// Reedeem exchanges the given `amount` of non-fungible, claimed
+        /// receipt tokens for the underlying locked SRM, subject to the
+        /// Vesting account's vesting schedule.
         ///
         /// Accounts:
         ///
@@ -104,9 +105,10 @@ pub mod instruction {
         Redeem { amount: u64 },
         /// Invokes an opaque instruction on a whitelisted program address,
         /// giving it delegate access to send `amount` funds to itself.
+        ///
         /// For example, a user could call this with a staking program
-        /// instruction to send locked SRM to it custody ever leaving an on-
-        /// chain program.
+        /// instruction to send locked SRM to it without custody ever leaving
+        /// an on-chain program.
         ///
         /// Accounts:
         ///

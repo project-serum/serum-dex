@@ -19,9 +19,10 @@ pub struct Vesting {
     pub claimed: bool,
     /// The Safe instance this account is associated with.
     pub safe: Pubkey,
-    /// The *effective* owner of this Vesting account.
+    /// The effective owner of this Vesting account.
     pub beneficiary: Pubkey,
-    /// The outstanding SRM deposit backing this vesting account.
+    /// The outstanding SRM deposit backing this vesting account. All
+    /// withdrawals/redemptions will deduct this balance.
     pub balance: u64,
     /// The starting balance of this vesting account, i.e., how much was
     /// originally deposited.
@@ -44,12 +45,17 @@ pub struct Vesting {
 }
 
 impl Vesting {
-    /// Deducts the given amount from the vesting account upon withdrawal.
+    /// Deducts the given amount from the vesting account upon
+    /// withdrawal/redemption.
     pub fn deduct(&mut self, amount: u64) {
         self.balance -= amount;
     }
 
     /// Returns the amount available for withdrawal as of the given slot.
+    /// The amount for withdrawal is not necessarily the balance vested
+    /// since funds can be sent to whitelisted programs. For this reason,
+    /// take minimum of the availble balance vested and the available balance
+    /// for sending to whitelisted program.
     pub fn available_for_withdrawal(&self, current_slot: u64) -> u64 {
         std::cmp::min(
             self.balance_vested(current_slot),
@@ -62,14 +68,14 @@ impl Vesting {
         self.balance - self.whitelist_owned
     }
 
-    // The amount vested that's theoretically available for withdrawal--i.e.,
-    // if self.whitelist_owned were 0.
+    // The amount vested that's available for withdrawal, if no funds were ever
+    // sent to another program.
     fn balance_vested(&self, current_slot: u64) -> u64 {
         self.total_vested(current_slot) - self.withdrawn_amount()
     }
 
-    // Returns the total vested amount up to the given slot, assuming no tokens
-    // have been pulled out of the program.
+    // Returns the total vested amount up to the given slot, assuming zero
+    // withdrawals and zero funds sent to other programs.
     fn total_vested(&self, current_slot: u64) -> u64 {
         assert!(current_slot >= self.start_slot);
 
