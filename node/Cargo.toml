@@ -20,6 +20,7 @@ serum-node-logging = { path = "./logging" }
 serum-node-crank = { path = "./crank" }
 serum-node-registry = { path = "./registry" }
 serum-node-context = { path = "./context" }
+serum-node-lockup = { path = "./lockup" }
 tokio = { version = "0.2.22", features = ["sync"] }
 futures = "0.3"
 anyhow = "1.0.32"

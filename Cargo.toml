@@ -4,9 +4,11 @@ members = [
     "common",
     "common/tests",
     "crank",
-    "safe",
     "registry",
     "registry/cli",
+    "lockup",
+    "lockup/cli",
+    "lockup/client",
     "node",
     "node/json-rpc",
     "node/logging",
@@ -14,10 +16,11 @@ members = [
     "node/registry",
     "node/context",
     "node/dev",
+    "lockup/tests/stake",
 ]
 exclude = [
     "dex",
     "registry/program",
-    "rewards/constant",
-    "safe/program",
+    "lockup/program",
+    "lockup/tests/stake/program",
 ]

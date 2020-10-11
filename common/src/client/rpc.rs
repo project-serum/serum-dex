@@ -207,7 +207,7 @@ pub fn get_token_account<T: TokenPack>(client: &RpcClient, addr: &Pubkey) -> Res
     let account = client
         .get_account_with_commitment(addr, CommitmentConfig::recent())?
         .value
-        .map_or(Err(anyhow!("Account not found")), |acc| Ok(acc))?;
+        .map_or(Err(anyhow!("Account not found")), Ok)?;
     T::unpack_from_slice(&account.data).map_err(Into::into)
 }
 
@@ -215,7 +215,7 @@ pub fn get_account<T: Pack>(client: &RpcClient, addr: &Pubkey) -> Result<T> {
     let account = client
         .get_account_with_commitment(addr, CommitmentConfig::recent())?
         .value
-        .map_or(Err(anyhow!("Account not found")), |acc| Ok(acc))?;
+        .map_or(Err(anyhow!("Account not found")), Ok)?;
     T::unpack(&account.data).map_err(Into::into)
 }
 

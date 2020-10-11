@@ -2,7 +2,7 @@
 # this is included in child Makefiles with commands overriden as desired
 # (this is why all the targets here end with % wildcards). In addition to
 # override targets, one can customize the behavior, by override following
-# variables in a child Makefile. See `registry/Makefile` for an example of
+# variables in a child Makefile. See `safe/Makefile` for an example of
 # a child.
 
 #
@@ -78,6 +78,7 @@ test-progra%:
 	TEST_PROGRAM_ID=$(TEST_PROGRAM_ID) \
 	TEST_PAYER_FILEPATH=$(TEST_PAYER_FILEPATH) \
 	TEST_CLUSTER=$(TEST_CLUSTER) \
+	TEST_WHITELIST_PROGRAM_ID=$(TEST_WHITELIST_PROGRAM_ID) \
 	cargo test --features test,client -- --nocapture $(args)
 
 tes%: deplo% test-progra%
@@ -88,8 +89,8 @@ init-tes%:
 	@make test
 
 test-uni%:
-	RUST_BACKTRACE=1 \
-	@cargo test --lib --features test,client -- --nocapture $(args)
+	@RUST_BACKTRACE=1 \
+	cargo test --lib --features test,client -- --nocapture $(args)
 
 ini%:
 	@yes | solana-keygen new --outfile $(TEST_PAYER_FILEPATH)
