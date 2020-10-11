@@ -11,7 +11,7 @@ use safe_transmute::{
     transmute_one_pedantic, try_copy,
 };
 use serum_common::client::rpc::{
-    create_and_init_mint, create_token_account, mint_to_new_account, send_txn,
+    create_and_init_mint, create_token_account, mint_to_new_account, send_txn, simulate_transaction,
 };
 use serum_common::client::Cluster;
 use serum_dex::instruction::{MarketInstruction, NewOrderInstructionV1};
@@ -950,7 +950,10 @@ fn settle_funds(
         i += 1;
         assert!(i < 10);
         debug_println!("Simulating SettleFunds instruction ...");
-        let result = client.simulate_transaction(&txn, true)?;
+        let result = simulate_transaction(client, &txn, true, CommitmentConfig::single())?;
+        if let Some(e) = result.value.err {
+            return Err(format_err!("simulate_transaction error: {:?}", e));
+        }
         debug_println!("{:#?}", result.value);
         if result.value.err.is_none() {
             break;
@@ -1032,7 +1035,10 @@ fn list_market(
     );
 
     debug_println!("txn:\n{:#x?}", txn);
-    let result = client.simulate_transaction(&txn, true)?;
+    let result = simulate_transaction(client, &txn, true, CommitmentConfig::single())?;
+    if let Some(e) = result.value.err {
+        return Err(format_err!("simulate_transaction error: {:?}", e));
+    }
     debug_println!("{:#?}", result.value);
     debug_println!("Listing {} ...", market_key.pubkey());
     send_txn(client, &txn, false)?;
@@ -1151,7 +1157,10 @@ fn match_orders(
     );
 
     debug_println!("Simulating order matching ...");
-    let result = client.simulate_transaction(&txn, true)?;
+    let result = simulate_transaction(&client, &txn, true, CommitmentConfig::single())?;
+    if let Some(e) = result.value.err {
+        return Err(format_err!("simulate_transaction error: {:?}", e));
+    }
     debug_println!("{:#?}", result.value);
     if result.value.err.is_none() {
         debug_println!("Matching orders ...");
