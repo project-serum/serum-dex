@@ -64,7 +64,7 @@ impl Client {
         let WhitelistAddRequest {
             authority,
             safe,
-            program,
+            program_vault_authority,
         } = req;
         let whitelist = self.safe(&safe)?.whitelist;
         let accounts = [
@@ -73,9 +73,9 @@ impl Client {
             AccountMeta::new(whitelist, false),
         ];
         let signers = [self.payer(), authority];
-        let tx = self
-            .inner
-            .whitelist_add_with_signers(&signers, &accounts, program)?;
+        let tx =
+            self.inner
+                .whitelist_add_with_signers(&signers, &accounts, program_vault_authority)?;
         Ok(WhitelistAddResponse { tx })
     }
 
@@ -86,7 +86,7 @@ impl Client {
         let WhitelistDeleteRequest {
             authority,
             safe,
-            program,
+            program_vault_authority,
         } = req;
         let whitelist = self.safe(&safe)?.whitelist;
         let accounts = [
@@ -95,9 +95,11 @@ impl Client {
             AccountMeta::new(whitelist, false),
         ];
         let signers = [self.payer(), authority];
-        let tx = self
-            .inner
-            .whitelist_delete_with_signers(&signers, &accounts, program)?;
+        let tx = self.inner.whitelist_delete_with_signers(
+            &signers,
+            &accounts,
+            program_vault_authority,
+        )?;
         Ok(WhitelistDeleteResponse { tx })
     }
 
@@ -368,7 +370,7 @@ pub struct CreateVestingResponse {
 pub struct WhitelistAddRequest<'a> {
     pub authority: &'a Keypair,
     pub safe: Pubkey,
-    pub program: Pubkey,
+    pub program_vault_authority: Pubkey,
 }
 
 #[derive(Debug)]
@@ -379,7 +381,7 @@ pub struct WhitelistAddResponse {
 pub struct WhitelistDeleteRequest<'a> {
     pub authority: &'a Keypair,
     pub safe: Pubkey,
-    pub program: Pubkey,
+    pub program_vault_authority: Pubkey,
 }
 
 #[derive(Debug)]

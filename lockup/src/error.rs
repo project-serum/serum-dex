@@ -54,7 +54,7 @@ pub enum LockupErrorCode {
     InvalidTokenAccountOwner = 41,
     InvalidTokenAccountMint = 42,
     WhitelistFull = 43,
-    WhitelistProgramNotFound = 44,
+    WhitelistNotFound = 44,
     WhitelistDepositInvariantViolation = 45,
     InvalidRedemptionMint = 46,
     InvalidWhitelist = 47,
@@ -63,6 +63,7 @@ pub enum LockupErrorCode {
     NotYetClaimed = 50,
     InvalidClockSysvar = 51,
     InsufficientWhitelistBalance = 52,
+    WhitelistProgramWrongOwner = 53,
     Unknown = 1000,
 }
 

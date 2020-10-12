@@ -59,12 +59,12 @@ fn entry<'a>(
         LockupInstruction::WhitelistDeposit { instruction_data } => {
             whitelist_deposit::handler(program_id, accounts, instruction_data)
         }
-        LockupInstruction::WhitelistAdd { program_id_to_add } => {
-            whitelist_add::handler(program_id, accounts, program_id_to_add)
-        }
+        LockupInstruction::WhitelistAdd {
+            vault_authority_to_add,
+        } => whitelist_add::handler(program_id, accounts, vault_authority_to_add),
         LockupInstruction::WhitelistDelete {
-            program_id_to_delete,
-        } => whitelist_delete::handler(program_id, accounts, program_id_to_delete),
+            vault_authority_to_delete,
+        } => whitelist_delete::handler(program_id, accounts, vault_authority_to_delete),
         LockupInstruction::SetAuthority { new_authority } => {
             set_authority::handler(program_id, accounts, new_authority)
         }

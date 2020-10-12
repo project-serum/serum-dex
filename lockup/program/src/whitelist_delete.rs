@@ -10,7 +10,7 @@ use std::convert::Into;
 pub fn handler<'a>(
     program_id: &'a Pubkey,
     accounts: &'a [AccountInfo<'a>],
-    program_id_to_delete: Pubkey,
+    vault_authority_to_delete: Pubkey,
 ) -> Result<(), LockupError> {
     info!("handler: whitelist_delete");
 
@@ -25,7 +25,7 @@ pub fn handler<'a>(
         safe_authority_acc_info,
         safe_acc_info,
         whitelist_acc_info,
-        program_id_to_delete,
+        vault_authority_to_delete,
     })?;
 
     Whitelist::unpack_mut(
@@ -33,7 +33,7 @@ pub fn handler<'a>(
         &mut |whitelist: &mut Whitelist| {
             state_transition(StateTransitionRequest {
                 whitelist,
-                program_id_to_delete,
+                vault_authority_to_delete,
             })
             .map_err(Into::into)
         },
@@ -50,7 +50,7 @@ fn access_control(req: AccessControlRequest) -> Result<(), LockupError> {
         safe_authority_acc_info,
         safe_acc_info,
         whitelist_acc_info,
-        program_id_to_delete,
+        vault_authority_to_delete,
     } = req;
 
     // Governance authorization.
@@ -58,8 +58,8 @@ fn access_control(req: AccessControlRequest) -> Result<(), LockupError> {
 
     // WhitelistDelete checks.
     let whitelist = access_control::whitelist(whitelist_acc_info, &safe, program_id)?;
-    if !whitelist.contains(&program_id_to_delete) {
-        return Err(LockupErrorCode::WhitelistProgramNotFound)?;
+    if !whitelist.contains(&vault_authority_to_delete) {
+        return Err(LockupErrorCode::WhitelistNotFound)?;
     }
 
     info!("access-control: success");
@@ -72,12 +72,12 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), LockupError> {
 
     let StateTransitionRequest {
         whitelist,
-        program_id_to_delete,
+        vault_authority_to_delete,
     } = req;
 
     whitelist
-        .delete(program_id_to_delete)
-        .ok_or(LockupErrorCode::WhitelistProgramNotFound)?;
+        .delete(vault_authority_to_delete)
+        .ok_or(LockupErrorCode::WhitelistNotFound)?;
 
     info!("state-transition: success");
 
@@ -86,7 +86,7 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), LockupError> {
 
 struct AccessControlRequest<'a> {
     program_id: &'a Pubkey,
-    program_id_to_delete: Pubkey,
+    vault_authority_to_delete: Pubkey,
     safe_authority_acc_info: &'a AccountInfo<'a>,
     safe_acc_info: &'a AccountInfo<'a>,
     whitelist_acc_info: &'a AccountInfo<'a>,
@@ -94,5 +94,5 @@ struct AccessControlRequest<'a> {
 
 struct StateTransitionRequest<'a> {
     whitelist: &'a mut Whitelist,
-    program_id_to_delete: Pubkey,
+    vault_authority_to_delete: Pubkey,
 }

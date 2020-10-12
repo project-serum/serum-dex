@@ -129,13 +129,13 @@ fn lifecycle() {
             .whitelist_add(WhitelistAddRequest {
                 authority: &safe_authority,
                 safe: safe_acc,
-                program: staking_program_id,
+                program_vault_authority: stake_init.vault_authority,
             })
             .unwrap();
         // Check it.
         let whitelist = client.whitelist(&safe_acc).unwrap();
         let mut expected = Whitelist::default();
-        expected.push(staking_program_id);
+        expected.push(stake_init.vault_authority);
         assert_eq!(whitelist, expected);
     }
 

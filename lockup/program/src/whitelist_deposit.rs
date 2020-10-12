@@ -39,7 +39,7 @@ pub fn handler<'a>(
         beneficiary_acc_info,
         vesting_acc_info,
         wl_acc_info,
-        wl_prog_acc_info,
+        wl_prog_vault_authority_acc_info,
         safe_acc_info,
         safe_vault_auth_acc_info,
         safe_vault_acc_info,
@@ -77,7 +77,7 @@ fn access_control(req: AccessControlRequest) -> Result<(), LockupError> {
         beneficiary_acc_info,
         vesting_acc_info,
         wl_acc_info,
-        wl_prog_acc_info,
+        wl_prog_vault_authority_acc_info,
         safe_acc_info,
         safe_vault_auth_acc_info,
         safe_vault_acc_info,
@@ -108,8 +108,8 @@ fn access_control(req: AccessControlRequest) -> Result<(), LockupError> {
     if !vesting.claimed {
         return Err(LockupErrorCode::NotYetClaimed)?;
     }
-    if !whitelist.contains(wl_prog_acc_info.key) {
-        return Err(LockupErrorCode::WhitelistProgramNotFound)?;
+    if !whitelist.contains(wl_prog_vault_authority_acc_info.key) {
+        return Err(LockupErrorCode::WhitelistNotFound)?;
     }
 
     info!("access-control: success");
@@ -182,7 +182,7 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), LockupError> {
 struct AccessControlRequest<'a> {
     program_id: &'a Pubkey,
     wl_acc_info: &'a AccountInfo<'a>,
-    wl_prog_acc_info: &'a AccountInfo<'a>,
+    wl_prog_vault_authority_acc_info: &'a AccountInfo<'a>,
     beneficiary_acc_info: &'a AccountInfo<'a>,
     vesting_acc_info: &'a AccountInfo<'a>,
     safe_acc_info: &'a AccountInfo<'a>,

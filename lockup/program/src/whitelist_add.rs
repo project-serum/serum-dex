@@ -10,7 +10,7 @@ use std::convert::Into;
 pub fn handler<'a>(
     program_id: &'a Pubkey,
     accounts: &'a [AccountInfo<'a>],
-    program_id_to_add: Pubkey,
+    vault_authority_to_add: Pubkey,
 ) -> Result<(), LockupError> {
     info!("handler: whitelist_add");
 
@@ -32,7 +32,7 @@ pub fn handler<'a>(
         &mut |whitelist: &mut Whitelist| {
             state_transition(StateTransitionRequest {
                 whitelist,
-                program_id_to_add,
+                vault_authority_to_add,
             })
             .map_err(Into::into)
         },
@@ -67,11 +67,11 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), LockupError> {
 
     let StateTransitionRequest {
         whitelist,
-        program_id_to_add,
+        vault_authority_to_add,
     } = req;
 
     whitelist
-        .push(program_id_to_add)
+        .push(vault_authority_to_add)
         .ok_or(LockupErrorCode::WhitelistFull)?;
 
     info!("state-transition: success");
@@ -88,5 +88,5 @@ struct AccessControlRequest<'a> {
 
 struct StateTransitionRequest<'a> {
     whitelist: &'a mut Whitelist,
-    program_id_to_add: Pubkey,
+    vault_authority_to_add: Pubkey,
 }
