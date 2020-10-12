@@ -1,5 +1,6 @@
 use serum_common::pack::Pack;
-use serum_registry::accounts::Registrar;
+use serum_registry::access_control;
+use serum_registry::accounts::registrar::{Registrar, CAPABILITY_LEN};
 use serum_registry::error::{RegistryError, RegistryErrorCode};
 use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::info;
@@ -22,6 +23,7 @@ pub fn handler<'a>(
         registrar_authority_acc_info,
         registrar_acc_info,
         capability_id,
+        program_id,
     })?;
 
     Registrar::unpack_mut(
@@ -46,9 +48,17 @@ fn access_control(req: AccessControlRequest) -> Result<(), RegistryError> {
         registrar_authority_acc_info,
         registrar_acc_info,
         capability_id,
+        program_id,
     } = req;
 
-    // todo
+    // Governance authorization.
+    let _ =
+        access_control::governance(program_id, registrar_acc_info, registrar_authority_acc_info)?;
+
+    // RegisterCapability specific.
+    if capability_id >= CAPABILITY_LEN {
+        return Err(RegistryErrorCode::InvalidCapabilityId)?;
+    }
 
     info!("access-control: success");
 
@@ -75,6 +85,7 @@ struct AccessControlRequest<'a> {
     registrar_authority_acc_info: &'a AccountInfo<'a>,
     registrar_acc_info: &'a AccountInfo<'a>,
     capability_id: u8,
+    program_id: &'a Pubkey,
 }
 
 struct StateTransitionRequest<'a> {

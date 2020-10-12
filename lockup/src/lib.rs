@@ -1,8 +1,7 @@
-//! serum-lockup defines the interface for the Serum Lockup program.
-
 #![cfg_attr(feature = "strict", deny(warnings))]
+#![allow(dead_code)]
 
-use serde::{Deserialize, Serialize};
+use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serum_common::pack::*;
 use solana_client_gen::prelude::*;
 
@@ -12,7 +11,7 @@ pub mod error;
 #[cfg_attr(feature = "client", solana_client_gen)]
 pub mod instruction {
     use super::*;
-    #[derive(Serialize, Deserialize)]
+    #[derive(BorshSerialize, BorshDeserialize, BorshSchema)]
     pub enum LockupInstruction {
         /// Initializes a safe instance for use.
         ///
@@ -24,8 +23,9 @@ pub mod instruction {
         ///
         /// 0. `[writable]` Safe to initialize.
         /// 1. `[writable]` Whitelist to initialize.
-        /// 2. `[]`         Mint of the SPL token controlled by the safe.
-        /// 3. `[]`         Rent sysvar
+        /// 2. `[]`         Vault.
+        /// 4. `[]`         Mint of the SPL token controlled by the safe.
+        /// 5. `[]`         Rent sysvar.
         Initialize {
             /// The priviledged account.
             authority: Pubkey,
@@ -34,8 +34,8 @@ pub mod instruction {
             nonce: u8,
         },
         /// CreateVesting initializes a vesting account, transferring tokens
-        /// from the controlling token account to one owned by the SrmSafe
-        /// program. Anyone with funds to deposit can invoke this instruction.
+        /// from the controlling token account to one owned by the program.
+        /// Anyone with funds to deposit can invoke this instruction.
         ///
         /// Accounts:
         ///
@@ -58,9 +58,9 @@ pub mod instruction {
             /// The beneficiary of the vesting account, i.e.,
             /// the user who will own the SRM upon vesting.
             beneficiary: Pubkey,
-            /// The Solana slot number at which point the entire deposit will
+            /// The unix timestamp at which point the entire deposit will
             /// be vested.
-            end_slot: u64,
+            end_ts: i64,
             /// The number of vesting periods for the account. For example,
             /// a vesting yearly over seven years would make this 7.
             period_count: u64,
@@ -121,13 +121,14 @@ pub mod instruction {
         ///
         /// All accounts below will be relayed to the whitelisted program.
         ///
-        /// 6. `[writable]` Safe vault.
-        /// 7. `[writable]` Vault which will receive funds.
-        /// 8. `[]`         Whitelisted vault authority.
-        /// 9. `[]`         Token program id.
-        /// .. `[writable]` Variable number of program specific accounts to
-        ///                 relay to the program, along with the above
-        ///                 whitelisted accounts and Safe vault.
+        /// 6.  `[]`         Safe vault authority.
+        /// 7.  `[writable]` Safe vault.
+        /// 8.  `[writable]` Vault which will receive funds.
+        /// 9.  `[]`         Whitelisted vault authority.
+        /// 10. `[]`         Token program id.
+        /// ..  `[writable]` Variable number of program specific accounts to
+        ///                  relay to the program, along with the above
+        ///                  whitelisted accounts and Safe vault.
         WhitelistWithdraw {
             /// Amount of funds the whitelisted program is approved to
             /// transfer to itself. Must be less than or equal to the vesting
@@ -177,7 +178,7 @@ pub mod instruction {
         ///
         /// Accounts:
         ///
-        /// 0. `[signer]    Safe's authority.
+        /// 0. `[signer]`   Safe's authority.
         /// 1  `[writable]` Safe account.
         /// 2. `[writable]` Safe's token vault from which we are transferring
         ///                 all tokens out of.

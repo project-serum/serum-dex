@@ -1,0 +1,33 @@
+[package]
+name = "serum-rewards-program"
+version = "0.1.0"
+description = "Serum Rewards Solana program"
+repository = "https://github.com/project-serum/serum-dex"
+edition = "2018"
+
+# Needed for the encapsulating `serum-safe` crate to be part of the workspace.
+[workspace]
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "serum_rewards_program"
+
+[features]
+program = ["serum-rewards/program", "solana-sdk/program", "spl-token/program", "spl-token/no-entrypoint"]
+test = ["solana-sdk/default"]
+strict = []
+default = []
+
+[dependencies]
+solana-sdk = { version = "1.3.14", default-features = false }
+spl-token = { version = "2.0.6", default-features = false }
+serum-rewards = { path = "../" }
+serum-registry = { path = "../../registry" }
+serum-common = { path = "../../common", features = ["program"] }
+serum_dex = { path = "../../dex" }
+
+[profile.release]
+lto = true
+
+[profile.test]
+opt-level = 2

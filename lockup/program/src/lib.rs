@@ -39,14 +39,14 @@ fn entry<'a>(
         }
         LockupInstruction::CreateVesting {
             beneficiary,
-            end_slot,
+            end_ts,
             period_count,
             deposit_amount,
         } => create_vesting::handler(
             program_id,
             accounts,
             beneficiary,
-            end_slot,
+            end_ts,
             period_count,
             deposit_amount,
         ),

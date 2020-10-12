@@ -1,0 +1,13 @@
+[package]
+name = "serum-rewards-cli"
+version = "0.1.0"
+description = "Serum Rewards CLI"
+repository = "https://github.com/project-serum/serum-dex"
+edition = "2018"
+
+[dependencies]
+clap = "3.0.0-beta.1"
+serum-node-context = { path = "../../node/context" }
+solana-client-gen = { path = "../../solana-client-gen" }
+anyhow = "1.0.32"
+serum-rewards-client = { path = "../client" }

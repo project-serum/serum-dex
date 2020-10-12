@@ -1,7 +1,7 @@
 use anyhow::Result;
 use clap::Clap;
 use serum_node_context::Context;
-use serum_registry::client_ext::client::Client;
+use serum_registry::client::Client;
 use solana_sdk::pubkey::Pubkey;
 
 pub fn run_cmd(ctx: &Context, cmd: Command) -> Result<()> {

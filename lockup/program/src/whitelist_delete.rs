@@ -47,7 +47,8 @@ fn access_control(req: AccessControlRequest) -> Result<(), LockupError> {
     let safe = access_control::governance(program_id, safe_acc_info, safe_authority_acc_info)?;
 
     // WhitelistDelete checks.
-    let _ = access_control::whitelist(whitelist_acc_info.clone(), &safe, program_id)?;
+    let _ =
+        access_control::whitelist(whitelist_acc_info.clone(), safe_acc_info, &safe, program_id)?;
 
     info!("access-control: success");
 

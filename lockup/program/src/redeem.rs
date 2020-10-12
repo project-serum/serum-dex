@@ -110,7 +110,7 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), LockupError> 
         if !vesting.claimed {
             return Err(LockupErrorCode::NotYetClaimed)?;
         }
-        if amount > vesting.available_for_withdrawal(clock.slot) {
+        if amount > vesting.available_for_withdrawal(clock.unix_timestamp) {
             return Err(LockupErrorCode::InsufficientWithdrawalBalance)?;
         }
     }

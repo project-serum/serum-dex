@@ -6,16 +6,19 @@ repository = "https://github.com/project-serum/serum-dex"
 edition = "2018"
 
 [features]
-program = ["spl-token/program", "solana-sdk/program"]
-client = ["spl-token/default", "solana-sdk/default", "solana-client", "anyhow", "rand", "serde_json", "bs58"]
+program = ["borsh/serum-program", "spl-token/program", "solana-sdk/program"]
+client = ["borsh/serum-client", "spl-token/default", "solana-sdk/default", "solana-client", "anyhow", "rand", "serde_json", "bs58", "bincode"]
 strict = []
 
 [dependencies]
 spl-token = { version = "2.0.6", default-features = false }
 arrayref = "0.3.6"
-bincode = "1.3.1"
 serde = { version = "1.0", features = ["derive"] }
 solana-sdk = { version = "1.3.14", default-features = false }
+
+# Forks.
+borsh = { git = "https://github.com/project-serum/borsh", branch = "serum" }
+
 
 # Client only.
 anyhow = { version = "1.0.32", optional = true }
@@ -23,3 +26,4 @@ rand = { version = "0.7.3", optional = true }
 solana-client = { version = "1.3.14", optional = true }
 serde_json = { version = "1.0.56", optional = true }
 bs58 = { version = "0.3.1", optional = true }
+bincode = { version = "1.3.1", optional = true }

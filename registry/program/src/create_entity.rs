@@ -1,5 +1,6 @@
 use serum_common::pack::Pack;
-use serum_registry::accounts::{Entity, StakeKind};
+use serum_registry::access_control;
+use serum_registry::accounts::{Entity, EntityState, StakeKind};
 use serum_registry::error::{RegistryError, RegistryErrorCode};
 use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::info;
@@ -17,13 +18,16 @@ pub fn handler<'a>(
 
     let entity_acc_info = next_account_info(acc_infos)?;
     let entity_leader_acc_info = next_account_info(acc_infos)?;
+    let registrar_acc_info = next_account_info(acc_infos)?;
     let rent_acc_info = next_account_info(acc_infos)?;
 
     access_control(AccessControlRequest {
         entity_acc_info,
         entity_leader_acc_info,
+        registrar_acc_info,
         rent_acc_info,
         stake_kind,
+        program_id,
     })?;
 
     Entity::unpack_mut(
@@ -34,6 +38,7 @@ pub fn handler<'a>(
                 entity,
                 capabilities,
                 stake_kind,
+                registrar_acc_info,
             })
             .map_err(Into::into)
         },
@@ -48,16 +53,34 @@ fn access_control(req: AccessControlRequest) -> Result<(), RegistryError> {
     let AccessControlRequest {
         entity_acc_info,
         entity_leader_acc_info,
+        registrar_acc_info,
         rent_acc_info,
         stake_kind,
+        program_id,
     } = req;
 
-    // TODO: remove in next release.
-    if stake_kind != StakeKind::Delegated {
-        return Err(RegistryErrorCode::MustBeDelegated)?;
+    // Node leader authorization.
+    if !entity_leader_acc_info.is_signer {
+        return Err(RegistryErrorCode::Unauthorized)?;
     }
 
-    // todo
+    // Account validation.
+    let rent = access_control::rent(rent_acc_info)?;
+    let _ = access_control::registrar(registrar_acc_info, program_id)?;
+
+    // CreateEntity validation.
+    {
+        let entity = Entity::unpack(&entity_acc_info.try_borrow_data()?)?;
+        if entity_acc_info.owner != program_id {
+            return Err(RegistryErrorCode::InvalidAccountOwner)?;
+        }
+        if entity.initialized {
+            return Err(RegistryErrorCode::AlreadyInitialized)?;
+        }
+        if !rent.is_exempt(entity_acc_info.lamports(), entity_acc_info.try_data_len()?) {
+            return Err(RegistryErrorCode::NotRentExempt)?;
+        }
+    }
 
     info!("access-control: success");
 
@@ -72,14 +95,17 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
         leader,
         capabilities,
         stake_kind,
+        registrar_acc_info,
     } = req;
 
     entity.initialized = true;
-    entity.leader = *leader;
-    entity.amount = 0;
-    entity.mega_amount = 0;
+    entity.registrar = *registrar_acc_info.key;
+    entity.generation = 0;
     entity.capabilities = capabilities;
     entity.stake_kind = stake_kind;
+    entity.leader = *leader;
+    entity.balances = Default::default();
+    entity.state = EntityState::Inactive;
 
     info!("state-transition: success");
 
@@ -90,7 +116,9 @@ struct AccessControlRequest<'a> {
     entity_acc_info: &'a AccountInfo<'a>,
     entity_leader_acc_info: &'a AccountInfo<'a>,
     rent_acc_info: &'a AccountInfo<'a>,
+    registrar_acc_info: &'a AccountInfo<'a>,
     stake_kind: StakeKind,
+    program_id: &'a Pubkey,
 }
 
 struct StateTransitionRequest<'a, 'b> {
@@ -98,4 +126,5 @@ struct StateTransitionRequest<'a, 'b> {
     leader: &'a Pubkey,
     capabilities: u32,
     stake_kind: StakeKind,
+    registrar_acc_info: &'a AccountInfo<'a>,
 }

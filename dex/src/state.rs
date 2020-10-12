@@ -12,10 +12,10 @@ use enumflags2::BitFlags;
 use num_traits::FromPrimitive;
 use safe_transmute::{self, to_bytes::transmute_to_bytes, trivial::TriviallyTransmutable};
 
-#[cfg(feature = "program")]
+#[cfg(not(feature = "client"))]
 use solana_sdk::info;
 
-#[cfg(not(feature = "program"))]
+#[cfg(feature = "client")]
 macro_rules! info {
     ($($i:expr),*) => { { ($($i),*) } };
 }
@@ -139,7 +139,7 @@ fn init_account_padding(data: &mut [u8]) -> DexResult<&mut [u64]> {
     Ok(try_cast_slice_mut(data).or(check_unreachable!())?)
 }
 
-fn check_account_padding(data: &mut [u8]) -> DexResult<&mut [u64]> {
+pub fn check_account_padding(data: &mut [u8]) -> DexResult<&mut [u64]> {
     check_assert!(data.len() >= 12)?;
     let (head, data, tail) = mut_array_refs![data, 5; ..; 7];
     check_assert_eq!(head, ACCOUNT_HEAD_PADDING)?;
@@ -291,7 +291,7 @@ impl MarketState {
         Ok(Queue { header, buf })
     }
 
-    fn load_event_queue_mut<'a>(&self, queue: &'a AccountInfo) -> DexResult<EventQueue<'a>> {
+    pub fn load_event_queue_mut<'a>(&self, queue: &'a AccountInfo) -> DexResult<EventQueue<'a>> {
         check_assert_eq!(&queue.key.to_aligned_bytes(), &self.event_q)
             .map_err(|_| DexErrorCode::WrongEventQueueAccount)?;
         let (header, buf) = strip_header::<EventQueueHeader, Event>(queue, false)?;
@@ -1151,7 +1151,7 @@ fn invoke_spl_token(
     Ok(())
 }
 
-#[cfg(not(feature = "client"))]
+#[cfg(feature = "program")]
 fn send_from_vault<'a, 'b: 'a>(
     native_amount: u64,
     recipient: account_parser::TokenAccount<'a, 'b>,
@@ -1595,6 +1595,7 @@ pub mod account_parser {
                 &[ref event_q_acc],
                 _unused
             ) = array_refs![accounts, 0; .. ; 1, 1, 2];
+
             let mut market = MarketState::load(market_acc, program_id)?;
             let event_q = market.load_event_queue_mut(event_q_acc)?;
             let args = ConsumeEventsArgs {

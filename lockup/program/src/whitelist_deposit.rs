@@ -59,6 +59,7 @@ pub fn handler<'a>(
                 wl_prog_vault_acc_info,
                 wl_prog_vault_authority_acc_info,
                 safe_vault_acc_info,
+                safe_vault_auth_acc_info,
                 tok_prog_acc_info,
                 vesting,
                 remaining_relay_accs: remaining_relay_accs.clone(),
@@ -92,7 +93,8 @@ fn access_control(req: AccessControlRequest) -> Result<(), LockupError> {
 
     // Account validation.
     let safe = access_control::safe(safe_acc_info, program_id)?;
-    let whitelist = access_control::whitelist(wl_acc_info.clone(), &safe, program_id)?;
+    let whitelist =
+        access_control::whitelist(wl_acc_info.clone(), safe_acc_info, &safe, program_id)?;
     let _ = access_control::vault(
         safe_vault_acc_info,
         safe_vault_auth_acc_info,
@@ -132,6 +134,7 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), LockupError> {
         nonce,
         safe_acc,
         safe_vault_acc_info,
+        safe_vault_auth_acc_info,
         wl_prog_acc_info,
         wl_prog_vault_acc_info,
         wl_prog_vault_authority_acc_info,
@@ -149,6 +152,7 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), LockupError> {
     {
         info!("invoking relay");
         let mut meta_accounts = vec![
+            AccountMeta::new_readonly(*safe_vault_auth_acc_info.key, true),
             AccountMeta::new(*safe_vault_acc_info.key, false),
             AccountMeta::new(*wl_prog_vault_acc_info.key, false),
             AccountMeta::new_readonly(*wl_prog_vault_authority_acc_info.key, false),
@@ -173,7 +177,7 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), LockupError> {
     // Update vesting account.
     {
         let vault = spl_token::state::Account::unpack(&safe_vault_acc_info.try_borrow_data()?)?;
-        assert!(vault.amount > before_amount);
+        assert!(vault.amount >= before_amount);
         let deposit_amount = vault.amount - before_amount;
         assert!(deposit_amount <= vesting.whitelist_owned);
         vesting.whitelist_owned -= deposit_amount;
@@ -203,6 +207,7 @@ struct StateTransitionRequest<'a, 'b> {
     nonce: u8,
     safe_acc: &'a Pubkey,
     safe_vault_acc_info: &'a AccountInfo<'a>,
+    safe_vault_auth_acc_info: &'a AccountInfo<'a>,
     wl_prog_acc_info: &'a AccountInfo<'a>,
     wl_prog_vault_acc_info: &'a AccountInfo<'a>,
     wl_prog_vault_authority_acc_info: &'a AccountInfo<'a>,

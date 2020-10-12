@@ -2,7 +2,7 @@
 # this is included in child Makefiles with commands overriden as desired
 # (this is why all the targets here end with % wildcards). In addition to
 # override targets, one can customize the behavior, by override following
-# variables in a child Makefile. See `safe/Makefile` for an example of
+# variables in a child Makefile. See `lockup/Makefile` for an example of
 # a child.
 
 #
@@ -79,6 +79,9 @@ test-progra%:
 	TEST_PAYER_FILEPATH=$(TEST_PAYER_FILEPATH) \
 	TEST_CLUSTER=$(TEST_CLUSTER) \
 	TEST_WHITELIST_PROGRAM_ID=$(TEST_WHITELIST_PROGRAM_ID) \
+	TEST_DEX_PROGRAM_ID=$(TEST_DEX_PROGRAM_ID) \
+	TEST_REGISTRY_PROGRAM_ID=$(TEST_REGISTRY_PROGRAM_ID) \
+	TEST_LOCKUP_PROGRAM_ID=$(TEST_LOCKUP_PROGRAM_ID) \
 	cargo test --features test,client -- --nocapture $(args)
 
 tes%: deplo% test-progra%

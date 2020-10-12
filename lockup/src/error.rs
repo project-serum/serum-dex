@@ -40,7 +40,7 @@ pub enum LockupErrorCode {
     InvalidSerialization = 27,
     SizeNotAvailable = 28,
     UnitializedTokenMint = 29,
-    InvalidSlot = 30,
+    InvalidTimestamp = 30,
     InvalidClock = 31,
     InvalidRentSysvar = 32,
     InvalidMint = 33,
@@ -68,6 +68,7 @@ pub enum LockupErrorCode {
     InvalidWhitelistEntry = 55,
     WhitelistInvalidProgramId = 56,
     WhitelistEntryAlreadyExists = 57,
+    WhitelistSafeMismatch = 58,
     Unknown = 1000,
 }
 

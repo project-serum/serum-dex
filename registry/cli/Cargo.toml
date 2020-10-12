@@ -1,7 +1,8 @@
 [package]
 name = "serum-registry-cli"
 version = "0.1.0"
-authors = ["armaniferrante <armaniferrante@gmail.com>"]
+description = "Serum Registry CLI"
+repository = "https://github.com/project-serum/serum-dex"
 edition = "2018"
 
 [dependencies]
@@ -9,6 +10,7 @@ serum-node-logging = { path = "../../node/logging" }
 serum-node-context = { path = "../../node/context" }
 serum-common = { path = "../../common" }
 serum-registry = { path = "../", features = ["client"] }
+serum-registry-client = { path = "../client" }
 solana-client-gen = { path = "../../solana-client-gen" }
 spl-token = { version = "2.0.5", default-features = false }
 serde = { version = "1.0", features = ["derive"] }

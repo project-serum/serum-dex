@@ -1,9 +1,9 @@
-use serde::{Deserialize, Serialize};
+use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serum_common::pack::*;
-use solana_client_gen::solana_sdk::pubkey::Pubkey;
+use solana_client_gen::prelude::*;
 
 /// Safe is the account representing an instance of this program.
-#[derive(Default, Debug, Serialize, Deserialize)]
+#[derive(Default, Debug, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub struct Safe {
     /// Is `true` if this structure has been initialized
     pub initialized: bool,

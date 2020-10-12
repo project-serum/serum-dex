@@ -1,9 +1,9 @@
 use crate::error::{LockupError, LockupErrorCode};
 use arrayref::{array_mut_ref, array_ref, array_refs, mut_array_refs};
-use serde::{Deserialize, Serialize};
+use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serum_common::pack::*;
+use solana_client_gen::prelude::*;
 use solana_client_gen::solana_sdk::account_info::AccountInfo;
-use solana_client_gen::solana_sdk::pubkey::Pubkey;
 
 /// Whitelist maintaining the list of program-derived-addresses the Locked
 /// SRM program is allowed to delegate funds to. This is used, for example,
@@ -18,16 +18,19 @@ use solana_client_gen::solana_sdk::pubkey::Pubkey;
 /// whitelist to avoid a RefCell induced panic.
 #[derive(Debug)]
 pub struct Whitelist<'a> {
+    // Account layout: SAFE_PUBKEY || ..WHITELIST_ENTRY
     pub acc_info: AccountInfo<'a>,
 }
 
 impl<'a> Whitelist<'a> {
+    /// Index at which the whitelist entries start.
+    pub const ITEM_START: usize = 32;
     /// Byte size for a single item in the whitelist.
     pub const ITEM_SIZE: usize = 65;
     /// Number of items in the whitelist.
     pub const LEN: usize = 50; // TODO: how big do we want this?
-    /// Byte size of the entire whitelist.
-    pub const SIZE: usize = 65 * Whitelist::LEN;
+    /// Byte size of the entire whitelist account.
+    pub const SIZE: usize = Whitelist::ITEM_START + 65 * Whitelist::LEN;
 
     pub fn new(acc_info: AccountInfo<'a>) -> Result<Self, LockupError> {
         if acc_info.try_data_len()? != Whitelist::SIZE {
@@ -36,27 +39,31 @@ impl<'a> Whitelist<'a> {
         Ok(Self { acc_info })
     }
 
+    /// Returns the address of the Safe account this Whitelist belongs to.
+    pub fn safe(&self) -> Result<Pubkey, LockupError> {
+        let data = self.acc_info.try_borrow_data()?;
+        Ok(Pubkey::new(&data[..Self::ITEM_START]))
+    }
+
+    /// Sets the safe address on this whitelist .
+    pub fn set_safe(&self, safe: &Pubkey) -> Result<(), LockupError> {
+        let mut data = self.acc_info.try_borrow_mut_data()?;
+        let dst = array_mut_ref![data, 0, Whitelist::ITEM_START];
+        dst.copy_from_slice(safe.as_ref());
+        Ok(())
+    }
+
     /// Returns the WhitelistEntry at the given index.
     pub fn get_at(&self, index: usize) -> Result<WhitelistEntry, LockupError> {
-        let data = self.acc_info.try_borrow_data()?;
-        let new_slice = array_ref![data, index * Whitelist::ITEM_SIZE, Whitelist::ITEM_SIZE];
+        let data = &self.acc_info.try_borrow_data()?;
+        let start = Whitelist::ITEM_START + index * Whitelist::ITEM_SIZE;
+        let new_slice = array_ref![data, start, Whitelist::ITEM_SIZE];
         let (program_id, instance, nonce) = array_refs![&new_slice, 32, 32, 1];
         Ok(WhitelistEntry::new(
             Pubkey::new(program_id),
             Pubkey::new(instance),
             nonce[0],
         ))
-    }
-
-    /// Inserts the given WhitelistEntry at the given index.
-    pub fn add_at(&self, index: usize, item: WhitelistEntry) -> Result<(), LockupError> {
-        let mut data = self.acc_info.try_borrow_mut_data()?;
-        let dst = array_mut_ref![data, index * Whitelist::ITEM_SIZE, Whitelist::ITEM_SIZE];
-        let (program_id_dst, instance_dst, nonce) = mut_array_refs![dst, 32, 32, 1];
-        program_id_dst.copy_from_slice(item.program_id().as_ref());
-        instance_dst.copy_from_slice(item.instance().as_ref());
-        nonce[0] = item.nonce();
-        Ok(())
     }
 
     /// Inserts the given WhitelistEntry at the first available index.
@@ -85,24 +92,13 @@ impl<'a> Whitelist<'a> {
         Ok(idx)
     }
 
-    fn index_of(&self, e: &WhitelistEntry) -> Result<Option<usize>, LockupError> {
-        for k in (0..Whitelist::SIZE).step_by(Whitelist::ITEM_SIZE) {
-            let curr_idx = k / Whitelist::ITEM_SIZE;
-            let entry = &self.get_at(curr_idx)?;
-            if entry == e {
-                return Ok(Some(k));
-            }
-        }
-        Ok(None)
-    }
-
     /// Returns the entry representing the given derived address. If no such
     /// entry exists, returns Ok(None).
     pub fn get_derived(&self, derived: &Pubkey) -> Result<Option<WhitelistEntry>, LockupError> {
-        for k in (0..Whitelist::SIZE).step_by(Whitelist::ITEM_SIZE) {
-            let curr_idx = k / Whitelist::ITEM_SIZE;
+        for k in (Whitelist::ITEM_START..Whitelist::SIZE).step_by(Whitelist::ITEM_SIZE) {
+            let curr_idx = (k - Whitelist::ITEM_START) / Whitelist::ITEM_SIZE;
             let entry = self.get_at(curr_idx)?;
-            if &entry.derived_address()? == derived {
+            if entry != WhitelistEntry::zero() && &entry.derived_address()? == derived {
                 return Ok(Some(entry));
             }
         }
@@ -114,6 +110,29 @@ impl<'a> Whitelist<'a> {
     pub fn contains_derived(&self, derived: &Pubkey) -> Result<bool, LockupError> {
         self.get_derived(derived).map(|o| o.is_some())
     }
+
+    // Inserts the given WhitelistEntry at the given index.
+    fn add_at(&self, index: usize, item: WhitelistEntry) -> Result<(), LockupError> {
+        let data = &mut self.acc_info.try_borrow_mut_data()?;
+        let start = Whitelist::ITEM_START + index * Whitelist::ITEM_SIZE;
+        let dst = array_mut_ref![data, start, Whitelist::ITEM_SIZE];
+        let (program_id_dst, instance_dst, nonce) = mut_array_refs![dst, 32, 32, 1];
+        program_id_dst.copy_from_slice(item.program_id().as_ref());
+        instance_dst.copy_from_slice(item.instance().as_ref());
+        nonce[0] = item.nonce();
+        Ok(())
+    }
+
+    fn index_of(&self, e: &WhitelistEntry) -> Result<Option<usize>, LockupError> {
+        for k in (Whitelist::ITEM_START..Whitelist::SIZE).step_by(Whitelist::ITEM_SIZE) {
+            let curr_idx = (k - Whitelist::ITEM_START) / Whitelist::ITEM_SIZE;
+            let entry = &self.get_at(curr_idx)?;
+            if entry == e {
+                return Ok(Some(curr_idx));
+            }
+        }
+        Ok(None)
+    }
 }
 
 /// WhitelistEntry consists of the components required to generate a program-
@@ -121,7 +140,7 @@ impl<'a> Whitelist<'a> {
 /// assumed to be an additional pubkey and a nonce.
 ///
 /// We store this rather than the derived address for inspectibility.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub struct WhitelistEntry {
     program_id: Pubkey,
     instance: Pubkey,

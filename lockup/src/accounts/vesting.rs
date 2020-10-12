@@ -1,5 +1,6 @@
+use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serum_common::pack::*;
-use solana_client_gen::solana_sdk::pubkey::Pubkey;
+use solana_client_gen::prelude::*;
 
 #[cfg(feature = "client")]
 lazy_static::lazy_static! {
@@ -11,7 +12,7 @@ lazy_static::lazy_static! {
 /// The Vesting account represents a single deposit of a token
 /// available for withdrawal over a period of time determined by
 /// a vesting schedule.
-#[derive(Default, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Default, Debug, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub struct Vesting {
     /// True iff the vesting account has been initialized via deposit.
     pub initialized: bool,
@@ -27,11 +28,11 @@ pub struct Vesting {
     /// The starting balance of this vesting account, i.e., how much was
     /// originally deposited.
     pub start_balance: u64,
-    /// The slot at which this vesting account was created.
-    pub start_slot: u64,
-    /// The slot at which all the tokens associated with this account
+    /// The ts at which this vesting account was created.
+    pub start_ts: i64,
+    /// The ts at which all the tokens associated with this account
     /// should be vested.
-    pub end_slot: u64,
+    pub end_ts: i64,
     /// The number of times vesting will occur. For example, if vesting
     /// is once a year over seven years, this will be 7.
     pub period_count: u64,
@@ -51,14 +52,14 @@ impl Vesting {
         self.balance -= amount;
     }
 
-    /// Returns the amount available for withdrawal as of the given slot.
+    /// Returns the amount available for withdrawal as of the given ts.
     /// The amount for withdrawal is not necessarily the balance vested
     /// since funds can be sent to whitelisted programs. For this reason,
     /// take minimum of the availble balance vested and the available balance
-    /// for sending to whitelisted program.
-    pub fn available_for_withdrawal(&self, current_slot: u64) -> u64 {
+    /// for sending to whitelisted programs.
+    pub fn available_for_withdrawal(&self, current_ts: i64) -> u64 {
         std::cmp::min(
-            self.balance_vested(current_slot),
+            self.balance_vested(current_ts),
             self.available_for_whitelist(),
         )
     }
@@ -70,19 +71,19 @@ impl Vesting {
 
     // The amount vested that's available for withdrawal, if no funds were ever
     // sent to another program.
-    fn balance_vested(&self, current_slot: u64) -> u64 {
-        self.total_vested(current_slot) - self.withdrawn_amount()
+    fn balance_vested(&self, current_ts: i64) -> u64 {
+        self.total_vested(current_ts) - self.withdrawn_amount()
     }
 
-    // Returns the total vested amount up to the given slot, assuming zero
+    // Returns the total vested amount up to the given ts, assuming zero
     // withdrawals and zero funds sent to other programs.
-    fn total_vested(&self, current_slot: u64) -> u64 {
-        assert!(current_slot >= self.start_slot);
+    fn total_vested(&self, current_ts: i64) -> u64 {
+        assert!(current_ts >= self.start_ts);
 
-        if current_slot >= self.end_slot {
+        if current_ts >= self.end_ts {
             return self.start_balance;
         }
-        self.linear_unlock(current_slot)
+        self.linear_unlock(current_ts)
     }
 
     // Returns the amount withdrawn from this vesting account.
@@ -90,25 +91,25 @@ impl Vesting {
         self.start_balance - self.balance
     }
 
-    fn linear_unlock(&self, current_slot: u64) -> u64 {
-        let (end_slot, start_slot) = {
+    fn linear_unlock(&self, current_ts: i64) -> u64 {
+        let (end_ts, start_ts) = {
             // If we can't perfectly partition the vesting window,
             // push the start window back so that we can.
             //
             // This has the effect of making the first vesting period act as
             // a minor "cliff" that vests slightly more than the rest of the
             // periods.
-            let overflow = (self.end_slot - self.start_slot) % self.period_count;
+            let overflow = (self.end_ts - self.start_ts) as u64 % self.period_count;
             if overflow != 0 {
-                (self.end_slot, self.start_slot - overflow)
+                (self.end_ts, self.start_ts - overflow as i64)
             } else {
-                (self.end_slot, self.start_slot)
+                (self.end_ts, self.start_ts)
             }
         };
 
         let vested_period_count = {
-            let period = (end_slot - start_slot) / self.period_count;
-            let current_period_count = (current_slot - start_slot) / period;
+            let period = (end_ts - start_ts) as u64 / self.period_count;
+            let current_period_count = (current_ts - start_ts) as u64 / period;
             std::cmp::min(current_period_count, self.period_count)
         };
         let reward_per_period = self.start_balance / self.period_count;
@@ -133,8 +134,8 @@ mod tests {
         let initialized = true;
         let start_balance = 10;
         let balance = start_balance;
-        let start_slot = 11;
-        let end_slot = 12;
+        let start_ts = 11;
+        let end_ts = 12;
         let period_count = 13;
         let locked_nft_mint = Pubkey::new_rand();
         let whitelist_owned = 14;
@@ -147,8 +148,8 @@ mod tests {
             initialized,
             balance,
             start_balance,
-            start_slot,
-            end_slot,
+            start_ts,
+            end_ts,
             period_count,
             locked_nft_mint,
             whitelist_owned,
@@ -167,8 +168,8 @@ mod tests {
         assert_eq!(va.initialized, initialized);
         assert_eq!(va.start_balance, start_balance);
         assert_eq!(va.balance, balance);
-        assert_eq!(va.start_slot, start_slot);
-        assert_eq!(va.end_slot, end_slot);
+        assert_eq!(va.start_ts, start_ts);
+        assert_eq!(va.end_ts, end_ts);
         assert_eq!(va.period_count, period_count);
         assert_eq!(va.locked_nft_mint, locked_nft_mint);
         assert_eq!(va.whitelist_owned, whitelist_owned);
@@ -181,8 +182,8 @@ mod tests {
         let beneficiary = Keypair::generate(&mut OsRng).pubkey();
         let balance = 10;
         let start_balance = 10;
-        let start_slot = 10;
-        let end_slot = 20;
+        let start_ts = 10;
+        let end_ts = 20;
         let period_count = 5;
         let initialized = true;
         let locked_nft_mint = Pubkey::new_rand();
@@ -198,8 +199,8 @@ mod tests {
             whitelist_owned,
             balance,
             start_balance,
-            start_slot,
-            end_slot,
+            start_ts,
+            end_ts,
             period_count,
             locked_nft_token,
         };
@@ -222,8 +223,8 @@ mod tests {
         assert_eq!(r.safe, Pubkey::new(&[0; 32]));
         assert_eq!(r.beneficiary, Pubkey::new(&[0; 32]));
         assert_eq!(r.balance, 0);
-        assert_eq!(r.start_slot, 0);
-        assert_eq!(r.end_slot, 0);
+        assert_eq!(r.start_ts, 0);
+        assert_eq!(r.end_ts, 0);
         assert_eq!(r.period_count, 0);
         assert_eq!(r.claimed, false);
         assert_eq!(r.whitelist_owned, 0);

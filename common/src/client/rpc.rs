@@ -177,6 +177,29 @@ pub fn mint_to_new_account(
     Ok(recip_keypair)
 }
 
+pub fn transfer(
+    client: &RpcClient,
+    from: &Pubkey,
+    to: &Pubkey,
+    amount: u64,
+    from_authority: &Keypair,
+    payer: &Keypair,
+) -> Result<Signature> {
+    let instr = token_instruction::transfer(
+        &spl_token::ID,
+        from,
+        to,
+        &from_authority.pubkey(),
+        &[],
+        amount,
+    )?;
+    let (recent_hash, _fee_calc) = client.get_recent_blockhash()?;
+    let signers = [payer, from_authority];
+    let txn =
+        Transaction::new_signed_with_payer(&[instr], Some(&payer.pubkey()), &signers, recent_hash);
+    send_txn(client, &txn, false)
+}
+
 pub fn send_txn(client: &RpcClient, txn: &Transaction, _simulate: bool) -> Result<Signature> {
     Ok(client.send_and_confirm_transaction_with_spinner_and_config(
         txn,

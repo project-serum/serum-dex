@@ -17,11 +17,15 @@ mod initialize;
 mod join_entity;
 mod register_capability;
 mod stake;
+mod stake_intent;
+mod stake_intent_withdrawal;
 mod start_stake_withdrawal;
+mod transfer_stake_intent;
 mod update_entity;
+mod update_member;
 
-solana_sdk::entrypoint!(process_instruction);
-fn process_instruction<'a>(
+solana_sdk::entrypoint!(entry);
+fn entry<'a>(
     program_id: &'a Pubkey,
     accounts: &'a [AccountInfo<'a>],
     instruction_data: &[u8],
@@ -34,8 +38,19 @@ fn process_instruction<'a>(
     let result = match instruction {
         RegistryInstruction::Initialize {
             authority,
+            nonce,
             withdrawal_timelock,
-        } => initialize::handler(program_id, accounts, authority, withdrawal_timelock),
+            deactivation_timelock_premium,
+            reward_activation_threshold,
+        } => initialize::handler(
+            program_id,
+            accounts,
+            authority,
+            nonce,
+            withdrawal_timelock,
+            deactivation_timelock_premium,
+            reward_activation_threshold,
+        ),
         RegistryInstruction::RegisterCapability {
             capability_id,
             capability_fee_bps,
@@ -51,16 +66,37 @@ fn process_instruction<'a>(
         RegistryInstruction::JoinEntity {
             beneficiary,
             delegate,
-        } => join_entity::handler(program_id, accounts, beneficiary, delegate),
-        RegistryInstruction::Stake { amount, is_mega } => Err(RegistryError::ErrorCode(
-            RegistryErrorCode::NotReadySeeNextMajorVersion,
-        )),
+            watchtower,
+        } => join_entity::handler(program_id, accounts, beneficiary, delegate, watchtower),
+        RegistryInstruction::UpdateMember {
+            watchtower,
+            delegate,
+        } => update_member::handler(program_id, accounts, watchtower, delegate),
+        RegistryInstruction::StakeIntent {
+            amount,
+            mega,
+            delegate,
+        } => stake_intent::handler(program_id, accounts, amount, mega, delegate),
+        RegistryInstruction::StakeIntentWithdrawal {
+            amount,
+            mega,
+            delegate,
+        } => stake_intent_withdrawal::handler(program_id, accounts, amount, mega, delegate),
+        RegistryInstruction::Stake {
+            amount,
+            mega,
+            delegate,
+        } => stake::handler(program_id, accounts, amount, mega, delegate),
         RegistryInstruction::StartStakeWithdrawal {
             amount,
-            mega_amount,
-        } => Err(RegistryError::ErrorCode(
-            RegistryErrorCode::NotReadySeeNextMajorVersion,
-        )),
+            mega,
+            delegate,
+        } => start_stake_withdrawal::handler(program_id, accounts, amount, mega, delegate),
+        RegistryInstruction::TransferStakeIntent {
+            amount,
+            mega,
+            delegate,
+        } => transfer_stake_intent::handler(program_id, accounts, amount, mega, delegate),
         RegistryInstruction::EndStakeWithdrawal => Err(RegistryError::ErrorCode(
             RegistryErrorCode::NotReadySeeNextMajorVersion,
         )),

@@ -1,6 +1,5 @@
 use anyhow::{anyhow, Result};
 use clap::Clap;
-use serum_common::client::rpc;
 use serum_lockup::accounts::WhitelistEntry;
 use serum_lockup_client::*;
 use serum_node_context::Context;
@@ -59,7 +58,7 @@ pub enum SubCommand {
         beneficiary: Pubkey,
         /// Slot at which point the entire account is vested.
         #[clap(short, long)]
-        end_slot: u64,
+        end_ts: i64,
         /// Number of vesting periods for this account.
         #[clap(short, long)]
         period_count: u64,
@@ -179,7 +178,7 @@ pub fn run(opts: Opts) -> Result<()> {
             depositor,
             safe,
             beneficiary,
-            end_slot,
+            end_ts,
             period_count,
             deposit_amount,
         } => {
@@ -189,7 +188,7 @@ pub fn run(opts: Opts) -> Result<()> {
                 depositor_owner: &ctx.wallet()?,
                 safe,
                 beneficiary,
-                end_slot,
+                end_ts,
                 period_count,
                 deposit_amount,
             })?;
@@ -201,20 +200,10 @@ pub fn run(opts: Opts) -> Result<()> {
             let beneficiary = ctx.wallet()?;
             let v_acc = client.vesting(&vesting)?;
             let safe = v_acc.safe;
-            let locked_mint = v_acc.locked_nft_mint;
-            let locked_token_account = rpc::create_token_account(
-                client.rpc(),
-                &locked_mint,
-                &beneficiary.pubkey(),
-                client.payer(),
-            )?;
-            println!("Created new token account: {:?}", locked_token_account);
             let resp = client.claim(ClaimRequest {
                 beneficiary: &beneficiary,
                 safe,
                 vesting,
-                locked_mint,
-                locked_token_account: locked_token_account.pubkey(),
             })?;
             println!("{:#?}", resp);
             Ok(())
@@ -228,16 +217,11 @@ pub fn run(opts: Opts) -> Result<()> {
             let client = ctx.connect::<Client>(opts.cmd.pid)?;
             let vesting_account = client.vesting(&vesting)?;
             let safe = vesting_account.safe;
-            let safe_account = client.safe(&safe)?;
-            let locked_token_account = vesting_account.locked_nft_token;
             let resp = client.redeem(RedeemRequest {
                 beneficiary: &beneficiary,
                 vesting,
                 token_account,
-                vault: safe_account.vault,
                 safe,
-                locked_token_account,
-                locked_mint: vesting_account.locked_nft_mint,
                 amount,
             })?;
             println!("{:#?}", resp);
@@ -258,8 +242,8 @@ fn account_cmd(ctx: &Context, pid: Pubkey, cmd: AccountsCommand) -> Result<()> {
             let vault = client.vesting(&address)?;
             println!("{:#?}", vault);
 
-            let current_slot = client.rpc().get_slot()?;
-            let amount = vault.available_for_withdrawal(current_slot);
+            let current_ts = client.rpc().get_block_time(client.rpc().get_slot()?)?;
+            let amount = vault.available_for_withdrawal(current_ts);
             println!("Redeemable balance: {:?}", amount);
             println!("Whitelistable balance: {:?}", amount);
 

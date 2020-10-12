@@ -1,0 +1,38 @@
+[package]
+name = "serum-rewards"
+version = "0.1.0"
+description = "Serum Rewards"
+repository = "https://github.com/project-serum/serum-dex"
+edition = "2018"
+
+[features]
+program = ["solana-client-gen/program", "spl-token/program", "serum-common/program"]
+client = ["solana-client-gen/client", "spl-token/default", "serum-common/client", "lazy_static"]
+test = []
+strict = []
+default = []
+
+[dependencies]
+spl-token = { version = "2.0.6", default-features = false }
+num_enum = "0.5.0"
+thiserror = "1.0.20"
+solana-client-gen = { path = "../solana-client-gen" }
+serum-common = { path = "../common" }
+bytemuck = "1.4.0"
+arrayref = "0.3.6"
+
+# Forks.
+borsh = { git = "https://github.com/project-serum/borsh", branch = "serum" }
+
+# Client only.
+lazy_static = { version = "1.4.0", optional = true }
+
+# Testing only.
+[dev-dependencies]
+rand = { version = "0.7.3" }
+serum-common-tests = { path = "../common/tests" }
+serum-rewards-client = { path = "./client" }
+serum-registry = { path = "../registry" }
+serum-registry-client = { path = "../registry/client" }
+crank = { path = "../crank" }
+serum_dex = { path = "../dex", features = ["client"] }

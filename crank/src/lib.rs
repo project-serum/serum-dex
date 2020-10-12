@@ -367,15 +367,15 @@ pub fn start(opts: Opts) -> Result<()> {
 }
 
 #[derive(Debug)]
-struct MarketPubkeys {
-    market: Box<Pubkey>,
-    req_q: Box<Pubkey>,
-    event_q: Box<Pubkey>,
-    bids: Box<Pubkey>,
-    asks: Box<Pubkey>,
-    coin_vault: Box<Pubkey>,
-    pc_vault: Box<Pubkey>,
-    vault_signer_key: Box<Pubkey>,
+pub struct MarketPubkeys {
+    pub market: Box<Pubkey>,
+    pub req_q: Box<Pubkey>,
+    pub event_q: Box<Pubkey>,
+    pub bids: Box<Pubkey>,
+    pub asks: Box<Pubkey>,
+    pub coin_vault: Box<Pubkey>,
+    pub pc_vault: Box<Pubkey>,
+    pub vault_signer_key: Box<Pubkey>,
 }
 
 #[cfg(target_endian = "little")]
@@ -681,13 +681,40 @@ fn consume_events(
     coin_wallet: &Pubkey,
     pc_wallet: &Pubkey,
 ) -> Result<()> {
+    let instruction = {
+        let i = consume_events_instruction(client, program_id, state, coin_wallet, pc_wallet)?;
+        match i {
+            None => return Ok(()),
+            Some(i) => i,
+        }
+    };
+    let (recent_hash, _fee_calc) = client.get_recent_blockhash()?;
+    info!("Consuming events ...");
+    let txn = Transaction::new_signed_with_payer(
+        std::slice::from_ref(&instruction),
+        Some(&payer.pubkey()),
+        &[payer],
+        recent_hash,
+    );
+    info!("Consuming events ...");
+    send_txn(client, &txn, false)?;
+    Ok(())
+}
+
+pub fn consume_events_instruction(
+    client: &RpcClient,
+    program_id: &Pubkey,
+    state: &MarketPubkeys,
+    coin_wallet: &Pubkey,
+    pc_wallet: &Pubkey,
+) -> Result<Option<Instruction>> {
     let event_q_data = client.get_account_data(&state.event_q)?;
     let inner: Cow<[u64]> = remove_dex_account_padding(&event_q_data)?;
     let (_header, seg0, seg1) = parse_event_queue(&inner)?;
 
     if seg0.len() + seg1.len() == 0 {
         info!("Total event queue length: 0, returning early");
-        return Ok(());
+        return Ok(None);
     } else {
         info!("Total event queue length: {}", seg0.len() + seg1.len());
     }
@@ -717,17 +744,7 @@ fn consume_events(
         data: instruction_data,
     };
 
-    let (recent_hash, _fee_calc) = client.get_recent_blockhash()?;
-    info!("Consuming events ...");
-    let txn = Transaction::new_signed_with_payer(
-        std::slice::from_ref(&instruction),
-        Some(&payer.pubkey()),
-        &[payer],
-        recent_hash,
-    );
-    info!("Consuming events ...");
-    send_txn(client, &txn, false)?;
-    Ok(())
+    Ok(Some(instruction))
 }
 
 fn whole_shebang(client: &RpcClient, program_id: &Pubkey, payer: &Keypair) -> Result<()> {
@@ -843,7 +860,7 @@ fn whole_shebang(client: &RpcClient, program_id: &Pubkey, payer: &Keypair) -> Re
     Ok(())
 }
 
-fn place_order(
+pub fn place_order(
     client: &RpcClient,
     program_id: &Pubkey,
     payer: &Keypair,
@@ -959,7 +976,7 @@ fn settle_funds(
     Ok(())
 }
 
-fn list_market(
+pub fn list_market(
     client: &RpcClient,
     program_id: &Pubkey,
     payer: &Keypair,
@@ -1119,7 +1136,7 @@ fn create_dex_account(
     Ok((key, create_account_instr))
 }
 
-fn match_orders(
+pub fn match_orders(
     client: &RpcClient,
     program_id: &Pubkey,
     payer: &Keypair,

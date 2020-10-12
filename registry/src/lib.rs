@@ -1,34 +1,48 @@
-//! serum-safe defines the interface for the serum safe program.
-
 #![cfg_attr(feature = "strict", deny(warnings))]
+#![allow(dead_code)]
 
+use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serum_common::pack::*;
 use solana_client_gen::prelude::*;
 
+pub mod access_control;
+pub mod accounts;
+pub mod error;
+
 // TODO: add pool accounts once it's ready.
 
-#[cfg_attr(feature = "client", solana_client_gen(ext))]
+#[cfg_attr(feature = "client", solana_client_gen)]
 pub mod instruction {
     use super::*;
-    #[derive(serde::Serialize, serde::Deserialize)]
+    #[derive(BorshSerialize, BorshDeserialize, BorshSchema)]
     pub enum RegistryInstruction {
-        /// Initializes the registry instance for use. Anyone can invoke this
-        /// instruction so it should be run in the same transaction as the
-        /// create_account instruction.
+        /// Initializes the registry instance for use.
         ///
         /// Accounts:
         ///
         /// 0. `[writable]` Registrar to initialize.
-        /// 1. `[]`         Rent sysvar.
-        #[cfg_attr(feature = "client", create_account(*registrar::SIZE))]
+        /// 1. `[]`         SRM "stake-intent" vault.
+        /// 2. `[]`         MSRM "stake-intent" vault.
+        /// 3. `[]`         Rent sysvar.
         Initialize {
             /// The priviledged account.
             authority: Pubkey,
-            /// Number of slots that must pass for a withdrawal to complete.
-            withdrawal_timelock: u64,
+            /// Nonce for deriving the vault authority address.
+            nonce: u8,
+            /// Number of seconds that must pass for a withdrawal to complete.
+            withdrawal_timelock: i64,
+            /// Number of seconds *in addition* to the `withdrawal_timelock` after
+            /// which an Entity becomes "deactivated".  The deactivation
+            /// countdown starts immediately once a node's stake amount is less
+            /// than the reward_activation_threshold.
+            deactivation_timelock_premium: i64,
+            /// The amount of tokens that must be staked for an entity to be
+            /// eligible for rewards.
+            reward_activation_threshold: u64,
         },
-        /// RegisterCapability registers a node capability for reward collection,
-        /// or overwrites an existing capability (e.g., on fee change).
+        /// RegisterCapability registers a node capability for reward
+        /// collection, or overwrites an existing capability (e.g., on fee
+        /// change).
         ///
         /// Accounts:
         ///
@@ -37,25 +51,25 @@ pub mod instruction {
         RegisterCapability {
             /// The identifier to assign this capability.
             capability_id: u8,
-            /// Capability fee in bps. The amount to pay a node for an instruction fulfilling
-            /// this duty.
+            /// Capability fee in bps. The amount to pay a node for an
+            /// instruction fulfilling this duty.
             capability_fee_bps: u32,
         },
-        /// CreateEntity initializes the new "node" with the Registry, designated "inactive".
+        /// CreateEntity initializes the new "node" with the Registry,
+        /// designated "inactive".
         ///
         /// Accounts:
         ///
         /// 0. `[writable]` Entity account.
         /// 1. `[signer]`   Leader of the node.
-        /// 2. `[]`         Rent sysvar.
+        /// 2. `[]`         Registrar.
+        /// 3. `[]`         Rent sysvar.
         CreateEntity {
-            /// The Serum ecosystem duties a Node performs to earn extra performance
-            /// based rewards, for example, cranking.
+            /// The Serum ecosystem duties a Node performs to earn extra
+            /// performance based rewards, for example, cranking.
             capabilities: u32,
-            /// Type of governance backing the `Entity`. For simplicity in the first version,
-            /// all `nodes` will be `delegated-staked`, which means the `node-leader`
-            /// will execute governance decisions.
-            stake_kind: crate::accounts::StakeKind,
+            /// Type of governance backing the `Entity`.
+            stake_kind: accounts::StakeKind,
         },
         /// UpdateEntity updates the leader and capabilities of the node entity.
         ///
@@ -70,6 +84,7 @@ pub mod instruction {
         ///
         /// 0. `[writable]` Member account being created.
         /// 1. `[]`         Entity account to stake to.
+        /// 2. `[]`         Registrar.
         /// 3. `[]`         Rent sysvar.
         JoinEntity {
             /// The owner of this entity account. Must sign off when staking and
@@ -78,29 +93,66 @@ pub mod instruction {
             /// An account that can withdrawal or stake on the beneficiary's
             /// behalf.
             delegate: Pubkey,
+            /// Watchtower authority assigned to the resulting member account.
+            watchtower: accounts::Watchtower,
         },
-        // TODO: update member to change delegate access.
-        /// Deposits funds into the staking pool on behalf Member account of
-        /// the Member account, issuing staking pool tokens as proof of deposit.
-        ///
-        /// Fails if there is less than 1 MSRM in the associated `Entity`
-        /// account *or* the deposit is less than 1 MSRM.
-        ///
         /// Accounts:
         ///
-        /// 0. `[signer]`   Owner of the depositing token account.
-        /// 1. `[]`         The depositing token account.
-        /// 2. `[writable]` Member account responsibile for the stake.
-        /// 3. `[signer]`   Beneficiary *or* delegate of the Member account
-        ///                 being staked.
-        /// 4. `[writable]` Entity account to stake to.
-        /// 5. `[]`         SPL token program.
-        #[cfg_attr(feature = "client", create_account(*member::SIZE))]
-        Stake {
-            // Amount of of the token to stake with the entity.
+        /// 0. `[writable]` Member account.
+        /// 1. `[signed]`   Beneficiary of the member account.
+        UpdateMember {
+            watchtower: Option<accounts::Watchtower>,
+            /// Delegate can only be updated if the delegate's book balance is 0.
+            delegate: Option<Pubkey>,
+        },
+        /// Accounts:
+        ///
+        /// Lockup whitelist relay account interface:
+        ///
+        /// 0. `[]`         Member account's delegate owner. If not a delegated
+        ///                 instruction, then a dummy account.
+        /// 1. `[writable]` The depositing token account (sender).
+        /// 2. `[writable]` Vault (receiver).
+        /// 3. `[signer]`   Owner/delegate of the depositing token account.
+        /// 4. `[]`         SPL token program.
+        ///
+        /// Program specific.
+        ///
+        /// 5. `[writable]` Member account responsibile for the stake.
+        /// 6. `[signer]`   Beneficiary of the Member account being staked.
+        /// 7. `[writable]` Entity account to stake to.
+        /// 8. `[]`         Registrar.
+        /// 9. `[]`         Clock.
+        StakeIntent {
             amount: u64,
-            // True iff staking MSRM.
-            is_mega: bool,
+            mega: bool,
+            delegate: bool,
+        },
+        /// Accounts:
+        ///
+        /// Same as StakeIntent.
+        StakeIntentWithdrawal {
+            amount: u64,
+            mega: bool,
+            delegate: bool,
+        },
+        /// Transfers the stake intent funds into the staking pool.
+        ///
+        ///
+        TransferStakeIntent {
+            amount: u64,
+            mega: bool,
+            delegate: bool,
+        },
+        /// Accounts:
+        ///
+        /// Same as StakeIntent, substituting Accounts[1] for the pool's vault.
+        ///
+        /// TODO: append pool specific accounts once we know the interface.
+        Stake {
+            amount: u64,
+            mega: bool,
+            delegate: bool,
         },
         /// Initiates a stake withdrawal. Funds are locked up until the
         /// withdrawl timelock passes.
@@ -108,14 +160,26 @@ pub mod instruction {
         /// Accounts:
         ///
         /// 0. `[writable]  PendingWithdrawal account to initialize.
-        /// 0  `[signed]`   Benficiary/delegate of the Stake account.
-        /// 1. `[writable]` The Member account to withdraw from.
-        /// 2. `[writable]` Entity the Stake is associated with.
-        /// 3. `[signed]`   Owner of the staking pool token account to redeem.
-        StartStakeWithdrawal { amount: u64, mega_amount: u64 },
-        /// Completes the pending withdrawal once the timelock period passes.
+        /// 1  `[signed]`   Benficiary of the Stake account.
+        /// 2. `[writable]` The Member account to withdraw from.
+        /// 3. `[writable]` Entity the Stake is associated with.
+        /// 4. `[writable]` Registrar.
+        /// 5. `[]`         Rent acc info.
+        /// 6. `[signed]`   Owner of the staking pool token account to redeem.
         ///
-        /// Accounts:
+        /// Delegate only.
+        ///
+        /// 7. `[signed]?`  Delegate owner of the Member account.
+        // TODO: the staking pool token should be burned here so that it can't
+        //       be used during the withdrawal timelock period.
+        /// 7. `[writable]` Staking pool token.
+        /// 8. `[writable]` Staking pool token mint.
+        StartStakeWithdrawal {
+            amount: u64,
+            mega: bool,
+            delegate: bool,
+        },
+        /// Completes the pending withdrawal once the timelock period passes.
         ///
         /// Accounts:
         ///
@@ -147,14 +211,4 @@ pub mod instruction {
     }
 }
 
-#[cfg(feature = "client")]
-pub mod client_ext;
-#[cfg(feature = "client")]
-pub use client_ext::client;
-#[cfg(feature = "client")]
-pub use client_ext::instruction;
-
-pub mod accounts;
-pub mod error;
-
-serum_common::packable!(crate::instruction::RegistryInstruction);
+serum_common::packable!(instruction::RegistryInstruction);

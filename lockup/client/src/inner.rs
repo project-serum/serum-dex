@@ -123,7 +123,7 @@ pub fn create_vesting_account(
     safe_vault: &Pubkey,
     safe_vault_authority: &Pubkey,
     vesting_acc_beneficiary: &Pubkey,
-    end_slot: u64,
+    end_ts: i64,
     period_count: u64,
     deposit_amount: u64,
     mint_decimals: u8,
@@ -170,7 +170,7 @@ pub fn create_vesting_account(
         *client.program(),
         &deposit_accs,
         *vesting_acc_beneficiary,
-        end_slot,
+        end_ts,
         period_count,
         deposit_amount,
     );

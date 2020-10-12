@@ -49,7 +49,7 @@ pub fn genesis<T: ClientGen>() -> Genesis<T> {
     );
 
     // Create a funded SRM account.
-    let god_balance_before = 1_000_000;
+    let god_balance_before = 1_000_000_000_000_000;
     let god = serum_common::client::rpc::mint_to_new_account(
         client.rpc(),
         client.payer(),
@@ -59,7 +59,7 @@ pub fn genesis<T: ClientGen>() -> Genesis<T> {
     )
     .unwrap();
     // Create a funded MSRM account.
-    let god_msrm_balance_before = 1_000_000;
+    let god_msrm_balance_before = 1_000_000_000_000_000;
     let god_msrm = serum_common::client::rpc::mint_to_new_account(
         client.rpc(),
         client.payer(),
@@ -122,15 +122,14 @@ impl<T: ClientGen> std::fmt::Debug for Genesis<T> {
     }
 }
 
-// Returns a solana-client-gen generated client from the environment.
 pub fn client<T: ClientGen>() -> T {
     let program_id = std::env::var(TEST_PROGRAM_ID).unwrap().parse().unwrap();
     client_at(program_id)
 }
 
 pub fn client_at<T: ClientGen>(program_id: Pubkey) -> T {
-    let payer_filepath = std::env::var(TEST_PAYER_FILEPATH).unwrap().clone();
-    let cluster: Cluster = std::env::var(TEST_CLUSTER).unwrap().parse().unwrap();
+    let payer_filepath = payer_filepath();
+    let cluster = cluster();
 
     T::from_keypair_file(program_id, &payer_filepath, cluster.url())
         .expect("invalid keypair file")
@@ -141,4 +140,12 @@ pub fn client_at<T: ClientGen>(program_id: Pubkey) -> T {
                 preflight_commitment: None,
             },
         })
+}
+
+pub fn cluster() -> Cluster {
+    std::env::var(TEST_CLUSTER).unwrap().parse().unwrap()
+}
+
+pub fn payer_filepath() -> String {
+    std::env::var(TEST_PAYER_FILEPATH).unwrap().clone()
 }

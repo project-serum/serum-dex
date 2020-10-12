@@ -43,6 +43,11 @@ jobs:
       script:
         - docker exec dev make -C registry init-test
     - <<: *defaults
+      name: Rewards tests
+      <<: *localnet
+      script:
+        - docker exec dev make -C rewards init-test features=strict
+    - <<: *defaults
       name: Fmt and Common Tests
       script:
         - docker exec dev cargo fmt -- --check

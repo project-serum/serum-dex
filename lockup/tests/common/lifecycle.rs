@@ -56,7 +56,11 @@ pub struct Initialized {
     pub whitelist: Pubkey,
 }
 
-pub fn deposit_with_schedule(deposit_amount: u64, end_slot: u64, period_count: u64) -> Deposited {
+pub fn deposit_with_schedule(
+    deposit_amount: u64,
+    end_ts_offset: i64,
+    period_count: u64,
+) -> Deposited {
     let Initialized {
         client,
         safe_acc,
@@ -68,6 +72,11 @@ pub fn deposit_with_schedule(deposit_amount: u64, end_slot: u64, period_count: u
         ..
     } = initialize();
 
+    let end_ts = end_ts_offset
+        + client
+            .rpc()
+            .get_block_time(client.rpc().get_slot().unwrap())
+            .unwrap();
     let (vesting_acc, vesting_acc_beneficiary) = {
         let vesting_acc_beneficiary = Keypair::generate(&mut OsRng);
         let resp = client
@@ -76,7 +85,7 @@ pub fn deposit_with_schedule(deposit_amount: u64, end_slot: u64, period_count: u
                 depositor_owner: client.payer(),
                 safe: safe_acc,
                 beneficiary: vesting_acc_beneficiary.pubkey(),
-                end_slot,
+                end_ts,
                 period_count,
                 deposit_amount,
             })
@@ -94,7 +103,7 @@ pub fn deposit_with_schedule(deposit_amount: u64, end_slot: u64, period_count: u
         safe_srm_vault_authority,
         srm_mint,
         safe_authority,
-        end_slot,
+        end_ts,
         period_count,
         deposit_amount,
     }
@@ -109,7 +118,7 @@ pub struct Deposited {
     pub safe_srm_vault_authority: Pubkey,
     pub srm_mint: Keypair,
     pub safe_authority: Keypair,
-    pub end_slot: u64,
+    pub end_ts: i64,
     pub period_count: u64,
     pub deposit_amount: u64,
 }

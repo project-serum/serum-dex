@@ -1,8 +1,5 @@
 //! Module for safe access to accounts.
 
-// TODO: it'd be great to replace or merge this with the DEX's macro doing this
-//       type of thing.
-
 use serum_common::pack::Pack;
 use serum_lockup::accounts::{Safe, TokenVault, Vesting, Whitelist};
 use serum_lockup::error::{LockupError, LockupErrorCode};
@@ -33,6 +30,7 @@ pub fn governance(
 
 pub fn whitelist<'a>(
     wl_acc_info: AccountInfo<'a>,
+    safe_acc_info: &AccountInfo<'a>,
     safe: &Safe,
     program_id: &Pubkey,
 ) -> Result<Whitelist<'a>, LockupError> {
@@ -43,7 +41,12 @@ pub fn whitelist<'a>(
     if safe.whitelist != *wl_acc_info.key {
         return Err(LockupErrorCode::InvalidWhitelist)?;
     }
-    Whitelist::new(wl_acc_info).map_err(Into::into)
+    let wl = Whitelist::new(wl_acc_info)?;
+    if wl.safe()? != *safe_acc_info.key {
+        return Err(LockupErrorCode::WhitelistSafeMismatch)?;
+    }
+
+    Ok(wl)
 }
 
 /// Access control on any instruction mutating an existing Vesting account.

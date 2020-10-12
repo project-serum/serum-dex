@@ -23,6 +23,7 @@ pub fn handler<'a>(
         safe_authority_acc_info,
         safe_acc_info,
         whitelist_acc_info,
+        wl_entry: &wl_entry,
     })?;
 
     let whitelist = Whitelist::new(whitelist_acc_info.clone())?;
@@ -41,13 +42,17 @@ fn access_control(req: AccessControlRequest) -> Result<(), LockupError> {
         safe_authority_acc_info,
         safe_acc_info,
         whitelist_acc_info,
+        wl_entry,
     } = req;
 
     // Governance authorization.
     let safe = access_control::governance(program_id, safe_acc_info, safe_authority_acc_info)?;
 
     // WhitelistAdd checks.
-    let _ = access_control::whitelist(whitelist_acc_info.clone(), &safe, program_id)?;
+    let _ =
+        access_control::whitelist(whitelist_acc_info.clone(), safe_acc_info, &safe, program_id)?;
+    // Must be a valid derived address.
+    let _ = wl_entry.derived_address()?;
 
     info!("access-control: success");
 
@@ -71,11 +76,12 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), LockupError> {
     Ok(())
 }
 
-struct AccessControlRequest<'a> {
+struct AccessControlRequest<'a, 'b> {
     program_id: &'a Pubkey,
     safe_authority_acc_info: &'a AccountInfo<'a>,
     safe_acc_info: &'a AccountInfo<'a>,
     whitelist_acc_info: &'a AccountInfo<'a>,
+    wl_entry: &'b WhitelistEntry,
 }
 
 struct StateTransitionRequest<'a> {

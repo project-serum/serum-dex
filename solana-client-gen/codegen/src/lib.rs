@@ -128,6 +128,7 @@ pub fn solana_client_gen(
             payer: Keypair,
             rpc: RpcClient,
             opts: RequestOptions,
+            url: String,
         }
 
         impl Client {
@@ -154,6 +155,7 @@ pub fn solana_client_gen(
                     payer,
                     rpc,
                     opts,
+                    url: url.to_string(),
                 }
             }
 
@@ -181,9 +183,13 @@ pub fn solana_client_gen(
                 &self.program_id
             }
 
-                        pub fn options(&self) -> &RequestOptions {
-                                &self.opts
-                        }
+            pub fn options(&self) -> &RequestOptions {
+                &self.opts
+            }
+
+            pub fn url(&self) -> &str {
+                &self.url
+            }
 
             #client_methods
         }

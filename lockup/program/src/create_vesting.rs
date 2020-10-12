@@ -12,7 +12,7 @@ pub fn handler<'a>(
     program_id: &'a Pubkey,
     accounts: &'a [AccountInfo<'a>],
     vesting_acc_beneficiary: Pubkey,
-    end_slot: u64,
+    end_ts: i64,
     period_count: u64,
     deposit_amount: u64,
 ) -> Result<(), LockupError> {
@@ -30,11 +30,11 @@ pub fn handler<'a>(
     let token_program_acc_info = next_account_info(acc_infos)?;
     let rent_acc_info = next_account_info(acc_infos)?;
     let clock_acc_info = next_account_info(acc_infos)?;
-    let clock_slot = access_control::clock(&clock_acc_info)?.slot;
+    let clock_ts = access_control::clock(&clock_acc_info)?.unix_timestamp;
 
     access_control(AccessControlRequest {
         program_id,
-        end_slot,
+        end_ts,
         period_count,
         deposit_amount,
         vesting_acc_info,
@@ -44,15 +44,15 @@ pub fn handler<'a>(
         vault_authority_acc_info,
         nft_mint_acc_info,
         rent_acc_info,
-        clock_slot,
+        clock_ts,
     })?;
 
     Vesting::unpack_mut(
         &mut vesting_acc_info.try_borrow_mut_data()?,
         &mut |vesting_acc: &mut Vesting| {
             state_transition(StateTransitionRequest {
-                clock_slot,
-                end_slot,
+                clock_ts,
+                end_ts,
                 period_count,
                 deposit_amount,
                 vesting_acc,
@@ -76,7 +76,7 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), LockupError> 
 
     let AccessControlRequest {
         program_id,
-        end_slot,
+        end_ts,
         period_count,
         deposit_amount,
         vesting_acc_info,
@@ -86,7 +86,7 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), LockupError> 
         vault_acc_info,
         depositor_authority_acc_info,
         rent_acc_info,
-        clock_slot,
+        clock_ts,
     } = req;
 
     // Depositor authorization.
@@ -106,12 +106,15 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), LockupError> 
 
     // Initialize checks.
     {
-        // Vesting account.
+        // Vesting account (uninitialized).
         {
             let vesting = Vesting::unpack(&vesting_acc_info.try_borrow_data()?)?;
 
             if vesting_acc_info.owner != program_id {
                 return Err(LockupErrorCode::NotOwnedByProgram)?;
+            }
+            if vesting.initialized {
+                return Err(LockupErrorCode::AlreadyInitialized)?;
             }
             if !rent.is_exempt(
                 vesting_acc_info.lamports(),
@@ -119,14 +122,11 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), LockupError> 
             ) {
                 return Err(LockupErrorCode::NotRentExempt)?;
             }
-            if vesting.initialized {
-                return Err(LockupErrorCode::AlreadyInitialized)?;
-            }
         }
         // Vesting schedule.
         {
-            if end_slot <= clock_slot {
-                return Err(LockupErrorCode::InvalidSlot)?;
+            if end_ts <= clock_ts {
+                return Err(LockupErrorCode::InvalidTimestamp)?;
             }
             if period_count == 0 {
                 return Err(LockupErrorCode::InvalidPeriod)?;
@@ -161,8 +161,8 @@ fn state_transition<'a, 'b>(req: StateTransitionRequest<'a, 'b>) -> Result<(), L
     info!("state-transition: create_vesting");
 
     let StateTransitionRequest {
-        clock_slot,
-        end_slot,
+        clock_ts,
+        end_ts,
         period_count,
         deposit_amount,
         vesting_acc,
@@ -183,8 +183,8 @@ fn state_transition<'a, 'b>(req: StateTransitionRequest<'a, 'b>) -> Result<(), L
         vesting_acc.claimed = false;
         vesting_acc.period_count = period_count;
         vesting_acc.start_balance = deposit_amount;
-        vesting_acc.end_slot = end_slot;
-        vesting_acc.start_slot = clock_slot;
+        vesting_acc.end_ts = end_ts;
+        vesting_acc.start_ts = clock_ts;
         vesting_acc.balance = deposit_amount;
         vesting_acc.locked_nft_mint = *nft_mint_acc_info.key;
         vesting_acc.whitelist_owned = 0;
@@ -221,7 +221,7 @@ fn state_transition<'a, 'b>(req: StateTransitionRequest<'a, 'b>) -> Result<(), L
 
 struct AccessControlRequest<'a> {
     program_id: &'a Pubkey,
-    end_slot: u64,
+    end_ts: i64,
     period_count: u64,
     deposit_amount: u64,
     vesting_acc_info: &'a AccountInfo<'a>,
@@ -231,12 +231,12 @@ struct AccessControlRequest<'a> {
     nft_mint_acc_info: &'a AccountInfo<'a>,
     vault_authority_acc_info: &'a AccountInfo<'a>,
     rent_acc_info: &'a AccountInfo<'a>,
-    clock_slot: u64,
+    clock_ts: i64,
 }
 
 struct StateTransitionRequest<'a, 'b> {
-    clock_slot: u64,
-    end_slot: u64,
+    clock_ts: i64,
+    end_ts: i64,
     period_count: u64,
     deposit_amount: u64,
     vesting_acc: &'b mut Vesting,

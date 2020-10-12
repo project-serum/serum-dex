@@ -6,6 +6,10 @@ members = [
     "crank",
     "registry",
     "registry/cli",
+    "registry/client",
+    "rewards",
+    "rewards/cli",
+    "rewards/client",
     "lockup",
     "lockup/cli",
     "lockup/client",
@@ -21,6 +25,7 @@ members = [
 exclude = [
     "dex",
     "registry/program",
+    "rewards/program",
     "lockup/program",
     "lockup/tests/stake/program",
 ]

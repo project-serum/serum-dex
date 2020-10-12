@@ -1,6 +1,6 @@
 //! Client crate for the test stake program.
 
-use serde::{Deserialize, Serialize};
+use borsh::{BorshDeserialize, BorshSerialize};
 use serum_common::pack::*;
 use solana_client_gen::prelude::*;
 
@@ -9,7 +9,7 @@ use solana_client_gen::prelude::*;
 #[cfg_attr(feature = "client", solana_client_gen(ext))]
 pub mod instruction {
     use super::*;
-    #[derive(serde::Serialize, serde::Deserialize)]
+    #[derive(BorshSerialize, BorshDeserialize)]
     pub enum StakeInstruction {
         /// Accounts:
         ///
@@ -126,7 +126,7 @@ pub mod accounts {
                     .expect("Vesting has a fixed size");
     }
 
-    #[derive(Default, Serialize, Deserialize)]
+    #[derive(Default, BorshSerialize, BorshDeserialize)]
     pub struct Instance {
         pub nonce: u8,
     }

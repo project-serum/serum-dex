@@ -8,22 +8,27 @@ edition = "2018"
 [features]
 program = ["solana-client-gen/program", "spl-token/program", "serum-common/program"]
 client = ["solana-client-gen/client", "spl-token/default", "serum-common/client", "lazy_static"]
-test = ["serum-common-tests", "rand"]
+test = []
 strict = []
 
 [dependencies]
-serde = { version = "1.0", features = ["derive"] }
+solana-client-gen = { path = "../solana-client-gen" }
+serum-common = { path = "../common" }
 spl-token = { version = "2.0.6", default-features = false }
 num_enum = "0.5.0"
 thiserror = "1.0.20"
-solana-client-gen = { path = "../solana-client-gen" }
-serum-common = { path = "../common" }
 bytemuck = "1.4.0"
 arrayref = "0.3.6"
+
+# Forks.
+borsh = { git = "https://github.com/project-serum/borsh", branch = "serum" }
 
 # Client only.
 lazy_static = { version = "1.4.0", optional = true }
 
-# Testing.
-serum-common-tests = { path = "../common/tests", optional = true }
-rand = { version = "0.7.3", optional = true }
+[dev-dependencies]
+serum-registry-client = { path = "./client" }
+serum-lockup-client = { path = "../lockup/client" }
+serum-lockup = { path = "../lockup" }
+serum-common-tests = { path = "../common/tests" }
+rand = { version = "0.7.3" }
