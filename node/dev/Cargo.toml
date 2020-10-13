@@ -1,0 +1,13 @@
+[package]
+name = "serum-node-dev"
+version = "0.1.0"
+authors = ["armaniferrante <armaniferrante@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+serum-common-tests = { path = "../../common/tests" }
+serum-node-context = { path = "../context" }
+serum-registry = { path = "../../registry", features = ["client"] }
+solana-sdk = "1.3.9"
+anyhow = "1.0.32"
+clap = "3.0.0-beta.1"

@@ -1,25 +1,38 @@
-## serum-dex
+# serum-dex
 
-# Deploying the DEX
+[![Build Status](https://travis-ci.com/project-serum/serum-dex.svg?branch=master)](https://travis-ci.com/project-serum/serum-dex)
+[![Discord Chat](https://img.shields.io/discord/739225212658122886?color=blueviolet)](https://discord.com/channels/739225212658122886)
+[![License](https://img.shields.io/github/license/project-serum/serum-dex?color=blue)](https://opensource.org/licenses/Apache-2.0)
+
+## Deploying the DEX
+
+### Run unit tests
+
 ```
-# run unit tests
 ./do.sh test dex
+```
 
-# compile the dex binary
+### Compile the dex binary
+
+```
 ./do.sh build dex
+```
 
-# deploy the dex to the configured solana cluster
+### Deploy the dex to the configured solana cluster
+
+```
 DEX_PROGRAM_ID="$(solana deploy dex/target/bpfel-unknown-unknown/release/serum_dex.so --use-deprecated-loader | jq .programId -r)"
 ```
 
-# Run the fuzz tests
+## Run the fuzz tests
+
 ```
 cd dex
 cargo install cargo-fuzz
 cargo fuzz run multiple_orders
 ```
 
-# Using the client utility
+## Using the client utility
 ```
 cd crank
 
@@ -43,7 +56,7 @@ PRICE_CURRENCY_MINT="..."
 cargo run -- $CLUSTER list-market $KEYPAIR $DEX_PROGRAM_ID --coin-mint $COIN_MINT --pc-mint $PRICE_CURRENCY_MINT
 ```
 
-# First-time setup
+## First-time setup
 ```
 # Building the dex
 sudo apt-get install -y pkg-config build-essential python3-pip jq

@@ -1,0 +1,26 @@
+[workspace]
+members = [
+    "solana-client-gen",
+    "common",
+    "common/tests",
+    "crank",
+    "registry",
+    "registry/cli",
+    "lockup",
+    "lockup/cli",
+    "lockup/client",
+    "node",
+    "node/json-rpc",
+    "node/logging",
+    "node/crank",
+    "node/registry",
+    "node/context",
+    "node/dev",
+    "lockup/tests/stake",
+]
+exclude = [
+    "dex",
+    "registry/program",
+    "lockup/program",
+    "lockup/tests/stake/program",
+]

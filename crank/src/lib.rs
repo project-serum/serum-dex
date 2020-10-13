@@ -1,15 +1,41 @@
-#![allow(unused)]
+#![allow(dead_code)]
+
+use std::borrow::Cow;
+use std::cmp::min;
+use std::collections::BTreeSet;
+use std::mem::size_of;
+use std::num::NonZeroU64;
+use std::{thread, time};
+
 use anyhow::{format_err, Result};
 use clap::Clap;
-use rand::prelude::*;
-use log::{error, info, warn};
+use debug_print::debug_println;
+use log::{error, info};
 use rand::rngs::OsRng;
 use safe_transmute::{
-    guard::{PermissiveGuard, SingleManyGuard, SingleValueGuard},
+    guard::SingleManyGuard,
     to_bytes::{transmute_one_to_bytes, transmute_to_bytes},
-    transmute_many, transmute_many_pedantic, transmute_many_permissive, transmute_one,
-    transmute_one_pedantic, try_copy,
+    transmute_many, transmute_many_pedantic, transmute_one_pedantic,
 };
+use sloggers::file::FileLoggerBuilder;
+use sloggers::types::Severity;
+use sloggers::Build;
+use solana_client::rpc_client::RpcClient;
+use solana_client::rpc_config::RpcSendTransactionConfig;
+use solana_sdk::commitment_config::CommitmentConfig;
+use solana_sdk::instruction::{AccountMeta, Instruction};
+use solana_sdk::program_pack::Pack;
+use solana_sdk::pubkey::Pubkey;
+use solana_sdk::signature::Signature;
+use solana_sdk::signature::{Keypair, Signer};
+use solana_sdk::transaction::Transaction;
+use spl_token::instruction as token_instruction;
+use warp::Filter;
+
+use serum_common::client::rpc::{
+    create_and_init_mint, create_token_account, mint_to_new_account, send_txn, simulate_transaction,
+};
+use serum_common::client::Cluster;
 use serum_dex::instruction::{MarketInstruction, NewOrderInstructionV1};
 use serum_dex::matching::{OrderType, Side};
 use serum_dex::state::gen_vault_signer_key;
@@ -19,74 +45,9 @@ use serum_dex::state::MarketState;
 use serum_dex::state::QueueHeader;
 use serum_dex::state::Request;
 use serum_dex::state::RequestQueueHeader;
-use solana_client::rpc_client::RpcClient;
-use solana_client::rpc_config::RpcSendTransactionConfig;
-use solana_sdk::commitment_config::CommitmentConfig;
-use solana_sdk::instruction::{AccountMeta, Instruction};
-use solana_sdk::pubkey::Pubkey;
-use solana_sdk::signature::Signature;
-use solana_sdk::signature::{Keypair, Signer};
-use solana_sdk::system_instruction::SystemInstruction;
-use solana_sdk::transaction::Transaction;
-use spl_token::instruction as token_instruction;
-use spl_token::pack::Pack;
-use std::borrow::Cow;
-use std::collections::BTreeSet;
-use std::mem::size_of;
-use std::num::NonZeroU64;
-use std::str::FromStr;
-use std::{thread, time};
-use warp::Filter;
 
-use std::sync::mpsc::{Sender, Receiver};
-use sloggers::file::FileLoggerBuilder;
-use sloggers::types::Severity;
-use sloggers::Build;
-
-use debug_print::debug_println;
-
-pub fn with_logging<F: FnOnce()>(to: &str, fnc: F) {
+pub fn with_logging<F: FnOnce()>(_to: &str, fnc: F) {
     fnc();
-}
-
-#[derive(Debug)]
-enum Cluster {
-    Testnet,
-    Mainnet,
-    VipMainnet,
-    Devnet,
-    Localnet,
-    Debug,
-}
-
-impl FromStr for Cluster {
-    type Err = anyhow::Error;
-    fn from_str(s: &str) -> Result<Cluster> {
-        match s.to_lowercase().as_str() {
-            "t" | "testnet" => Ok(Cluster::Testnet),
-            "m" | "mainnet" => Ok(Cluster::Mainnet),
-            "v" | "vipmainnet" => Ok(Cluster::VipMainnet),
-            "d" | "devnet" => Ok(Cluster::Devnet),
-            "l" | "localnet" => Ok(Cluster::Localnet),
-            "g" | "debug" => Ok(Cluster::Debug),
-            _ => Err(anyhow::Error::msg(
-                "Cluster must be one of [testnet, mainnet, devnet]\n",
-            )),
-        }
-    }
-}
-
-impl Cluster {
-    fn url(&self) -> &'static str {
-        match self {
-            Cluster::Devnet => "https://devnet.solana.com",
-            Cluster::Testnet => "https://testnet.solana.com",
-            Cluster::Mainnet => "https://api.mainnet-beta.solana.com",
-            Cluster::VipMainnet => "https://vip-api.mainnet-beta.solana.com",
-            Cluster::Localnet => "http://127.0.0.1:8899",
-            Cluster::Debug => "http://34.90.18.145:8899",
-        }
-    }
 }
 
 fn read_keypair_file(s: &str) -> Result<Keypair> {
@@ -95,15 +56,15 @@ fn read_keypair_file(s: &str) -> Result<Keypair> {
 }
 
 #[derive(Clap, Debug)]
-struct Opts {
+pub struct Opts {
     #[clap(default_value = "mainnet")]
-    cluster: Cluster,
+    pub cluster: Cluster,
     #[clap(subcommand)]
-    command: Command,
+    pub command: Command,
 }
 
 #[derive(Clap, Debug)]
-enum Command {
+pub enum Command {
     Genesis {
         #[clap(long, short)]
         payer: String,
@@ -234,9 +195,7 @@ impl Opts {
     }
 }
 
-fn main() -> Result<()> {
-    let opts = Opts::parse();
-
+pub fn start(opts: Opts) -> Result<()> {
     let client = opts.client();
 
     match opts.command {
@@ -248,7 +207,7 @@ fn main() -> Result<()> {
         } => {
             let payer = read_keypair_file(&payer)?;
             let mint = read_keypair_file(&mint)?;
-            genesis(&client, &payer, &mint, &owner_pubkey, decimals)?;
+            create_and_init_mint(&client, &payer, &mint, &owner_pubkey, decimals)?;
         }
         Command::Mint {
             payer,
@@ -303,8 +262,8 @@ fn main() -> Result<()> {
             ref market,
             ref coin_wallet,
             ref pc_wallet,
-            ref num_workers,
-            ref events_per_worker,
+            num_workers,
+            events_per_worker,
             ref num_accounts,
             ref log_directory,
         } => {
@@ -316,10 +275,11 @@ fn main() -> Result<()> {
                 &coin_wallet,
                 &pc_wallet,
                 num_workers,
-                *events_per_worker,
+                events_per_worker,
                 num_accounts.unwrap_or(32),
                 log_directory,
-            );
+            )
+            .unwrap();
         }
         Command::MonitorQueue {
             dex_program_id,
@@ -328,10 +288,9 @@ fn main() -> Result<()> {
         } => {
             let client = opts.client();
             let mut runtime = tokio::runtime::Runtime::new().unwrap();
-            runtime.block_on(read_queue_length_loop(client,
-                    dex_program_id,
-                    market,
-                    port));
+            runtime
+                .block_on(read_queue_length_loop(client, dex_program_id, market, port))
+                .unwrap();
         }
         Command::PrintEventQueue {
             ref dex_program_id,
@@ -405,18 +364,6 @@ fn main() -> Result<()> {
         }
     }
     Ok(())
-}
-
-fn send_txn(client: &RpcClient, txn: &Transaction, simulate: bool) -> Result<Signature> {
-    use solana_sdk::commitment_config::CommitmentLevel;
-    Ok(client.send_and_confirm_transaction_with_spinner_and_config(
-        txn,
-        CommitmentConfig::single(),
-        RpcSendTransactionConfig {
-            skip_preflight: true,
-            preflight_commitment: None,
-        },
-    )?)
 }
 
 #[derive(Debug)]
@@ -528,7 +475,7 @@ fn consume_events_loop(
     market: &Pubkey,
     coin_wallet: &Pubkey,
     pc_wallet: &Pubkey,
-    num_workers: &usize,
+    num_workers: usize,
     events_per_worker: usize,
     num_accounts: usize,
     log_directory: &str,
@@ -540,14 +487,17 @@ fn consume_events_loop(
     builder.level(Severity::Info).rotate_size(8 * 1024 * 1024);
     let log = builder.build().unwrap();
     let _guard = slog_scope::set_global_logger(log);
+    _guard.cancel_reset();
     slog_stdlog::init().unwrap();
 
     info!("Getting market keys ...");
     let client = opts.client();
     let market_keys = get_keys_for_market(&client, &program_id, &market)?;
     info!("{:#?}", market_keys);
-    let pool = threadpool::ThreadPool::new(*num_workers);
+    let pool = threadpool::ThreadPool::new(num_workers);
     loop {
+        thread::sleep(time::Duration::from_millis(300));
+
         let loop_start = std::time::Instant::now();
         let start_time = std::time::Instant::now();
         let event_q_data = client
@@ -561,29 +511,39 @@ fn consume_events_loop(
             .expect("Failed to retrieve account")
             .data;
         let inner: Cow<[u64]> = remove_dex_account_padding(&event_q_data)?;
-        let (header, seg0, seg1) = parse_event_queue(&inner)?;
+        let (_header, seg0, seg1) = parse_event_queue(&inner)?;
         let req_inner: Cow<[u64]> = remove_dex_account_padding(&req_q_data)?;
-        let (req_header, req_seg0, req_seg1) = parse_event_queue(&req_inner)?;
+        let (_req_header, req_seg0, req_seg1) = parse_event_queue(&req_inner)?;
         let event_q_len = seg0.len() + seg1.len();
         let req_q_len = req_seg0.len() + req_seg1.len();
-        info!("Size of request queue is {}", req_q_len);
+        info!(
+            "Size of request queue is {}, market {}, coin {}, pc {}",
+            req_q_len, market, coin_wallet, pc_wallet
+        );
 
         if event_q_len == 0 {
-            debug_println!("Total event queue length: 0, returning early");
-            let one_hundred_millis = time::Duration::from_millis(300);
-            thread::sleep(one_hundred_millis);
+            continue;
         } else {
-            info!("Total event queue length: {}", event_q_len);
+            info!(
+                "Total event queue length: {}, market {}, coin {}, pc {}",
+                event_q_len, market, coin_wallet, pc_wallet
+            );
             let accounts = seg0.iter().chain(seg1.iter()).map(|event| event.owner);
             let mut used_accounts = BTreeSet::new();
             for account in accounts {
                 used_accounts.insert(account);
-                if (used_accounts.len() >= num_accounts) {
+                if used_accounts.len() >= num_accounts {
                     break;
                 }
             }
-            let mut orders_accounts: Vec<_> = used_accounts.into_iter().collect();
-            info!("Number of unique order accounts: {}", orders_accounts.len());
+            let orders_accounts: Vec<_> = used_accounts.into_iter().collect();
+            info!(
+                "Number of unique order accounts: {}, market {}, coin {}, pc {}",
+                orders_accounts.len(),
+                market,
+                coin_wallet,
+                pc_wallet
+            );
             info!(
                 "First 5 accouts: {:?}",
                 orders_accounts
@@ -615,7 +575,7 @@ fn consume_events_loop(
                 event_q_len,
                 end_time.duration_since(start_time).as_millis()
             );
-            for thread_num in 0..*num_workers {
+            for thread_num in 0..min(num_workers, 2 * event_q_len / events_per_worker + 1) {
                 let payer = read_keypair_file(&payer_path)?;
                 let program_id = program_id.clone();
                 let client = opts.client();
@@ -630,7 +590,6 @@ fn consume_events_loop(
                         thread_num,
                         events_per_worker,
                     )
-                    .unwrap()
                 });
             }
             pool.join();
@@ -641,10 +600,8 @@ fn consume_events_loop(
             );
         }
     }
-    return Ok(());
 }
 
-#[cfg(target_endian = "little")]
 fn consume_events_wrapper(
     client: &RpcClient,
     program_id: &Pubkey,
@@ -652,7 +609,8 @@ fn consume_events_wrapper(
     account_metas: Vec<AccountMeta>,
     thread_num: usize,
     to_consume: usize,
-) -> Result<()> {
+) {
+    let start = std::time::Instant::now();
     let result = consume_events_once(
         &client,
         program_id,
@@ -662,28 +620,27 @@ fn consume_events_wrapper(
         thread_num,
     );
     match result {
-        Ok(()) => (info!("[thread {}] Successfully consumed events.", thread_num)),
+        Ok(signature) => info!(
+            "[thread {}] Successfully consumed events after {:?}: {}.",
+            thread_num,
+            start.elapsed(),
+            signature
+        ),
         Err(err) => {
             error!("[thread {}] Received error: {:?}", thread_num, err);
-            warn!(
-                "[thread {}] Done consuming events. Sleeping for 100ms...",
-                thread_num
-            );
         }
     };
-    Ok(())
 }
 
-#[cfg(target_endian = "little")]
 fn consume_events_once(
     client: &RpcClient,
     program_id: &Pubkey,
     payer: &Keypair,
     account_metas: Vec<AccountMeta>,
     to_consume: usize,
-    thread_number: usize,
-) -> Result<()> {
-    let start = std::time::Instant::now();
+    _thread_number: usize,
+) -> Result<Signature> {
+    let _start = std::time::Instant::now();
     let instruction_data: Vec<u8> = MarketInstruction::ConsumeEvents(to_consume as u16).pack();
 
     let instruction = Instruction {
@@ -697,24 +654,22 @@ fn consume_events_once(
         rand::random::<u64>() % 10000 + 1,
     );
     let (recent_hash, _fee_calc) = client.get_recent_blockhash()?;
-    info!("Consuming events ...");
     let txn = Transaction::new_signed_with_payer(
         &[instruction, random_instruction],
         Some(&payer.pubkey()),
         &[payer],
         recent_hash,
     );
-    info!("Consuming events ...");
-    let rval = send_txn(client, &txn, false).map(|_| ());
-    let end = std::time::Instant::now();
 
-    info!(
-        "Thread {} took {} milliseconds to consume {} events",
-        thread_number,
-        end.duration_since(start).as_millis(),
-        to_consume
-    );
-    rval
+    info!("Consuming events ...");
+    let signature = client.send_transaction_with_config(
+        &txn,
+        RpcSendTransactionConfig {
+            skip_preflight: true,
+            preflight_commitment: None,
+        },
+    )?;
+    Ok(signature)
 }
 
 #[cfg(target_endian = "little")]
@@ -728,7 +683,7 @@ fn consume_events(
 ) -> Result<()> {
     let event_q_data = client.get_account_data(&state.event_q)?;
     let inner: Cow<[u64]> = remove_dex_account_padding(&event_q_data)?;
-    let (header, seg0, seg1) = parse_event_queue(&inner)?;
+    let (_header, seg0, seg1) = parse_event_queue(&inner)?;
 
     if seg0.len() + seg1.len() == 0 {
         info!("Total event queue length: 0, returning early");
@@ -778,11 +733,11 @@ fn consume_events(
 fn whole_shebang(client: &RpcClient, program_id: &Pubkey, payer: &Keypair) -> Result<()> {
     let coin_mint = Keypair::generate(&mut OsRng);
     debug_println!("Coin mint: {}", coin_mint.pubkey());
-    genesis(client, payer, &coin_mint, &payer.pubkey(), 3)?;
+    create_and_init_mint(client, payer, &coin_mint, &payer.pubkey(), 3)?;
 
     let pc_mint = Keypair::generate(&mut OsRng);
     debug_println!("Pc mint: {}", pc_mint.pubkey());
-    genesis(client, payer, &pc_mint, &payer.pubkey(), 3)?;
+    create_and_init_mint(client, payer, &pc_mint, &payer.pubkey(), 3)?;
 
     let market_keys = list_market(
         client,
@@ -917,7 +872,7 @@ fn place_order(
         }
     };
     *orders = Some(orders_pubkey);
-    let side = new_order.side;
+    let _side = new_order.side;
     let data = MarketInstruction::NewOrder(new_order).pack();
     let instruction = Instruction {
         program_id: *program_id,
@@ -990,7 +945,10 @@ fn settle_funds(
         i += 1;
         assert!(i < 10);
         debug_println!("Simulating SettleFunds instruction ...");
-        let result = client.simulate_transaction(&txn, true)?;
+        let result = simulate_transaction(client, &txn, true, CommitmentConfig::single())?;
+        if let Some(e) = result.value.err {
+            return Err(format_err!("simulate_transaction error: {:?}", e));
+        }
         debug_println!("{:#?}", result.value);
         if result.value.err.is_none() {
             break;
@@ -1023,10 +981,12 @@ fn list_market(
     } = listing_keys;
 
     debug_println!("Creating coin vault...");
-    let coin_vault = create_account(client, coin_mint, &vault_signer_pk, payer)?;
+    let coin_vault = create_token_account(client, coin_mint, &vault_signer_pk, payer)?;
+    debug_println!("Created account: {} ...", coin_vault.pubkey());
 
     debug_println!("Creating pc vault...");
-    let pc_vault = create_account(client, pc_mint, &listing_keys.vault_signer_pk, payer)?;
+    let pc_vault = create_token_account(client, pc_mint, &listing_keys.vault_signer_pk, payer)?;
+    debug_println!("Created account: {} ...", pc_vault.pubkey());
 
     let init_market_instruction = serum_dex::instruction::initialize_market(
         &market_key.pubkey(),
@@ -1070,7 +1030,10 @@ fn list_market(
     );
 
     debug_println!("txn:\n{:#x?}", txn);
-    let result = client.simulate_transaction(&txn, true)?;
+    let result = simulate_transaction(client, &txn, true, CommitmentConfig::single())?;
+    if let Some(e) = result.value.err {
+        return Err(format_err!("simulate_transaction error: {:?}", e));
+    }
     debug_println!("{:#?}", result.value);
     debug_println!("Listing {} ...", market_key.pubkey());
     send_txn(client, &txn, false)?;
@@ -1101,8 +1064,8 @@ fn gen_listing_params(
     client: &RpcClient,
     program_id: &Pubkey,
     payer: &Pubkey,
-    coin_mint: &Pubkey,
-    pc_mint: &Pubkey,
+    _coin_mint: &Pubkey,
+    _pc_mint: &Pubkey,
 ) -> Result<(ListingKeys, Vec<Instruction>)> {
     let (market_key, create_market) = create_dex_account(client, program_id, payer, 376)?;
     let (req_q_key, create_req_q) = create_dex_account(client, program_id, payer, 640)?;
@@ -1189,7 +1152,10 @@ fn match_orders(
     );
 
     debug_println!("Simulating order matching ...");
-    let result = client.simulate_transaction(&txn, true)?;
+    let result = simulate_transaction(&client, &txn, true, CommitmentConfig::single())?;
+    if let Some(e) = result.value.err {
+        return Err(format_err!("simulate_transaction error: {:?}", e));
+    }
     debug_println!("{:#?}", result.value);
     if result.value.err.is_none() {
         debug_println!("Matching orders ...");
@@ -1271,57 +1237,6 @@ fn mint_to_existing_account(
     Ok(())
 }
 
-fn mint_to_new_account(
-    client: &RpcClient,
-    payer: &Keypair,
-    minting_key: &Keypair,
-    mint: &Pubkey,
-    quantity: u64,
-) -> Result<Keypair> {
-    let recip_keypair = Keypair::generate(&mut OsRng);
-
-    let lamports = client.get_minimum_balance_for_rent_exemption(spl_token::state::Account::LEN)?;
-
-    let signers = vec![payer, minting_key, &recip_keypair];
-
-    let create_recip_instr = solana_sdk::system_instruction::create_account(
-        &payer.pubkey(),
-        &recip_keypair.pubkey(),
-        lamports,
-        spl_token::state::Account::LEN as u64,
-        &spl_token::ID,
-    );
-
-    let init_recip_instr = token_instruction::initialize_account(
-        &spl_token::ID,
-        &recip_keypair.pubkey(),
-        mint,
-        &payer.pubkey(),
-    )?;
-
-    let mint_tokens_instr = token_instruction::mint_to(
-        &spl_token::ID,
-        mint,
-        &recip_keypair.pubkey(),
-        &minting_key.pubkey(),
-        &[],
-        quantity,
-    )?;
-
-    let instructions = vec![create_recip_instr, init_recip_instr, mint_tokens_instr];
-
-    let (recent_hash, _fee_calc) = client.get_recent_blockhash()?;
-    let txn = Transaction::new_signed_with_payer(
-        &instructions,
-        Some(&payer.pubkey()),
-        &signers,
-        recent_hash,
-    );
-
-    send_txn(client, &txn, false)?;
-    Ok(recip_keypair)
-}
-
 fn initialize_token_account(client: &RpcClient, mint: &Pubkey, owner: &Keypair) -> Result<Keypair> {
     let recip_keypair = Keypair::generate(&mut OsRng);
     let lamports = client.get_minimum_balance_for_rent_exemption(spl_token::state::Account::LEN)?;
@@ -1351,45 +1266,6 @@ fn initialize_token_account(client: &RpcClient, mint: &Pubkey, owner: &Keypair) 
     Ok(recip_keypair)
 }
 
-fn genesis(
-    client: &RpcClient,
-    payer_keypair: &Keypair,
-    mint_keypair: &Keypair,
-    owner_pubkey: &Pubkey,
-    decimals: u8,
-) -> Result<()> {
-    let signers = vec![payer_keypair, mint_keypair];
-
-    let lamports = client.get_minimum_balance_for_rent_exemption(spl_token::state::Mint::LEN)?;
-
-    let create_mint_account_instruction = solana_sdk::system_instruction::create_account(
-        &payer_keypair.pubkey(),
-        &mint_keypair.pubkey(),
-        lamports,
-        spl_token::state::Mint::LEN as u64,
-        &spl_token::ID,
-    );
-    let initialize_mint_instruction = token_instruction::initialize_mint(
-        &spl_token::ID,
-        &mint_keypair.pubkey(),
-        owner_pubkey,
-        None,
-        decimals,
-    )?;
-    let instructions = vec![create_mint_account_instruction, initialize_mint_instruction];
-
-    let (recent_hash, _fee_calc) = client.get_recent_blockhash()?;
-    let txn = Transaction::new_signed_with_payer(
-        &instructions,
-        Some(&payer_keypair.pubkey()),
-        &signers,
-        recent_hash,
-    );
-
-    send_txn(client, &txn, false)?;
-    Ok(())
-}
-
 enum MonitorEvent {
     NumEvents(usize),
     NewConn(std::net::TcpStream),
@@ -1402,22 +1278,20 @@ async fn read_queue_length_loop(
     port: u16,
 ) -> Result<()> {
     let client = std::sync::Arc::new(client);
-    let get_data = warp::path("length")
-        .map(move || {
-            let client = client.clone();
-            let market_keys = get_keys_for_market(&client, &program_id, &market).unwrap();
-            let event_q_data = client
-                .get_account_with_commitment(&market_keys.event_q, CommitmentConfig::recent()).unwrap()
-                .value
-                .expect("Failed to retrieve account")
-                .data;
-            let inner: Cow<[u64]> = remove_dex_account_padding(&event_q_data).unwrap();
-            let (header, seg0, seg1) = parse_event_queue(&inner).unwrap();
-            let len = seg0.len() + seg1.len();
-            format!("{{ \"length\": {}  }}", len)
+    let get_data = warp::path("length").map(move || {
+        let client = client.clone();
+        let market_keys = get_keys_for_market(&client, &program_id, &market).unwrap();
+        let event_q_data = client
+            .get_account_with_commitment(&market_keys.event_q, CommitmentConfig::recent())
+            .unwrap()
+            .value
+            .expect("Failed to retrieve account")
+            .data;
+        let inner: Cow<[u64]> = remove_dex_account_padding(&event_q_data).unwrap();
+        let (_header, seg0, seg1) = parse_event_queue(&inner).unwrap();
+        let len = seg0.len() + seg1.len();
+        format!("{{ \"length\": {}  }}", len)
     });
 
-    Ok(warp::serve(get_data)
-        .run(([127, 0, 0, 1], port))
-        .await)
+    Ok(warp::serve(get_data).run(([127, 0, 0, 1], port)).await)
 }
