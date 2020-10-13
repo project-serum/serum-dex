@@ -62,41 +62,34 @@ impl<'a> Whitelist<'a> {
     /// Inserts the given WhitelistEntry at the first available index.
     /// Returns Some(index) where the entry was inserted. If the Whitelist
     /// is full, returns None.
-    pub fn push(&self, item: WhitelistEntry) -> Result<Option<usize>, LockupError> {
-        let mut idx = None;
-        for k in (0..Whitelist::SIZE).step_by(Whitelist::ITEM_SIZE) {
-            let curr_idx = k / Whitelist::ITEM_SIZE;
-            let entry = self.get_at(curr_idx)?;
-            if entry.program_id() == Pubkey::new_from_array([0; 32]) {
-                idx = Some(k);
-                break;
-            }
-        }
-
+    pub fn push(&self, entry: WhitelistEntry) -> Result<Option<usize>, LockupError> {
+        let idx = self.index_of(&WhitelistEntry::zero())?;
         if let Some(idx) = idx {
-            self.add_at(idx, item)?;
+            self.add_at(idx, entry)?;
             return Ok(Some(idx));
         }
         Ok(idx)
     }
 
     /// Deletes the given entry from the Whitelist.
-    pub fn delete(&self, entry_delete: WhitelistEntry) -> Result<Option<usize>, LockupError> {
-        let mut idx = None;
-        for k in (0..Whitelist::SIZE).step_by(Whitelist::ITEM_SIZE) {
-            let curr_idx = k / Whitelist::ITEM_SIZE;
-            let entry = self.get_at(curr_idx)?;
-            if entry == entry_delete {
-                idx = Some(k);
-                break;
-            }
-        }
-
+    pub fn delete(&self, entry: WhitelistEntry) -> Result<Option<usize>, LockupError> {
+        let idx = self.index_of(&entry)?;
         if let Some(idx) = idx {
             self.add_at(idx, WhitelistEntry::zero())?;
             return Ok(Some(idx));
         }
         Ok(idx)
+    }
+
+    fn index_of(&self, e: &WhitelistEntry) -> Result<Option<usize>, LockupError> {
+        for k in (0..Whitelist::SIZE).step_by(Whitelist::ITEM_SIZE) {
+            let curr_idx = k / Whitelist::ITEM_SIZE;
+            let entry = &self.get_at(curr_idx)?;
+            if entry == e {
+                return Ok(Some(k));
+            }
+        }
+        Ok(None)
     }
 
     /// Returns the entry representing the given derived address. If no such

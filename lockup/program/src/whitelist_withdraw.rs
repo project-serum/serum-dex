@@ -115,14 +115,14 @@ fn access_control(req: AccessControlRequest) -> Result<(), LockupError> {
     if !vesting.claimed {
         return Err(LockupErrorCode::NotYetClaimed)?;
     }
+    if amount > vesting.available_for_whitelist() {
+        return Err(LockupErrorCode::InsufficientWhitelistBalance)?;
+    }
     let entry = whitelist
         .get_derived(wl_prog_vault_authority_acc_info.key)?
         .ok_or(LockupErrorCode::WhitelistNotFound)?;
     if entry.program_id() != *wl_prog_acc_info.key {
         return Err(LockupErrorCode::WhitelistInvalidProgramId)?;
-    }
-    if amount > vesting.available_for_whitelist() {
-        return Err(LockupErrorCode::InsufficientWhitelistBalance)?;
     }
 
     info!("access-control: success");
