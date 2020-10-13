@@ -1,6 +1,7 @@
 use anyhow::{anyhow, Result};
 use clap::Clap;
 use serum_common::client::rpc;
+use serum_lockup::accounts::WhitelistEntry;
 use serum_lockup_client::*;
 use serum_node_context::Context;
 use solana_client_gen::prelude::*;
@@ -119,15 +120,27 @@ pub enum AccountsCommand {
 pub enum GovCommand {
     /// Adds a program to the whitelist.
     WhitelistAdd {
-        /// Program to add to the whitelist.
+        /// WhitelistEntry program id.
         #[clap(short, long)]
         program_id: Pubkey,
+        /// WhitelistEntry signer-seeds instance.
+        #[clap(short, long)]
+        instance: Pubkey,
+        /// WhitelistEntry signer-seeds nonce.
+        #[clap(short, long)]
+        nonce: u8,
     },
     /// Removes a program from the whitelist.
     WhitelistDelete {
-        /// Program to delete from the whitelist.
+        /// WhitelistEntry program id.
         #[clap(short, long)]
         program_id: Pubkey,
+        /// WhitelistEntry signer-seeds instance.
+        #[clap(short, long)]
+        instance: Pubkey,
+        /// WhitelistEntry signer-seeds nonce.
+        #[clap(short, long)]
+        nonce: u8,
     },
     /// Sets a new authority on the safe instance.
     SetAuthority {
@@ -253,8 +266,9 @@ fn account_cmd(ctx: &Context, pid: Pubkey, cmd: AccountsCommand) -> Result<()> {
             Ok(())
         }
         AccountsCommand::Whitelist { safe } => {
-            let whitelist = client.whitelist(&safe)?;
-            println!("{:#?}", whitelist);
+            client.with_whitelist(&safe, |whitelist| {
+                println!("{:#?}", whitelist);
+            })?;
             Ok(())
         }
         AccountsCommand::Vault { safe } => {
@@ -276,18 +290,26 @@ fn gov_cmd(
     let authority = solana_sdk::signature::read_keypair_file(&authority_file)
         .map_err(|_| anyhow!("Unable to read leader keypair file"))?;
     match cmd {
-        GovCommand::WhitelistAdd { program_id } => {
+        GovCommand::WhitelistAdd {
+            program_id,
+            instance,
+            nonce,
+        } => {
             client.whitelist_add(WhitelistAddRequest {
                 authority: &authority,
                 safe,
-                program: program_id,
+                entry: WhitelistEntry::new(program_id, instance, nonce),
             })?;
         }
-        GovCommand::WhitelistDelete { program_id } => {
+        GovCommand::WhitelistDelete {
+            program_id,
+            instance,
+            nonce,
+        } => {
             client.whitelist_delete(WhitelistDeleteRequest {
                 authority: &authority,
                 safe,
-                program: program_id,
+                entry: WhitelistEntry::new(program_id, instance, nonce),
             })?;
         }
         GovCommand::SetAuthority { new_authority } => {

@@ -3,7 +3,7 @@ use common::lifecycle::Initialized;
 use rand::rngs::OsRng;
 use serum_common::client::rpc;
 use serum_common::pack::Pack;
-use serum_lockup::accounts::{Vesting, Whitelist};
+use serum_lockup::accounts::{Vesting, Whitelist, WhitelistEntry};
 use serum_lockup_client::*;
 use serum_lockup_test_stake::client::Client as StakeClient;
 use solana_client_gen::prelude::*;
@@ -125,18 +125,23 @@ fn lifecycle() {
 
     // Add it to whitelist.
     {
+        let entry = WhitelistEntry::new(staking_program_id, stake_init.instance, stake_init.nonce);
         let _ = client
             .whitelist_add(WhitelistAddRequest {
                 authority: &safe_authority,
                 safe: safe_acc,
-                program: staking_program_id,
+                entry: entry.clone(),
             })
             .unwrap();
         // Check it.
-        let whitelist = client.whitelist(&safe_acc).unwrap();
-        let mut expected = Whitelist::default();
-        expected.push(staking_program_id);
-        assert_eq!(whitelist, expected);
+        client
+            .with_whitelist(&safe_acc, |wl: Whitelist| {
+                assert_eq!(wl.get_at(0).unwrap(), entry);
+                for k in 1..Whitelist::LEN {
+                    assert_eq!(wl.get_at(k).unwrap(), WhitelistEntry::zero());
+                }
+            })
+            .unwrap();
     }
 
     let stake_amount = 98;

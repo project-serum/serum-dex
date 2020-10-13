@@ -103,7 +103,7 @@ pub mod instruction {
         /// 8. `[]`         SPL token program.
         /// 9. `[]`         Clock sysvar.
         Redeem { amount: u64 },
-        /// Invokes an opaque instruction on a whitelisted program address,
+        /// Invokes an opaque instruction on a whitelisted program,
         /// giving it delegate access to send `amount` funds to itself.
         ///
         /// For example, a user could call this with a staking program
@@ -122,9 +122,8 @@ pub mod instruction {
         /// All accounts below will be relayed to the whitelisted program.
         ///
         /// 6. `[writable]` Safe vault.
-        /// 7. `[writable]` Whitelisted program's vault which will receive
-        ///                 funds (it will trasfer to itself via delegate).
-        /// 8. `[]`         Whitelisted program's vault authority.
+        /// 7. `[writable]` Vault which will receive funds.
+        /// 8. `[]`         Whitelisted vault authority.
         /// 9. `[]`         Token program id.
         /// .. `[writable]` Variable number of program specific accounts to
         ///                 relay to the program, along with the above
@@ -144,23 +143,26 @@ pub mod instruction {
         ///
         /// Same as WhitelistWithdraw.
         WhitelistDeposit { instruction_data: Vec<u8> },
-        /// Adds the given program to the whitelist. Fails if the whitelist
-        /// is full.
+        /// Adds the given entry to the whitelist.
         ///
         /// Accounts:
         ///
         /// 0. `[signed]`   Safe authority.
         /// 1. `[]`         Safe account.
         /// 2. `[writable]` Whitelist.
-        WhitelistAdd { program_id_to_add: Pubkey },
-        /// Removes the given program from the whitelist.
+        WhitelistAdd {
+            entry: crate::accounts::WhitelistEntry,
+        },
+        /// Removes the given entry from the whitelist.
         ///
         /// Accounts:
         ///
         /// 0. `[signed]`   Safe authority.
         /// 1. `[]`         Safe account.
         /// 2. `[writable]` Whitelist.
-        WhitelistDelete { program_id_to_delete: Pubkey },
+        WhitelistDelete {
+            entry: crate::accounts::WhitelistEntry,
+        },
         /// Sets the new authority for the safe instance.
         ///
         /// 0. `[signer]`   Current safe authority.

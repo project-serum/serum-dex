@@ -51,15 +51,13 @@ pub fn create_all_accounts_and_initialize(
         let create_whitelist_acc_instr = {
             let lamports = client
                 .rpc()
-                .get_minimum_balance_for_rent_exemption(
-                    Whitelist::default().size().unwrap() as usize
-                )
+                .get_minimum_balance_for_rent_exemption(Whitelist::SIZE)
                 .map_err(InnerClientError::RpcError)?;
             system_instruction::create_account(
                 &client.payer().pubkey(),
                 &wl_kp.pubkey(),
                 lamports,
-                Whitelist::default().size().unwrap(),
+                Whitelist::SIZE as u64,
                 client.program(),
             )
         };

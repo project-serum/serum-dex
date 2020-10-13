@@ -1,9 +1,11 @@
 //! Client wraps the solana generated client with Request/Response structs
 //! to make usage cleaner and less error prone.
 
+use anyhow::anyhow;
 use serum_common::client::rpc;
-use serum_lockup::accounts::{Safe, TokenVault, Vesting, Whitelist};
+use serum_lockup::accounts::{Safe, TokenVault, Vesting, Whitelist, WhitelistEntry};
 use serum_lockup::client::{Client as InnerClient, ClientError as InnerClientError};
+use serum_lockup::error::LockupError;
 use solana_client_gen::prelude::Signer;
 use solana_client_gen::prelude::*;
 use solana_client_gen::solana_sdk;
@@ -64,7 +66,7 @@ impl Client {
         let WhitelistAddRequest {
             authority,
             safe,
-            program,
+            entry,
         } = req;
         let whitelist = self.safe(&safe)?.whitelist;
         let accounts = [
@@ -75,7 +77,7 @@ impl Client {
         let signers = [self.payer(), authority];
         let tx = self
             .inner
-            .whitelist_add_with_signers(&signers, &accounts, program)?;
+            .whitelist_add_with_signers(&signers, &accounts, entry)?;
         Ok(WhitelistAddResponse { tx })
     }
 
@@ -86,7 +88,7 @@ impl Client {
         let WhitelistDeleteRequest {
             authority,
             safe,
-            program,
+            entry,
         } = req;
         let whitelist = self.safe(&safe)?.whitelist;
         let accounts = [
@@ -97,7 +99,7 @@ impl Client {
         let signers = [self.payer(), authority];
         let tx = self
             .inner
-            .whitelist_delete_with_signers(&signers, &accounts, program)?;
+            .whitelist_delete_with_signers(&signers, &accounts, entry)?;
         Ok(WhitelistDeleteResponse { tx })
     }
 
@@ -285,9 +287,32 @@ impl Client {
         rpc::get_account::<Safe>(self.inner.rpc(), address).map_err(Into::into)
     }
 
-    pub fn whitelist(&self, safe: &Pubkey) -> Result<Whitelist, ClientError> {
+    // with_whitelist takes in a closure rather than returning a Whitelist
+    // struct, because the Whitelist struct provides a view into the backing
+    // storage array (rather than unpacking all bytes into an owned object)
+    // -- due to the fact that the Whitelist is larger than the BPF stack can
+    // handle. As a result, the lifetime of the Whitelist struct is tied to
+    // the lifetime of the backing data array, which is defined this function.
+    // In other words, the Whitelist struct can't outlive this function call;
+    // hence the closure.
+    pub fn with_whitelist(
+        &self,
+        safe: &Pubkey,
+        f: impl FnOnce(Whitelist),
+    ) -> Result<(), ClientError> {
         let safe = rpc::get_account::<Safe>(self.inner.rpc(), &safe)?;
-        rpc::get_account::<Whitelist>(self.inner.rpc(), &safe.whitelist).map_err(Into::into)
+        let account = self
+            .inner
+            .rpc()
+            .get_account_with_commitment(&safe.whitelist, CommitmentConfig::recent())?
+            .value
+            .map_or(Err(anyhow!("Account not found")), Ok)?;
+        let pk_acc = &mut (safe.whitelist, account);
+        let wl = Whitelist::new(pk_acc.into())?;
+
+        f(wl);
+
+        Ok(())
     }
 
     pub fn vault(&self, safe: &Pubkey) -> Result<TokenAccount, ClientError> {
@@ -368,7 +393,7 @@ pub struct CreateVestingResponse {
 pub struct WhitelistAddRequest<'a> {
     pub authority: &'a Keypair,
     pub safe: Pubkey,
-    pub program: Pubkey,
+    pub entry: WhitelistEntry,
 }
 
 #[derive(Debug)]
@@ -379,7 +404,7 @@ pub struct WhitelistAddResponse {
 pub struct WhitelistDeleteRequest<'a> {
     pub authority: &'a Keypair,
     pub safe: Pubkey,
-    pub program: Pubkey,
+    pub entry: WhitelistEntry,
 }
 
 #[derive(Debug)]
@@ -481,4 +506,6 @@ pub enum ClientError {
     RpcError(#[from] solana_client::client_error::ClientError),
     #[error("Any error: {0}")]
     Any(#[from] anyhow::Error),
+    #[error("Lockup error: {0}")]
+    LockupError(#[from] LockupError),
 }
