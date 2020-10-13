@@ -103,7 +103,7 @@ pub mod instruction {
         /// 8. `[]`         SPL token program.
         /// 9. `[]`         Clock sysvar.
         Redeem { amount: u64 },
-        /// Invokes an opaque instruction on a whitelisted program address,
+        /// Invokes an opaque instruction on a whitelisted program,
         /// giving it delegate access to send `amount` funds to itself.
         ///
         /// For example, a user could call this with a staking program
@@ -143,8 +143,7 @@ pub mod instruction {
         ///
         /// Same as WhitelistWithdraw.
         WhitelistDeposit { instruction_data: Vec<u8> },
-        /// Adds the given vault authority to the whitelist. Fails if the
-        /// whitelist is full.
+        /// Adds the given entry to the whitelist.
         ///
         /// Accounts:
         ///
@@ -154,7 +153,7 @@ pub mod instruction {
         WhitelistAdd {
             entry: crate::accounts::WhitelistEntry,
         },
-        /// Removes the given vault authority from the whitelist.
+        /// Removes the given entry from the whitelist.
         ///
         /// Accounts:
         ///
