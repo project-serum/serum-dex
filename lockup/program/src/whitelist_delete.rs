@@ -1,6 +1,6 @@
 use crate::access_control;
 use serum_common::pack::Pack;
-use serum_lockup::accounts::Whitelist;
+use serum_lockup::accounts::{Whitelist, WhitelistEntry};
 use serum_lockup::error::{LockupError, LockupErrorCode};
 use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::info;
@@ -10,7 +10,7 @@ use std::convert::Into;
 pub fn handler<'a>(
     program_id: &'a Pubkey,
     accounts: &'a [AccountInfo<'a>],
-    vault_authority_to_delete: Pubkey,
+    wl_entry: WhitelistEntry,
 ) -> Result<(), LockupError> {
     info!("handler: whitelist_delete");
 
@@ -25,21 +25,15 @@ pub fn handler<'a>(
         safe_authority_acc_info,
         safe_acc_info,
         whitelist_acc_info,
-        vault_authority_to_delete,
+        wl_entry: &wl_entry,
     })?;
 
-    Whitelist::unpack_mut(
-        &mut whitelist_acc_info.try_borrow_mut_data()?,
-        &mut |whitelist: &mut Whitelist| {
-            state_transition(StateTransitionRequest {
-                whitelist,
-                vault_authority_to_delete,
-            })
-            .map_err(Into::into)
-        },
-    )?;
+    let whitelist = Whitelist::new(whitelist_acc_info.clone())?;
 
-    Ok(())
+    state_transition(StateTransitionRequest {
+        whitelist,
+        wl_entry,
+    })
 }
 
 fn access_control(req: AccessControlRequest) -> Result<(), LockupError> {
@@ -50,15 +44,15 @@ fn access_control(req: AccessControlRequest) -> Result<(), LockupError> {
         safe_authority_acc_info,
         safe_acc_info,
         whitelist_acc_info,
-        vault_authority_to_delete,
+        wl_entry,
     } = req;
 
     // Governance authorization.
     let safe = access_control::governance(program_id, safe_acc_info, safe_authority_acc_info)?;
 
     // WhitelistDelete checks.
-    let whitelist = access_control::whitelist(whitelist_acc_info, &safe, program_id)?;
-    if !whitelist.contains(&vault_authority_to_delete) {
+    let whitelist = access_control::whitelist(whitelist_acc_info.clone(), &safe, program_id)?;
+    if !whitelist.contains_derived(&wl_entry.derived_address()?)? {
         return Err(LockupErrorCode::WhitelistNotFound)?;
     }
 
@@ -72,11 +66,11 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), LockupError> {
 
     let StateTransitionRequest {
         whitelist,
-        vault_authority_to_delete,
+        wl_entry,
     } = req;
 
     whitelist
-        .delete(vault_authority_to_delete)
+        .delete(wl_entry)?
         .ok_or(LockupErrorCode::WhitelistNotFound)?;
 
     info!("state-transition: success");
@@ -84,15 +78,15 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), LockupError> {
     Ok(())
 }
 
-struct AccessControlRequest<'a> {
+struct AccessControlRequest<'a, 'b> {
     program_id: &'a Pubkey,
-    vault_authority_to_delete: Pubkey,
     safe_authority_acc_info: &'a AccountInfo<'a>,
     safe_acc_info: &'a AccountInfo<'a>,
     whitelist_acc_info: &'a AccountInfo<'a>,
+    wl_entry: &'b WhitelistEntry,
 }
 
 struct StateTransitionRequest<'a> {
-    whitelist: &'a mut Whitelist,
-    vault_authority_to_delete: Pubkey,
+    whitelist: Whitelist<'a>,
+    wl_entry: WhitelistEntry,
 }

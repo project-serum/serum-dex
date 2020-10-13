@@ -151,7 +151,9 @@ pub mod instruction {
         /// 0. `[signed]`   Safe authority.
         /// 1. `[]`         Safe account.
         /// 2. `[writable]` Whitelist.
-        WhitelistAdd { vault_authority_to_add: Pubkey },
+        WhitelistAdd {
+            entry: crate::accounts::WhitelistEntry,
+        },
         /// Removes the given vault authority from the whitelist.
         ///
         /// Accounts:
@@ -159,7 +161,9 @@ pub mod instruction {
         /// 0. `[signed]`   Safe authority.
         /// 1. `[]`         Safe account.
         /// 2. `[writable]` Whitelist.
-        WhitelistDelete { vault_authority_to_delete: Pubkey },
+        WhitelistDelete {
+            entry: crate::accounts::WhitelistEntry,
+        },
         /// Sets the new authority for the safe instance.
         ///
         /// 0. `[signer]`   Current safe authority.

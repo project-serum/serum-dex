@@ -31,11 +31,11 @@ pub fn governance(
     Ok(safe)
 }
 
-pub fn whitelist(
-    wl_acc_info: &AccountInfo,
+pub fn whitelist<'a>(
+    wl_acc_info: AccountInfo<'a>,
     safe: &Safe,
     program_id: &Pubkey,
-) -> Result<Whitelist, LockupError> {
+) -> Result<Whitelist<'a>, LockupError> {
     if program_id != wl_acc_info.owner {
         return Err(LockupErrorCode::InvalidAccountOwner)?;
     }
@@ -43,8 +43,7 @@ pub fn whitelist(
     if safe.whitelist != *wl_acc_info.key {
         return Err(LockupErrorCode::InvalidWhitelist)?;
     }
-
-    Whitelist::unpack(&wl_acc_info.try_borrow_data()?).map_err(Into::into)
+    Whitelist::new(wl_acc_info).map_err(Into::into)
 }
 
 /// Access control on any instruction mutating an existing Vesting account.

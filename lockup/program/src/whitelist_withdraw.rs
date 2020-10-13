@@ -40,6 +40,7 @@ pub fn handler<'a>(
         beneficiary_acc_info,
         vesting_acc_info,
         wl_acc_info,
+        wl_prog_acc_info,
         wl_prog_vault_authority_acc_info,
         safe_acc_info,
         safe_vault_auth_acc_info,
@@ -81,6 +82,7 @@ fn access_control(req: AccessControlRequest) -> Result<(), LockupError> {
         beneficiary_acc_info,
         vesting_acc_info,
         wl_acc_info,
+        wl_prog_acc_info,
         wl_prog_vault_authority_acc_info,
         safe_acc_info,
         safe_vault_auth_acc_info,
@@ -95,7 +97,7 @@ fn access_control(req: AccessControlRequest) -> Result<(), LockupError> {
 
     // Account validation.
     let safe = access_control::safe(safe_acc_info, program_id)?;
-    let whitelist = access_control::whitelist(wl_acc_info, &safe, program_id)?;
+    let whitelist = access_control::whitelist(wl_acc_info.clone(), &safe, program_id)?;
     let _ = access_control::vault(
         safe_vault_acc_info,
         safe_vault_auth_acc_info,
@@ -113,8 +115,11 @@ fn access_control(req: AccessControlRequest) -> Result<(), LockupError> {
     if !vesting.claimed {
         return Err(LockupErrorCode::NotYetClaimed)?;
     }
-    if !whitelist.contains(wl_prog_vault_authority_acc_info.key) {
-        return Err(LockupErrorCode::WhitelistNotFound)?;
+    let entry = whitelist
+        .get_derived(wl_prog_vault_authority_acc_info.key)?
+        .ok_or(LockupErrorCode::WhitelistNotFound)?;
+    if entry.program_id() != *wl_prog_acc_info.key {
+        return Err(LockupErrorCode::WhitelistInvalidProgramId)?;
     }
     if amount > vesting.available_for_whitelist() {
         return Err(LockupErrorCode::InsufficientWhitelistBalance)?;
@@ -216,6 +221,7 @@ struct AccessControlRequest<'a> {
     safe_vault_acc_info: &'a AccountInfo<'a>,
     safe_vault_auth_acc_info: &'a AccountInfo<'a>,
     wl_acc_info: &'a AccountInfo<'a>,
+    wl_prog_acc_info: &'a AccountInfo<'a>,
     wl_prog_vault_authority_acc_info: &'a AccountInfo<'a>,
     amount: u64,
 }

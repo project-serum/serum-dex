@@ -8,4 +8,4 @@ pub mod whitelist;
 pub use safe::Safe;
 pub use token_vault::TokenVault;
 pub use vesting::Vesting;
-pub use whitelist::Whitelist;
+pub use whitelist::{Whitelist, WhitelistEntry};

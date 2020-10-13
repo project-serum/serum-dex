@@ -64,6 +64,9 @@ pub enum LockupErrorCode {
     InvalidClockSysvar = 51,
     InsufficientWhitelistBalance = 52,
     WhitelistProgramWrongOwner = 53,
+    WhitelistInvalidData = 54,
+    InvalidWhitelistEntry = 55,
+    WhitelistInvalidProgramId = 56,
     Unknown = 1000,
 }
 
