@@ -1,31 +1,30 @@
-pub use solana_sdk;
-
-pub mod schema;
-
-use arrayref::{array_refs, mut_array_refs};
-
 use std::ops::{Deref, DerefMut};
 
+use arrayref::{array_refs, mut_array_refs};
+use capnp::{
+    message,
+    serialize::{read_message, write_message},
+    traits::{HasTypeId, Owned},
+};
+pub use solana_sdk;
 use solana_sdk::{
     account_info::AccountInfo,
-    entrypoint::{ProgramResult},
     entrypoint,
+    entrypoint::ProgramResult,
     info,
     instruction::{AccountMeta, Instruction},
     program::invoke,
     program_error::ProgramError,
     pubkey::Pubkey,
 };
+use thiserror::Error;
 
-use schema::{cpi_capnp::{self, cpi_instr}, pool_capnp::{proxy_request, proxy_account, basket}};
-
-use capnp::{
-    message,
-    serialize::{read_message, write_message},
-    traits::{HasTypeId, Owned},
+use schema::{
+    cpi_capnp::{self, cpi_instr},
+    pool_capnp::{basket, proxy_account, proxy_request},
 };
 
-use thiserror::Error;
+pub mod schema;
 
 #[derive(Error, Debug)]
 enum PoolError {
@@ -70,12 +69,15 @@ struct ProgramContext<'a, 'b: 'a> {
 #[inline]
 fn deserialize_address(reader: cpi_capnp::address::Reader) -> Pubkey {
     use slice_of_array::prelude::*;
-    Pubkey::new([
-        reader.get_word0().to_le_bytes(),
-        reader.get_word1().to_le_bytes(),
-        reader.get_word2().to_le_bytes(),
-        reader.get_word3().to_le_bytes(),
-    ].flat())
+    Pubkey::new(
+        [
+            reader.get_word0().to_le_bytes(),
+            reader.get_word1().to_le_bytes(),
+            reader.get_word2().to_le_bytes(),
+            reader.get_word3().to_le_bytes(),
+        ]
+        .flat(),
+    )
 }
 
 fn strip_instruction_tag<'a, T>(
@@ -113,15 +115,15 @@ fn entry(program_id: &Pubkey, accounts: &[AccountInfo], instruction_data: &[u8])
 }
 
 impl<'a, 'b: 'a> ProgramContext<'a, 'b> {
-    fn lookup_account_info(&self, reader: cpi_capnp::account_info::Reader)
-        -> PoolResult<&'a AccountInfo<'b>>
-    {
+    fn lookup_account_info(
+        &self,
+        reader: cpi_capnp::account_info::Reader,
+    ) -> PoolResult<&'a AccountInfo<'b>> {
         let desired_address = deserialize_address(reader.get_address()?);
-        self.accounts.binary_search_by_key(
-            &desired_address,
-            |account_info| *account_info.key
-        ).map_err(|_| PoolError::MissingAccount(desired_address.to_bytes()))
-        .map(|i| &self.accounts[i])
+        self.accounts
+            .binary_search_by_key(&desired_address, |account_info| *account_info.key)
+            .map_err(|_| PoolError::MissingAccount(desired_address.to_bytes()))
+            .map(|i| &self.accounts[i])
     }
 
     #[inline(never)]
@@ -154,14 +156,16 @@ impl<'a, 'b: 'a> ProgramContext<'a, 'b> {
                 Some(root_msg.get_root()?)
             }
         };
-        let ref state = state_reader.map(|r| r.which().or(Err("invalid account state tag"))).transpose()?;
+        let ref state = state_reader
+            .map(|r| r.which().or(Err("invalid account state tag")))
+            .transpose()?;
 
         let ref instruction = reader
             .get_instruction()
             .which()
             .or(Err("invalid proxy instruction tag"))?;
-        use proxy_request::instruction::Which as InstrTag;
         use proxy_account::Which as StateTag;
+        use proxy_request::instruction::Which as InstrTag;
         match state {
             &Some(StateTag::ProxyState(ref state)) => {
                 let state = state.as_ref().map_err(|e| e.clone())?;
@@ -175,10 +179,8 @@ impl<'a, 'b: 'a> ProgramContext<'a, 'b> {
                     }
                     &InstrTag::CreateOrRedeem(_) => Err(PoolError::Todo),
                     &InstrTag::AcceptAdmin(ref instr) => {
-                        let acceptor = self
-                            .lookup_account_info(
-                                instr.get_pending_admin_signature()?
-                            )?;
+                        let acceptor =
+                            self.lookup_account_info(instr.get_pending_admin_signature()?)?;
                         let pending_admin_reader = state.get_pending_admin_key()?;
                         let pending_admin = deserialize_address(pending_admin_reader);
                         if acceptor.signer_key() != Some(&pending_admin) {
@@ -186,7 +188,8 @@ impl<'a, 'b: 'a> ProgramContext<'a, 'b> {
                         }
                         let mut msg_builder = message::Builder::new_default();
                         {
-                            let proxy_account_builder: proxy_account::Builder = msg_builder.init_root();
+                            let proxy_account_builder: proxy_account::Builder =
+                                msg_builder.init_root();
                             let mut proxy_state_builder = proxy_account_builder.init_proxy_state();
 
                             proxy_state_builder.set_basket(state.get_basket()?)?;
@@ -200,8 +203,7 @@ impl<'a, 'b: 'a> ProgramContext<'a, 'b> {
                     }
                     &InstrTag::AdminRequest(ref admin_request) => {
                         let signing_admin = self
-                            .lookup_account_info(
-                                admin_request.get_admin_signature()?)?
+                            .lookup_account_info(admin_request.get_admin_signature()?)?
                             .signer_key();
                         let expected_admin = deserialize_address(state.get_admin_key()?);
                         if signing_admin != Some(&expected_admin) {
@@ -212,10 +214,8 @@ impl<'a, 'b: 'a> ProgramContext<'a, 'b> {
                             AdminReqTag::SetPendingAdmin(_) => Err(PoolError::Todo),
                             AdminReqTag::SetBasket(_) => Err(PoolError::Todo),
                         }
-                    },
-                    &InstrTag::InitProxy(_) => {
-                        Err("account already initialized".into())
                     }
+                    &InstrTag::InitProxy(_) => Err("account already initialized".into()),
                 }
             }
             &None => match instruction {
@@ -232,7 +232,8 @@ impl<'a, 'b: 'a> ProgramContext<'a, 'b> {
                         proxy_state_builder.set_pool_token(init_proxy_reader.get_pool_token()?)?;
                     }
                     let mut root_state_ref_mut = root_state_account.try_borrow_mut_data()?;
-                    let (len_prefix, tail) = mut_array_refs![root_state_ref_mut.deref_mut(), 8; ..;];
+                    let (len_prefix, tail) =
+                        mut_array_refs![root_state_ref_mut.deref_mut(), 8; ..;];
                     let tail_len = tail.len();
                     let mut root_state_cursor = &mut root_state_ref_mut[..];
                     root_state_cursor[0] = 1;
@@ -240,13 +241,11 @@ impl<'a, 'b: 'a> ProgramContext<'a, 'b> {
                     Ok(write_message(&mut root_state_cursor, &msg_builder)?)
                 }
                 _ => Err("account not initialized".into()),
-            }
+            },
             &Some(StateTag::ProxyState(Err(ref e))) => {
                 return Err(e.clone().into());
             }
-            &Some(StateTag::Unset(())) => {
-                return Err("BUG: account incorrectly initialized".into())
-            }
+            &Some(StateTag::Unset(())) => return Err("BUG: account incorrectly initialized".into()),
         }
     }
 }

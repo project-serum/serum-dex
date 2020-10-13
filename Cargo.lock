@@ -318,6 +318,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "capnp"
+version = "0.13.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1970924a7ab254a5fff25b1146398a024d1ea878a7f71c5f00613b437faacf67"
+
+[[package]]
+name = "capnpc"
+version = "0.13.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "81855cee80548f7a2ee549d3bc2e55ed5f7cabe469e85614046e5475712f75c1"
+dependencies = [
+ "capnp",
+]
+
+[[package]]
 name = "cc"
 version = "1.0.49"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2994,6 +3009,35 @@ dependencies = [
 ]
 
 [[package]]
+name = "serum-pool"
+version = "0.1.0"
+dependencies = [
+ "arrayref",
+ "bytemuck",
+ "capnp",
+ "capnpc",
+ "slice-of-array",
+ "solana-sdk",
+ "spl-token",
+ "thiserror",
+ "zerocopy",
+]
+
+[[package]]
+name = "serum-pool-client"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "arrayref",
+ "capnp",
+ "capnpc",
+ "clap 2.33.3",
+ "solana-client",
+ "solana-sdk",
+ "structopt",
+]
+
+[[package]]
 name = "serum-registry"
 version = "0.1.0"
 dependencies = [
@@ -3121,6 +3165,12 @@ name = "slab"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c111b5bd5695e56cffe5129854aa230b39c93a305372fdbb2668ca2394eea9f8"
+
+[[package]]
+name = "slice-of-array"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8fffe93cb1051a724788529b504be2a1016498582545e50d76de4ffca1906367"
 
 [[package]]
 name = "slog"
@@ -3750,6 +3800,30 @@ name = "strsim"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "73473c0e59e6d5812c5dfe2a064a6444949f089e20eec9a2e5506596494e4623"
+
+[[package]]
+name = "structopt"
+version = "0.3.20"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "126d630294ec449fae0b16f964e35bf3c74f940da9dca17ee9b905f7b3112eb8"
+dependencies = [
+ "clap 2.33.3",
+ "lazy_static",
+ "structopt-derive",
+]
+
+[[package]]
+name = "structopt-derive"
+version = "0.4.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "65e51c492f9e23a220534971ff5afc14037289de430e3c83f9daf6a1b6ae91e8"
+dependencies = [
+ "heck",
+ "proc-macro-error",
+ "proc-macro2 1.0.24",
+ "quote 1.0.7",
+ "syn 1.0.42",
+]
 
 [[package]]
 name = "subtle"
@@ -4725,6 +4799,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "244c3741f4240ef46274860397c7c74e50eb23624996930e484c16679633a54c"
 dependencies = [
  "libc",
+]
+
+[[package]]
+name = "zerocopy"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6580539ad917b7c026220c4b3f2c08d52ce54d6ce0dc491e66002e35388fab46"
+dependencies = [
+ "byteorder",
+ "zerocopy-derive",
+]
+
+[[package]]
+name = "zerocopy-derive"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d498dbd1fd7beb83c86709ae1c33ca50942889473473d287d56ce4770a18edfb"
+dependencies = [
+ "proc-macro2 1.0.24",
+ "syn 1.0.42",
+ "synstructure",
 ]
 
 [[package]]

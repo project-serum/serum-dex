@@ -29,6 +29,10 @@ perform_action() {
     set -e
     projectDir="$PWD"/$2
     targetDir="$projectDir"/target
+    if ! [[ -f "$projectDir"/Cargo.lock ]]; then
+      # Program is part of workspace
+      targetDir="$PWD"/target
+    fi
     features=
     if [[ -f "$projectDir"/Xargo.toml ]]; then
       features="--features=program"

@@ -4,6 +4,8 @@ members = [
     "common",
     "common/tests",
     "crank",
+    "pool",
+    "pool/client",
     "registry",
     "registry/cli",
     "lockup",
