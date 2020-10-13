@@ -63,6 +63,10 @@ impl<'a> Whitelist<'a> {
     /// Returns Some(index) where the entry was inserted. If the Whitelist
     /// is full, returns None.
     pub fn push(&self, entry: WhitelistEntry) -> Result<Option<usize>, LockupError> {
+        let existing_idx = self.index_of(&entry)?;
+        if let Some(_) = existing_idx {
+            return Err(LockupErrorCode::WhitelistEntryAlreadyExists)?;
+        }
         let idx = self.index_of(&WhitelistEntry::zero())?;
         if let Some(idx) = idx {
             self.add_at(idx, entry)?;
