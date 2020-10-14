@@ -15,7 +15,7 @@ use solana_sdk::{
     pubkey::Pubkey,
 };
 
-use pool_schema::{PoolRequest, PoolRequestInner, PoolState};
+use serum_pool_schema::{PoolRequest, PoolRequestInner, PoolState};
 
 struct ProgramContext<'a, 'b: 'a> {
     program_id: &'a Pubkey,

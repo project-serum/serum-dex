@@ -2223,14 +2223,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d36492546b6af1463394d46f0c834346f31548646f6ba10849802c9c9a27ac33"
 
 [[package]]
-name = "pool-schema"
-version = "0.1.0"
-dependencies = [
- "borsh",
- "solana-sdk",
-]
-
-[[package]]
 name = "ppv-lite86"
 version = "0.2.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3059,6 +3051,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "serum-pool"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "arrayref",
+ "borsh",
+ "bytemuck",
+ "hex",
+ "serum-pool-schema",
+ "slice-of-array",
+ "solana-sdk",
+ "spl-token",
+ "thiserror",
+ "zerocopy",
+]
+
+[[package]]
 name = "serum-pool-client"
 version = "0.1.0"
 dependencies = [
@@ -3070,6 +3079,14 @@ dependencies = [
  "solana-client",
  "solana-sdk",
  "structopt",
+]
+
+[[package]]
+name = "serum-pool-schema"
+version = "0.1.0"
+dependencies = [
+ "borsh",
+ "solana-sdk",
 ]
 
 [[package]]
@@ -3128,23 +3145,6 @@ dependencies = [
  "static_assertions",
  "thiserror",
  "without-alloc",
-]
-
-[[package]]
-name = "serum_pool"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "arrayref",
- "borsh",
- "bytemuck",
- "hex",
- "pool-schema",
- "slice-of-array",
- "solana-sdk",
- "spl-token",
- "thiserror",
- "zerocopy",
 ]
 
 [[package]]

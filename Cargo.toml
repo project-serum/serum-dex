@@ -6,7 +6,7 @@ members = [
     "crank",
     "pool",
     "pool/client",
-    "pool-schema",
+    "pool/schema",
     "registry",
     "registry/cli",
     "lockup",
