@@ -2,6 +2,8 @@ bin/
 dex/target
 crank/target
 pool/target
+pool-client/target
+pool-schema/target
 retbuf/target
 .idea*
 *~
