@@ -56,18 +56,32 @@ impl<'a, 'b: 'a> ProgramContext<'a, 'b> {
             .context("failed to deserialize pool request")
     }
 
+    #[inline(never)]
     fn get_state(&self, account: &'a AccountInfo<'b>) -> PoolResult<Option<PoolState>> {
         ensure!(
             account.owner == self.program_id,
             "state account isn't owned by the pool program"
         );
-        BorshDeserialize::try_from_slice(account.try_borrow_data().map_err(Error::msg)?.deref())
-            .map_err(Error::msg)
+        let data = account.try_borrow_data().map_err(Error::msg)?;
+        if data.iter().all(|b| *b == 0) {
+            return Ok(None);
+        }
+        // Can't use BorshDeserialize::try_from_slice because try_from_slice expects the data to
+        // take up the entire slice.
+        let mut data: &[u8] = *data;
+        Ok(Some(
+            BorshDeserialize::deserialize(&mut data)
+                .map_err(Error::msg)
+                .context("failed to deserialize state")?,
+        ))
     }
 
     fn set_state(&self, account: &'a AccountInfo<'b>, state: PoolState) -> PoolResult<()> {
         let mut buf = account.try_borrow_mut_data().map_err(Error::msg)?;
-        state.serialize(buf.deref_mut()).map_err(Error::msg)
+        state
+            .serialize(buf.deref_mut())
+            .map_err(Error::msg)
+            .context("failed to serialize state")
     }
 
     fn process_instruction(&self) -> PoolResult<()> {

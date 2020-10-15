@@ -9,11 +9,11 @@ edition = "2018"
 [features]
 no-entrypoint = []
 skip-no-mangle = ["solana-sdk/skip-no-mangle"]
-program = ["solana-sdk/program", "spl-token/program", "spl-token/no-entrypoint"]
-default = ["solana-sdk/default", "spl-token/default"]
+program = ["solana-sdk/program", "spl-token/program", "spl-token/no-entrypoint", "serum-pool-schema/program"]
+default = ["solana-sdk/default", "spl-token/default", "serum-pool-schema/default"]
 
 [dependencies]
-serum-pool-schema = { version = "0.1.0", path = "./schema" }
+serum-pool-schema = { version = "0.1.0", path = "./schema", default-features = false }
 arrayref = "0.3.6"
 solana-sdk = { version = "1.3.9", default-features = false, optional = true }
 spl-token = { version = "=2.0.6", default-features = false }

@@ -360,21 +360,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "capnp"
-version = "0.13.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1970924a7ab254a5fff25b1146398a024d1ea878a7f71c5f00613b437faacf67"
-
-[[package]]
-name = "capnpc"
-version = "0.13.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "81855cee80548f7a2ee549d3bc2e55ed5f7cabe469e85614046e5475712f75c1"
-dependencies = [
- "capnp",
-]
-
-[[package]]
 name = "cc"
 version = "1.0.49"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1720,6 +1705,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "linked-hash-map"
+version = "0.5.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8dd5a6d5999d9907cda8ed67bbd137d3af8085216c2ac62de5be860bd41f304a"
+
+[[package]]
 name = "lock_api"
 version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2839,6 +2830,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde_yaml"
+version = "0.8.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ae3e2dd40a7cdc18ca80db804b7f461a39bb721160a85c9a1fa30134bf3c02a5"
+dependencies = [
+ "dtoa",
+ "linked-hash-map",
+ "serde",
+ "yaml-rust",
+]
+
+[[package]]
 name = "serum-common"
 version = "0.1.0"
 dependencies = [
@@ -3073,9 +3076,10 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "arrayref",
- "capnp",
- "capnpc",
+ "borsh",
  "clap 2.33.3",
+ "serum-pool-schema",
+ "solana-cli-config",
  "solana-client",
  "solana-sdk",
  "structopt",
@@ -3409,6 +3413,20 @@ dependencies = [
  "solana-sdk",
  "thiserror",
  "tiny-bip39",
+ "url 2.1.1",
+]
+
+[[package]]
+name = "solana-cli-config"
+version = "1.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a976619d56618dc079034b73fc270d462008d7f9ca3354a12f0a86044673154b"
+dependencies = [
+ "dirs 2.0.2",
+ "lazy_static",
+ "serde",
+ "serde_derive",
+ "serde_yaml",
  "url 2.1.1",
 ]
 
@@ -4851,6 +4869,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "244c3741f4240ef46274860397c7c74e50eb23624996930e484c16679633a54c"
 dependencies = [
  "libc",
+]
+
+[[package]]
+name = "yaml-rust"
+version = "0.4.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "39f0c922f1a334134dc2f7a8b67dc5d25f0735263feec974345ff706bcf20b0d"
+dependencies = [
+ "linked-hash-map",
 ]
 
 [[package]]
