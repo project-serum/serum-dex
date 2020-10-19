@@ -21,21 +21,18 @@ pub struct PoolState {
     pub pool_token_mint: Address,
     pub assets: Vec<AssetInfo>,
 
-    /// Indicative only. May be out-of-date for dynamic pools.
-    pub creation_basket: Basket,
-    /// Indicative only. May be out-of-date for dynamic pools.
-    pub redemption_basket: Basket,
-
     /// Mint authority for the pool token and owner for the assets in the pool.
     pub vault_signer: Address,
     /// Nonce used to generate `vault_signer`.
     pub vault_signer_nonce: u8,
 
-    /// Addresses that need to be included with every request.
-    pub address_params: Vec<ParamDesc>,
+    /// Additional accounts that need to be included with every request.
+    pub account_params: Vec<ParamDesc>,
 
     /// Meaning depends on the pool implementation.
     pub admin_key: Option<Address>,
+
+    pub custom_state: Vec<u8>,
 }
 
 #[derive(Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, BorshSchema)]
@@ -72,54 +69,55 @@ pub struct Retbuf {
 }
 
 #[derive(Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, BorshSchema)]
-pub struct PoolRequest {
-    pub state: Address,
-    pub retbuf: Retbuf,
+pub enum PoolRequest {
+    // TODO
+    GetInitializeParams,
 
-    pub inner: PoolRequestInner,
+    // TODO
+    Initialize,
+
+    /// Get the creation, redemption, or swap basket.
+    ///
+    /// Basket is written to the retbuf account as a Vec<i64>.
+    ///
+    /// Accounts:
+    ///
+    /// - `[writable]` Pool account
+    /// - `[writable]` Pool token mint (`PoolState::pool_token_mint`)
+    /// - `[writable]` Pool vault account for each of the N pool assets (`AssetInfo::vault_address`)
+    /// - `[]` Pool vault authority (`PoolState::vault_signer`)
+    /// - `[writable]` retbuf account
+    /// - `[]` retbuf program
+    /// - `[]/[writable]` Accounts in `PoolState::account_params`
+    GetBasket(PoolAction),
+
+    /// Perform a creation, redemption, or swap.
+    ///
+    /// Accounts:
+    ///
+    /// - `[writable]` Pool account
+    /// - `[writable]` Pool token mint (`PoolState::pool_token_mint`)
+    /// - `[writable]` Pool vault account for each of the N pool assets (`AssetInfo::vault_address`)
+    /// - `[]` Pool vault authority (`PoolState::vault_signer`)
+    /// - `[writable]` User pool token account
+    /// - `[writable]` User account for each of the N pool assets
+    /// - `[signer]` Authority for user accounts
+    /// - `[]` spl-token program
+    /// - `[]/[writable]` Accounts in `PoolState::account_params`
+    Transact(PoolAction),
+
+    // TODO
+    AdminRequest,
+
+    CustomRequest(Vec<u8>),
 }
 
 #[derive(Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, BorshSchema)]
-pub enum PoolRequestInner {
-    RefreshBasket,
-    Creation(CreationRequest),
-    Redemption(RedemptionRequest),
-    InitPool(PoolState),
-    Admin {
-        admin_signature: Address,
-        admin_request: AdminRequest,
-    },
-}
-
-#[derive(Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, BorshSchema)]
-pub struct CreationRequestInput {
-    pub token_account: Address,
-    pub signer: Address,
-    pub max_qty_per_share: U64F64,
-}
-
-#[derive(Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, BorshSchema)]
-pub struct RedemptionRequestOutput {
-    pub token_account: Address,
-    pub signer: Address,
-    pub min_qty_per_share: U64F64,
-}
-
-#[derive(Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, BorshSchema)]
-pub struct CreationRequest {
-    pub inputs: Vec<CreationRequestInput>,
-    pub output_to: Address,
-}
-
-#[derive(Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, BorshSchema)]
-pub struct RedemptionRequest {
-    pub pool_token_account: Address,
-    pub pool_token_signer: Address,
-    pub outputs: Vec<RedemptionRequestOutput>,
-}
-
-#[derive(Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, BorshSchema)]
-pub enum AdminRequest {
-    SetPendingAdmin(Address),
-    // SetBasket(PoolBasket),
+pub enum PoolAction {
+    /// Create pool tokens by depositing assets into the pool.
+    Create(u64),
+    /// Redeem pool tokens by burning the token and receiving assets from the pool.
+    Redeem(u64),
+    /// Deposit assets into the pool and receive other assets from the pool.
+    Swap(Vec<u64>),
 }
