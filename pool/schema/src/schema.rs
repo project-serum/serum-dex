@@ -1,5 +1,30 @@
+use std::io::Write;
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use solana_sdk::pubkey::Pubkey;
+
+macro_rules! declare_tag {
+    ($name:ident, $type:ty, $tag:expr) => {
+        #[derive(Clone, PartialEq, Eq, BorshSerialize, BorshSchema)]
+        pub struct $name($type);
+        impl $name {
+            pub const TAG_VALUE: $type = $tag;
+        }
+
+        impl BorshDeserialize for $name {
+            #[inline]
+            fn deserialize(buf: &mut &[u8]) -> std::io::Result<Self> {
+                let tag = <$type as BorshDeserialize>::deserialize(buf)?;
+                if tag != Self::TAG_VALUE {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        "invalid tag",
+                    ));
+                }
+                Ok($name(tag))
+            }
+        }
+    }
+}
 
 #[derive(Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub struct Address([u8; 32]);
@@ -16,8 +41,13 @@ impl From<Pubkey> for Address {
     }
 }
 
+
+declare_tag!(PoolStateTag, u64, 0x16a7874c7fb2301b);
+
 #[derive(Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub struct PoolState {
+    pub tag: PoolStateTag,
+
     pub pool_token_mint: Address,
     pub assets: Vec<AssetInfo>,
 
@@ -68,8 +98,16 @@ pub struct Retbuf {
     pub retbuf_program_id: Address,
 }
 
+declare_tag!(PoolRequestTag, u64, 0x220a6cbdcd1cc4cf);
+
 #[derive(Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, BorshSchema)]
-pub enum PoolRequest {
+pub struct PoolRequest {
+    pub tag: PoolRequestTag,
+    pub inner: PoolRequestInner
+}
+
+#[derive(Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, BorshSchema)]
+pub enum PoolRequestInner {
     // TODO
     GetInitializeParams,
 
@@ -108,8 +146,6 @@ pub enum PoolRequest {
 
     // TODO
     AdminRequest,
-
-    CustomRequest(Vec<u8>),
 }
 
 #[derive(Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, BorshSchema)]

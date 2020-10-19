@@ -1,7 +1,8 @@
 use std::ops::{Deref, DerefMut};
 
-use anyhow::{anyhow, bail, ensure, Context, Error, Result as PoolResult};
-use arrayref::{array_refs, mut_array_refs};
+//use anyhow::{anyhow, bail, ensure, Context, Error, Result as PoolResult};
+//use thiserror::Error;
+use arrayref::{array_refs, mut_array_refs, array_ref};
 use borsh::{BorshDeserialize, BorshSerialize};
 pub use solana_sdk;
 use solana_sdk::{
@@ -15,103 +16,57 @@ use solana_sdk::{
     pubkey::Pubkey,
 };
 
-use serum_pool_schema::{PoolRequest, PoolRequestInner, PoolState};
+use serum_pool_schema::{PoolRequest, PoolRequestInner, PoolState, PoolRequestTag};
 
-struct ProgramContext<'a, 'b: 'a> {
-    program_id: &'a Pubkey,
-    accounts: &'a [AccountInfo<'b>],
-    instruction_data: &'a [u8],
+pub mod pool;
+
+#[macro_export]
+macro_rules! declare_pool_entrypoint {
+    ($PoolImpl:ty) => {
+        fn entrypoint(
+            program_id: & $crate::solana_sdk::pubkey::Pubkey,
+            accounts: &[$crate::solana_sdk::account_info::AccountInfo],
+            instruction_data: &[u8],
+        ) -> ProgramResult {
+            $crate::pool_entrypoint::<$PoolImpl>(program_id, accounts, instruction_data)
+        }
+    }
+}
+
+#[inline(always)]
+pub fn pool_entrypoint<P: pool::Pool>(program_id: &Pubkey, accounts: &[AccountInfo], instruction_data: &[u8]) -> ProgramResult {
+    if instruction_data.len() >= 8 {
+        let tag_bytes = array_ref![instruction_data, 0, 8];
+        if u64::from_le_bytes(*tag_bytes) == PoolRequestTag::TAG_VALUE {
+            let request = BorshDeserialize::try_from_slice(instruction_data).or(Err(ProgramError::InvalidInstructionData))?;
+            return P::process_pool_request(program_id, accounts, &request);
+        }
+    }
+    P::process_other_instruction(program_id, accounts, instruction_data)
+}
+
+/*
+EXAMPLE. TODO replace with actual documentation
+
+enum FakePool {}
+
+impl pool::Pool for FakePool {
+    fn process_other_instruction(
+        program_id: &Pubkey,
+        accounts: &[AccountInfo],
+        instruction_data: &[u8],
+    ) -> ProgramResult {
+        unimplemented!()
+    }
+    fn process_pool_request(
+        program_id: &Pubkey,
+        accounts: &[AccountInfo],
+        request: &PoolRequest,
+    ) -> ProgramResult {
+        unimplemented!()
+    }
 }
 
 #[cfg(feature = "program")]
-entrypoint!(entry);
-fn entry(program_id: &Pubkey, accounts: &[AccountInfo], instruction_data: &[u8]) -> ProgramResult {
-    let context = ProgramContext {
-        program_id,
-        accounts,
-        instruction_data,
-    };
-
-    match context.process_instruction() {
-        Ok(()) => Ok(()),
-        Err(e) => {
-            let s = format!("error processing instructions: {:?}", e);
-            info!(&s);
-            Err(ProgramError::Custom(0x100))
-        }
-    }
-}
-
-impl<'a, 'b: 'a> ProgramContext<'a, 'b> {
-    fn get_account(&self, address: Pubkey) -> PoolResult<&'a AccountInfo<'b>> {
-        self.accounts
-            .binary_search_by_key(&address, |account_info| *account_info.key)
-            .map_err(|_| anyhow!("account not found: {:?}", address))
-            .map(|i| &self.accounts[i])
-    }
-
-    fn get_request(&self) -> PoolResult<PoolRequest> {
-        BorshDeserialize::try_from_slice(self.instruction_data)
-            .map_err(Error::msg)
-            .context("failed to deserialize pool request")
-    }
-
-    #[inline(never)]
-    fn get_state(&self, account: &'a AccountInfo<'b>) -> PoolResult<Option<PoolState>> {
-        ensure!(
-            account.owner == self.program_id,
-            "state account isn't owned by the pool program"
-        );
-        let data = account.try_borrow_data().map_err(Error::msg)?;
-        if data.iter().all(|b| *b == 0) {
-            return Ok(None);
-        }
-        // Can't use BorshDeserialize::try_from_slice because try_from_slice expects the data to
-        // take up the entire slice.
-        let mut data: &[u8] = *data;
-        Ok(Some(
-            BorshDeserialize::deserialize(&mut data)
-                .map_err(Error::msg)
-                .context("failed to deserialize state")?,
-        ))
-    }
-
-    fn set_state(&self, account: &'a AccountInfo<'b>, state: PoolState) -> PoolResult<()> {
-        let mut buf = account.try_borrow_mut_data().map_err(Error::msg)?;
-        state
-            .serialize(buf.deref_mut())
-            .map_err(Error::msg)
-            .context("failed to serialize state")
-    }
-
-    fn process_instruction(&self) -> PoolResult<()> {
-        let request = self.get_request()?;
-        let pool_account = self
-            .get_account(request.state.into())
-            .context("failed to look up pool account")?;
-        let pool_state = self.get_state(pool_account)?;
-
-        match (pool_state, request.inner) {
-            (None, PoolRequestInner::InitPool(state)) => {
-                self.set_state(pool_account, state)
-                    .context("failed to initialize pool")?;
-            }
-            (None, _) => bail!("uninitialized pool"),
-            (Some(pool_state), PoolRequestInner::InitPool(_)) => bail!("pool already initialized"),
-            (Some(pool_state), PoolRequestInner::RefreshBasket) => {}
-            (Some(pool_state), PoolRequestInner::Creation(_)) => bail!("todo"),
-            (Some(pool_state), PoolRequestInner::Redemption(_)) => bail!("todo"),
-            (
-                Some(pool_state),
-                PoolRequestInner::Admin {
-                    admin_signature,
-                    admin_request,
-                },
-            ) => {
-                bail!("todo");
-            }
-        };
-
-        Ok(())
-    }
-}
+declare_pool_entrypoint!(FakePool);
+*/
