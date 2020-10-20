@@ -15,7 +15,7 @@ _defaults: &defaults
 _localnet: &localnet
   language: node_js
   node_js:
-    - "node"
+    - 14
   before_script:
     - npm install -g @solana/web3.js
     - npx solana-localnet update
