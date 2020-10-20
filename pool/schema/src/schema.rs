@@ -1,23 +1,49 @@
+use std::{io, io::Write};
+
+use borsh::schema::{Declaration, Definition};
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use solana_sdk::pubkey::Pubkey;
+use std::collections::HashMap;
 
-#[derive(Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, BorshSchema)]
-pub struct Address([u8; 32]);
+/// Wrapper around `solana_sdk::pubkey::Pubkey` so it can implement `BorshSerialize` etc.
+#[repr(transparent)]
+#[derive(Clone, PartialEq, Eq)]
+pub struct Address(Pubkey);
 
 impl From<Address> for Pubkey {
     fn from(address: Address) -> Self {
-        Pubkey::new_from_array(address.0)
+        address.0
+    }
+}
+
+impl AsRef<Pubkey> for Address {
+    fn as_ref(&self) -> &Pubkey {
+        &self.0
+    }
+}
+
+impl AsMut<Pubkey> for Address {
+    fn as_mut(&mut self) -> &mut Pubkey {
+        &mut self.0
     }
 }
 
 impl From<Pubkey> for Address {
     fn from(pubkey: Pubkey) -> Self {
-        Self(pubkey.to_bytes())
+        Self(pubkey)
+    }
+}
+
+impl From<&Pubkey> for Address {
+    fn from(pubkey: &Pubkey) -> Self {
+        Self(*pubkey)
     }
 }
 
 #[derive(Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub struct PoolState {
+    pub initialized: bool,
+
     pub pool_token_mint: Address,
     pub assets: Vec<AssetInfo>,
 
@@ -49,32 +75,15 @@ pub struct ParamDesc {
 }
 
 #[derive(Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, BorshSchema)]
-pub struct Basket {
-    /// Must have the same length as `PoolState::assets`. Each item corresponds to
-    /// one of the assets in `PoolState::assets` and represents the quantity of
-    /// that asset needed to create/redeem one pool token.
-    pub qty_per_share: Vec<U64F64>,
-}
-
-#[derive(Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, BorshSchema)]
-pub struct U64F64 {
-    pub frac_part: u64,
-    pub int_part: u64,
-}
-
-#[derive(Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, BorshSchema)]
-pub struct Retbuf {
-    pub retbuf_account: Address,
-    pub retbuf_program_id: Address,
-}
-
-#[derive(Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub enum PoolRequest {
-    // TODO
-    GetInitializeParams,
-
-    // TODO
-    Initialize,
+    /// Accounts:
+    ///
+    /// - `[]` Pool account
+    /// - `[]` Pool token mint (`PoolState::pool_token_mint`)
+    /// - `[]` Pool vault account for each of the N pool assets (`AssetInfo::vault_address`)
+    /// - `[]` Pool vault authority (`PoolState::vault_signer`)
+    /// - `[]/[writable]` Any additional accounts needed to initialize the pool
+    Initialize(InitializePoolRequest),
 
     /// Get the creation, redemption, or swap basket.
     ///
@@ -82,13 +91,13 @@ pub enum PoolRequest {
     ///
     /// Accounts:
     ///
-    /// - `[writable]` Pool account
-    /// - `[writable]` Pool token mint (`PoolState::pool_token_mint`)
-    /// - `[writable]` Pool vault account for each of the N pool assets (`AssetInfo::vault_address`)
+    /// - `[]` Pool account
+    /// - `[]` Pool token mint (`PoolState::pool_token_mint`)
+    /// - `[]` Pool vault account for each of the N pool assets (`AssetInfo::vault_address`)
     /// - `[]` Pool vault authority (`PoolState::vault_signer`)
     /// - `[writable]` retbuf account
     /// - `[]` retbuf program
-    /// - `[]/[writable]` Accounts in `PoolState::account_params`
+    /// - `[]` Accounts in `PoolState::account_params`
     GetBasket(PoolAction),
 
     /// Perform a creation, redemption, or swap.
@@ -106,10 +115,23 @@ pub enum PoolRequest {
     /// - `[]/[writable]` Accounts in `PoolState::account_params`
     Transact(PoolAction),
 
-    // TODO
+    /// Accounts:
+    ///
+    /// - `[writable]` Pool account
+    /// - `[writable]` Pool token mint (`PoolState::pool_token_mint`)
+    /// - `[writable]` Pool vault account for each of the N pool assets (`AssetInfo::vault_address`)
+    /// - `[]` Pool vault authority (`PoolState::vault_signer`)
+    /// - `[]/[writable]` Accounts in `PoolState::account_params`
+    /// - `[]/[writable]` Custom accounts
     AdminRequest,
 
     CustomRequest(Vec<u8>),
+}
+
+#[derive(Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, BorshSchema)]
+pub struct InitializePoolRequest {
+    pub vault_signer_nonce: u8,
+    pub assets_length: u8,
 }
 
 #[derive(Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, BorshSchema)]
@@ -120,4 +142,44 @@ pub enum PoolAction {
     Redeem(u64),
     /// Deposit assets into the pool and receive other assets from the pool.
     Swap(Vec<u64>),
+}
+
+#[derive(Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, BorshSchema)]
+pub struct Basket {
+    /// Must have the same length as `PoolState::assets`. Each item corresponds to
+    /// one of the assets in `PoolState::assets`.
+    pub quantities: Vec<i64>,
+}
+
+impl BorshSerialize for Address {
+    fn serialize<W: Write>(&self, writer: &mut W) -> io::Result<()> {
+        BorshSerialize::serialize(&self.0.to_bytes(), writer)
+    }
+}
+
+impl BorshDeserialize for Address {
+    fn deserialize(buf: &mut &[u8]) -> io::Result<Self> {
+        Ok(Self(Pubkey::new_from_array(BorshDeserialize::deserialize(
+            buf,
+        )?)))
+    }
+}
+
+impl BorshSchema for Address {
+    fn add_definitions_recursively(definitions: &mut HashMap<Declaration, Definition>) {
+        Self::add_definition(
+            Self::declaration(),
+            Definition::Struct {
+                fields: borsh::schema::Fields::UnnamedFields(vec![
+                    <[u8; 32] as BorshSchema>::declaration(),
+                ]),
+            },
+            definitions,
+        );
+        <[u8; 32] as BorshSchema>::add_definitions_recursively(definitions);
+    }
+
+    fn declaration() -> Declaration {
+        "Address".to_string()
+    }
 }
