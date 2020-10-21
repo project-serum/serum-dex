@@ -36,7 +36,7 @@ pub trait Pool {
         state: &mut PoolState,
         request: u64,
     ) -> Result<(), ProgramError> {
-        // TODO
+        // TODO consider providing a default implementation for a static basket
         unimplemented!()
     }
 
@@ -46,7 +46,7 @@ pub trait Pool {
         state: &mut PoolState,
         request: u64,
     ) -> Result<(), ProgramError> {
-        // TODO
+        // TODO consider providing a default implementation for a static basket
         unimplemented!()
     }
 

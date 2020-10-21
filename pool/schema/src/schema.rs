@@ -156,22 +156,13 @@ pub enum PoolRequestInner {
     /// - `[]` spl-token program
     /// - `[]/[writable]` Accounts in `PoolState::account_params`
     Transact(PoolAction),
-
-    /// Accounts:
-    ///
-    /// - `[writable]` Pool account
-    /// - `[writable]` Pool token mint (`PoolState::pool_token_mint`)
-    /// - `[writable]` Pool vault account for each of the N pool assets (`AssetInfo::vault_address`)
-    /// - `[]` Pool vault authority (`PoolState::vault_signer`)
-    /// - `[]/[writable]` Accounts in `PoolState::account_params`
-    /// - `[]/[writable]` Custom accounts
-    AdminRequest,
 }
 
 #[derive(Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub struct InitializePoolRequest {
     pub vault_signer_nonce: u8,
     pub assets_length: u8,
+    pub custom_state_length: u16,
 }
 
 #[derive(Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, BorshSchema)]

@@ -102,6 +102,8 @@ impl<'a, 'b, P: Pool> PoolProcessor<'a, 'b, P> {
     fn process_instruction(&self) -> PoolResult<()> {
         let mut pool_state = self.get_state()?;
 
+        let context = PoolContext::new(self.program_id, self.account, &state, &self.request);
+
         match (&mut pool_state, &self.request) {
             (None, PoolRequestInner::Initialize(request)) => self.initialize_pool(request)?,
             (None, _) => {
@@ -110,11 +112,24 @@ impl<'a, 'b, P: Pool> PoolProcessor<'a, 'b, P> {
             (Some(_), PoolRequestInner::Initialize(_)) => {
                 return Err(ProgramError::AccountAlreadyInitialized);
             }
-            (Some(_pool_state), PoolRequestInner::GetBasket(_request)) => {
-                unimplemented!();
+            (Some(pool_state), PoolRequestInner::GetBasket(action)) => {
+                match action {
+                    PoolAction::Create(&amount) =>
+                        P::get_creation_basket(&context, pool_state, amount)?,
+                    PoolAction::Redeem(&amount) =>
+                        P::get_redemption_basket(&context, pool_state, amount)?,
+                    PoolActoun::Swap(_) => unimplemented!(),
+                };
             }
-            (Some(_pool_state), PoolRequestInner::Transact(_)) => unimplemented!(),
-            (Some(_pool_state), PoolRequestInner::AdminRequest) => unimplemented!(),
+            (Some(pool_state), PoolRequestInner::Transact(action)) => {
+                match action {
+                    PoolAction::Create(&amount) =>
+                        P::process_creation(&context, pool_state, amount)?,
+                    PoolAction::Redeem(&amount) =>
+                        P::process_redemption(&context, pool_state, amount)?,
+                    PoolAction::Swap(_) => unimplemented!(),
+                };
+            }
         };
 
         Ok(())
