@@ -9,7 +9,7 @@ use spl_token::state::{Account as TokenAccount, Mint};
 
 use serum_pool_schema::{Address, Basket, PoolRequestInner, PoolState};
 
-pub struct PoolContext<'a, 'b: 'a> {
+pub struct PoolContext<'a, 'b> {
     pub program_id: &'a Pubkey,
 
     /// Account that holds the `PoolState`.
@@ -38,18 +38,18 @@ pub struct PoolContext<'a, 'b: 'a> {
     pub custom_accounts: &'a [AccountInfo<'b>],
 }
 
-pub struct UserAccounts<'a, 'b: 'a> {
+pub struct UserAccounts<'a, 'b> {
     pub pool_token_account: &'a AccountInfo<'b>,
     pub asset_accounts: &'a [AccountInfo<'b>],
     pub authority: &'a AccountInfo<'b>,
 }
 
-pub struct RetbufAccounts<'a, 'b: 'a> {
+pub struct RetbufAccounts<'a, 'b> {
     pub account: &'a AccountInfo<'b>,
     pub program: &'a AccountInfo<'b>,
 }
 
-impl<'a, 'b: 'a> PoolContext<'a, 'b> {
+impl<'a, 'b> PoolContext<'a, 'b> {
     pub fn new(
         program_id: &'a Pubkey,
         accounts: &'a [AccountInfo<'b>],
@@ -131,7 +131,7 @@ impl<'a, 'b: 'a> PoolContext<'a, 'b> {
     }
 }
 
-impl<'a, 'b: 'a> UserAccounts<'a, 'b> {
+impl<'a, 'b> UserAccounts<'a, 'b> {
     pub fn new(
         state: &PoolState,
         pool_token_account: &'a AccountInfo<'b>,
@@ -154,7 +154,7 @@ impl<'a, 'b: 'a> UserAccounts<'a, 'b> {
     }
 }
 
-impl<'a, 'b: 'a> RetbufAccounts<'a, 'b> {
+impl<'a, 'b> RetbufAccounts<'a, 'b> {
     pub fn new(
         account: &'a AccountInfo<'b>,
         program: &'a AccountInfo<'b>,
@@ -167,7 +167,7 @@ impl<'a, 'b: 'a> RetbufAccounts<'a, 'b> {
     }
 }
 
-impl<'a, 'b: 'a> PoolContext<'a, 'b> {
+impl<'a, 'b> PoolContext<'a, 'b> {
     /// Total number of pool tokens currently in existence.
     pub fn total_pool_tokens(&self) -> Result<u64, ProgramError> {
         let mint = Mint::unpack(&self.pool_token_mint.try_borrow_data()?)?;
