@@ -1,9 +1,9 @@
+use std::collections::HashMap;
 use std::{io, io::Write};
 
 use borsh::schema::{Declaration, Definition};
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use solana_sdk::pubkey::Pubkey;
-use std::collections::HashMap;
 
 /// Wrapper around `solana_sdk::pubkey::Pubkey` so it can implement `BorshSerialize` etc.
 #[repr(transparent)]
@@ -40,9 +40,41 @@ impl From<&Pubkey> for Address {
     }
 }
 
+macro_rules! declare_tag {
+    ($name:ident, $type:ty, $tag:expr) => {
+        #[derive(Clone, PartialEq, Eq, BorshSerialize, BorshSchema)]
+        pub struct $name($type);
+        impl $name {
+            pub const TAG_VALUE: $type = $tag;
+        }
+
+        impl Default for $name {
+            fn default() -> Self {
+                Self(Self::TAG_VALUE)
+            }
+        }
+
+        impl BorshDeserialize for $name {
+            #[inline]
+            fn deserialize(buf: &mut &[u8]) -> std::io::Result<Self> {
+                let tag = <$type as BorshDeserialize>::deserialize(buf)?;
+                if tag != Self::TAG_VALUE {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        "invalid tag",
+                    ));
+                }
+                Ok($name(tag))
+            }
+        }
+    };
+}
+
+declare_tag!(PoolStateTag, u64, 0x16a7874c7fb2301b);
+
 #[derive(Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub struct PoolState {
-    pub initialized: bool,
+    pub tag: PoolStateTag,
 
     pub pool_token_mint: Address,
     pub assets: Vec<AssetInfo>,
@@ -74,8 +106,18 @@ pub struct ParamDesc {
     pub writable: bool,
 }
 
+declare_tag!(PoolRequestTag, u64, 0x220a6cbdcd1cc4cf);
+
 #[derive(Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, BorshSchema)]
-pub enum PoolRequest {
+pub struct PoolRequest {
+    pub tag: PoolRequestTag,
+    pub inner: PoolRequestInner,
+}
+
+#[derive(Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, BorshSchema)]
+pub enum PoolRequestInner {
+    /// Initialize a pool.
+    ///
     /// Accounts:
     ///
     /// - `[]` Pool account
@@ -124,8 +166,6 @@ pub enum PoolRequest {
     /// - `[]/[writable]` Accounts in `PoolState::account_params`
     /// - `[]/[writable]` Custom accounts
     AdminRequest,
-
-    CustomRequest(Vec<u8>),
 }
 
 #[derive(Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, BorshSchema)]

@@ -7,7 +7,7 @@ use solana_sdk::program_pack::Pack;
 use solana_sdk::{account_info::AccountInfo, info, program_error::ProgramError, pubkey::Pubkey};
 use spl_token::state::{Account as TokenAccount, Mint};
 
-use serum_pool_schema::{Address, Basket, PoolRequest, PoolState};
+use serum_pool_schema::{Address, Basket, PoolRequestInner, PoolState};
 
 pub struct PoolContext<'a, 'b: 'a> {
     pub program_id: &'a Pubkey,
@@ -54,7 +54,7 @@ impl<'a, 'b: 'a> PoolContext<'a, 'b> {
         program_id: &'a Pubkey,
         accounts: &'a [AccountInfo<'b>],
         state: &PoolState,
-        request: &PoolRequest,
+        request: &PoolRequestInner,
     ) -> Result<Self, ProgramError> {
         let accounts_iter = &mut accounts.into_iter();
 
@@ -85,7 +85,7 @@ impl<'a, 'b: 'a> PoolContext<'a, 'b> {
         check_account_address(context.pool_authority, &state.vault_signer)?;
 
         match request {
-            PoolRequest::GetBasket(_) => {
+            PoolRequestInner::GetBasket(_) => {
                 context.retbuf = Some(RetbufAccounts::new(
                     next_account_info(accounts_iter)?,
                     next_account_info(accounts_iter)?,
@@ -95,7 +95,7 @@ impl<'a, 'b: 'a> PoolContext<'a, 'b> {
                     state.account_params.len(),
                 )?);
             }
-            PoolRequest::Transact(_) => {
+            PoolRequestInner::Transact(_) => {
                 context.user_accounts = Some(UserAccounts::new(
                     state,
                     next_account_info(accounts_iter)?,

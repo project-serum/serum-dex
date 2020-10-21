@@ -3,6 +3,7 @@
 use std::ops::DerefMut;
 
 use anyhow::{bail, ensure, Context, Error, Result as PoolResult};
+use arrayref::array_ref;
 use borsh::{BorshDeserialize, BorshSerialize};
 pub use solana_sdk;
 use solana_sdk::{
@@ -11,6 +12,7 @@ use solana_sdk::{
 };
 
 use serum_pool_schema::{AssetInfo, Basket, PoolRequest, PoolState};
+use serum_pool_schema::{PoolRequestInner, PoolRequestTag};
 
 use crate::context::PoolContext;
 
@@ -90,6 +92,38 @@ fn entry(program_id: &Pubkey, accounts: &[AccountInfo], instruction_data: &[u8])
     }
 }
 
+pub mod pool;
+
+#[macro_export]
+macro_rules! declare_pool_entrypoint {
+    ($PoolImpl:ty) => {
+        fn entrypoint(
+            program_id: &$crate::solana_sdk::pubkey::Pubkey,
+            accounts: &[$crate::solana_sdk::account_info::AccountInfo],
+            instruction_data: &[u8],
+        ) -> ProgramResult {
+            $crate::pool_entrypoint::<$PoolImpl>(program_id, accounts, instruction_data)
+        }
+    };
+}
+
+#[inline(always)]
+pub fn pool_entrypoint<P: pool::Pool>(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    instruction_data: &[u8],
+) -> ProgramResult {
+    if instruction_data.len() >= 8 {
+        let tag_bytes = array_ref![instruction_data, 0, 8];
+        if u64::from_le_bytes(*tag_bytes) == PoolRequestTag::TAG_VALUE {
+            let request = BorshDeserialize::try_from_slice(instruction_data)
+                .or(Err(ProgramError::InvalidInstructionData))?;
+            return P::process_pool_request(program_id, accounts, &request);
+        }
+    }
+    P::process_other_instruction(program_id, accounts, instruction_data)
+}
+
 impl<'a, 'b: 'a> ProgramContext<'a, 'b> {
     fn get_request(&self) -> PoolResult<PoolRequest> {
         BorshDeserialize::try_from_slice(self.instruction_data)
@@ -128,10 +162,10 @@ impl<'a, 'b: 'a> ProgramContext<'a, 'b> {
         let request = self.get_request()?;
         let mut pool_state = self.get_state(&self.accounts[0])?;
 
-        match (&mut pool_state, &request) {
-            (None, PoolRequest::Initialize(init_request)) => {
+        match (&mut pool_state, &request.inner) {
+            (None, PoolRequestInner::Initialize(init_request)) => {
                 let mut state = PoolState {
-                    initialized: true,
+                    tag: Default::default(),
                     pool_token_mint: self.accounts[1].key.into(),
                     assets: self.accounts[2..2 + init_request.assets_length as usize]
                         .iter()
@@ -149,19 +183,45 @@ impl<'a, 'b: 'a> ProgramContext<'a, 'b> {
                     custom_state: vec![],
                 };
                 // TODO: validate state
-                let context = PoolContext::new(self.program_id, self.accounts, &state, &request)
-                    .map_err(Error::msg)?;
+                let context =
+                    PoolContext::new(self.program_id, self.accounts, &state, &request.inner)
+                        .map_err(Error::msg)?;
                 P::initialize_pool(&context, &mut state).map_err(Error::msg)?;
                 self.set_state(&self.accounts[0], state)?;
             }
             (None, _) => bail!("uninitialized pool"),
-            (Some(_), PoolRequest::Initialize(_)) => bail!("pool already initialized"),
-            (Some(_pool_state), PoolRequest::GetBasket(_request)) => {}
-            (Some(_pool_state), PoolRequest::Transact(_)) => bail!("todo"),
-            (Some(_pool_state), PoolRequest::AdminRequest) => bail!("todo"),
-            (Some(_pool_state), PoolRequest::CustomRequest(_)) => bail!("todo"),
+            (Some(_), PoolRequestInner::Initialize(_)) => bail!("pool already initialized"),
+            (Some(_pool_state), PoolRequestInner::GetBasket(_request)) => {}
+            (Some(_pool_state), PoolRequestInner::Transact(_)) => bail!("todo"),
+            (Some(_pool_state), PoolRequestInner::AdminRequest) => bail!("todo"),
         };
 
         Ok(())
     }
 }
+
+/*
+EXAMPLE. TODO replace with actual documentation
+
+enum FakePool {}
+
+impl pool::Pool for FakePool {
+    fn process_other_instruction(
+        program_id: &Pubkey,
+        accounts: &[AccountInfo],
+        instruction_data: &[u8],
+    ) -> ProgramResult {
+        unimplemented!()
+    }
+    fn process_pool_request(
+        program_id: &Pubkey,
+        accounts: &[AccountInfo],
+        request: &PoolRequest,
+    ) -> ProgramResult {
+        unimplemented!()
+    }
+}
+
+#[cfg(feature = "program")]
+declare_pool_entrypoint!(FakePool);
+*/
