@@ -58,12 +58,16 @@ impl<'a, 'b> PoolContext<'a, 'b> {
     ) -> Result<Self, ProgramError> {
         let accounts_iter = &mut accounts.into_iter();
 
+        let pool_account = next_account_info(accounts_iter)?;
+        let pool_token_mint = next_account_info(accounts_iter)?;
+        let pool_vault_accounts = next_account_infos(accounts_iter, state.assets.len())?;
+        let pool_authority = next_account_info(accounts_iter)?;
         let mut context = PoolContext {
             program_id,
-            pool_account: next_account_info(accounts_iter)?,
-            pool_token_mint: next_account_info(accounts_iter)?,
-            pool_vault_accounts: next_account_infos(accounts_iter, state.assets.len())?,
-            pool_authority: next_account_info(accounts_iter)?,
+            pool_account,
+            pool_token_mint,
+            pool_vault_accounts,
+            pool_authority,
             retbuf: None,
             user_accounts: None,
             spl_token_program: None,
@@ -86,9 +90,11 @@ impl<'a, 'b> PoolContext<'a, 'b> {
 
         match request {
             PoolRequestInner::GetBasket(_) => {
+                let retbuf_account = next_account_info(accounts_iter)?;
+                let retbuf_program = next_account_info(accounts_iter)?;
                 context.retbuf = Some(RetbufAccounts::new(
-                    next_account_info(accounts_iter)?,
-                    next_account_info(accounts_iter)?,
+                    retbuf_account,
+                    retbuf_program,
                 )?);
                 context.account_params = Some(next_account_infos(
                     accounts_iter,
@@ -96,11 +102,14 @@ impl<'a, 'b> PoolContext<'a, 'b> {
                 )?);
             }
             PoolRequestInner::Transact(_) => {
+                let pool_token_account = next_account_info(accounts_iter)?;
+                let asset_accounts = next_account_infos(accounts_iter, state.assets.len())?;
+                let authority = next_account_info(accounts_iter)?;
                 context.user_accounts = Some(UserAccounts::new(
                     state,
-                    next_account_info(accounts_iter)?,
-                    next_account_infos(accounts_iter, state.assets.len())?,
-                    next_account_info(accounts_iter)?,
+                    pool_token_account,
+                    asset_accounts,
+                    authority,
                 )?);
                 context.spl_token_program = Some(next_account_info(accounts_iter)?);
                 context.account_params = Some(next_account_infos(
