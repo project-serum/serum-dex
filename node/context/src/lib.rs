@@ -40,7 +40,7 @@ impl Context {
                 commitment: CommitmentConfig::single(),
                 tx: RpcSendTransactionConfig {
                     skip_preflight: true,
-                    preflight_commitment: None,
+                    ..RpcSendTransactionConfig::default()
                 },
             },
         );

@@ -666,7 +666,7 @@ fn consume_events_once(
         &txn,
         RpcSendTransactionConfig {
             skip_preflight: true,
-            preflight_commitment: None,
+            ..RpcSendTransactionConfig::default()
         },
     )?;
     Ok(signature)
