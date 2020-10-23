@@ -6,28 +6,36 @@ use serum_pool_schema::{Basket, PoolState};
 use crate::context::PoolContext;
 
 pub trait Pool {
+    #[allow(unused_variables)]
     fn initialize_pool(context: &PoolContext, state: &mut PoolState) -> Result<(), ProgramError> {
-        let _ = context;
-        let _ = state;
-        Ok(())
+        unimplemented!()
     }
 
+    #[allow(unused_variables)]
     fn get_creation_basket(
         context: &PoolContext,
         state: &PoolState,
         request: u64,
     ) -> Result<Basket, ProgramError> {
-        let _ = state;
-        Ok(context.get_simple_basket(request)?)
+        context.get_simple_basket(request)
     }
 
+    #[allow(unused_variables)]
     fn get_redemption_basket(
         context: &PoolContext,
         state: &PoolState,
         request: u64,
     ) -> Result<Basket, ProgramError> {
-        let _ = state;
         context.get_simple_basket(request)
+    }
+
+    #[allow(unused_variables)]
+    fn get_swap_basket(
+        context: &PoolContext,
+        state: &PoolState,
+        request: &[u64],
+    ) -> Result<Basket, ProgramError> {
+        return Err(ProgramError::InvalidArgument)
     }
 
     #[allow(unused_variables)]
@@ -36,7 +44,7 @@ pub trait Pool {
         state: &mut PoolState,
         request: u64,
     ) -> Result<(), ProgramError> {
-        // TODO consider providing a default implementation for a static basket
+        let basket = Self::get_creation_basket(context, state, request)?;
         unimplemented!()
     }
 
@@ -46,8 +54,16 @@ pub trait Pool {
         state: &mut PoolState,
         request: u64,
     ) -> Result<(), ProgramError> {
-        // TODO consider providing a default implementation for a static basket
         unimplemented!()
+    }
+
+    #[allow(unused_variables)]
+    fn process_swap(
+        context: &PoolContext,
+        state: &mut PoolState,
+        request: &[u64],
+    ) -> Result<(), ProgramError> {
+        return Err(ProgramError::InvalidArgument)
     }
 
     fn process_foreign_instruction(
