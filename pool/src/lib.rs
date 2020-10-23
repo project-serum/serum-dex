@@ -11,13 +11,13 @@ use solana_sdk::{
     pubkey::Pubkey,
 };
 
-use serum_pool_schema::{AssetInfo, InitializePoolRequest, PoolRequest, PoolState, PoolAction};
+use serum_pool_schema::{AssetInfo, InitializePoolRequest, PoolAction, PoolRequest, PoolState};
 use serum_pool_schema::{PoolRequestInner, PoolRequestTag};
 
 use crate::context::PoolContext;
 use crate::pool::Pool;
 
-mod context;
+pub mod context;
 pub mod pool;
 
 type PoolResult<T> = Result<T, ProgramError>;
@@ -26,9 +26,9 @@ type PoolResult<T> = Result<T, ProgramError>;
 macro_rules! declare_pool_entrypoint {
     ($PoolImpl:ty) => {
         solana_sdk::entrypoint!(entry);
-        fn entry(
-            program_id: &$crate::solana_sdk::pubkey::Pubkey,
-            accounts: &[$crate::solana_sdk::account_info::AccountInfo],
+        fn entry<'a>(
+            program_id: &'a $crate::solana_sdk::pubkey::Pubkey,
+            accounts: &'a [$crate::solana_sdk::account_info::AccountInfo<'a>],
             instruction_data: &[u8],
         ) -> ProgramResult {
             $crate::pool_entrypoint::<$PoolImpl>(program_id, accounts, instruction_data)
@@ -37,9 +37,9 @@ macro_rules! declare_pool_entrypoint {
 }
 
 #[inline(always)]
-pub fn pool_entrypoint<P: pool::Pool>(
-    program_id: &Pubkey,
-    accounts: &[AccountInfo],
+pub fn pool_entrypoint<'a, P: pool::Pool<'a>>(
+    program_id: &'a Pubkey,
+    accounts: &'a [AccountInfo<'a>],
     instruction_data: &[u8],
 ) -> ProgramResult {
     if instruction_data.len() >= 8 {
@@ -47,7 +47,7 @@ pub fn pool_entrypoint<P: pool::Pool>(
         if u64::from_le_bytes(*tag_bytes) == PoolRequestTag::TAG_VALUE {
             let request: PoolRequest = BorshDeserialize::try_from_slice(instruction_data)
                 .map_err(|_| ProgramError::InvalidInstructionData)?;
-            return PoolProcessor::<'_, '_, P> {
+            return PoolProcessor::<'_, P> {
                 program_id,
                 accounts,
                 request: request.inner,
@@ -59,14 +59,14 @@ pub fn pool_entrypoint<P: pool::Pool>(
     P::process_foreign_instruction(program_id, accounts, instruction_data)
 }
 
-struct PoolProcessor<'a, 'b, P> {
+struct PoolProcessor<'a, P> {
     program_id: &'a Pubkey,
-    accounts: &'a [AccountInfo<'b>],
+    accounts: &'a [AccountInfo<'a>],
     request: PoolRequestInner,
     pool: std::marker::PhantomData<P>,
 }
 
-impl<'a, 'b, P: Pool> PoolProcessor<'a, 'b, P> {
+impl<'a, 'b, P: Pool<'a>> PoolProcessor<'a, P> {
     #[inline(never)]
     fn get_state(&self) -> PoolResult<Option<PoolState>> {
         if self.accounts.len() < 1 {
@@ -111,25 +111,29 @@ impl<'a, 'b, P: Pool> PoolProcessor<'a, 'b, P> {
                 return Err(ProgramError::AccountAlreadyInitialized);
             }
             (Some(pool_state), PoolRequestInner::GetBasket(action)) => {
-                let context = PoolContext::new(self.program_id, self.accounts, &pool_state, &self.request)?;
+                let context =
+                    PoolContext::new(self.program_id, self.accounts, &pool_state, &self.request)?;
                 match action {
-                    &PoolAction::Create(amount) =>
-                        P::get_creation_basket(&context, pool_state, amount)?,
-                    &PoolAction::Redeem(amount) =>
-                        P::get_redemption_basket(&context, pool_state, amount)?,
-                    PoolAction::Swap(inputs) =>
-                        P::get_swap_basket(&context, pool_state, inputs)?,
+                    &PoolAction::Create(amount) => {
+                        P::get_creation_basket(&context, pool_state, amount)?
+                    }
+                    &PoolAction::Redeem(amount) => {
+                        P::get_redemption_basket(&context, pool_state, amount)?
+                    }
+                    PoolAction::Swap(inputs) => P::get_swap_basket(&context, pool_state, inputs)?,
                 };
             }
             (Some(pool_state), PoolRequestInner::Transact(action)) => {
-                let context = PoolContext::new(self.program_id, self.accounts, &pool_state, &self.request)?;
+                let context =
+                    PoolContext::new(self.program_id, self.accounts, &pool_state, &self.request)?;
                 match action {
-                    &PoolAction::Create(amount) =>
-                        P::process_creation(&context, pool_state, amount)?,
-                    &PoolAction::Redeem(amount) =>
-                        P::process_redemption(&context, pool_state, amount)?,
-                    PoolAction::Swap(inputs) =>
-                        P::process_swap(&context, pool_state, inputs)?,
+                    &PoolAction::Create(amount) => {
+                        P::process_creation(&context, pool_state, amount)?
+                    }
+                    &PoolAction::Redeem(amount) => {
+                        P::process_redemption(&context, pool_state, amount)?
+                    }
+                    PoolAction::Swap(inputs) => P::process_swap(&context, pool_state, inputs)?,
                 };
             }
         };
@@ -161,13 +165,6 @@ impl<'a, 'b, P: Pool> PoolProcessor<'a, 'b, P> {
         Ok(())
     }
 }
-
-struct ExamplePool {}
-impl Pool for ExamplePool {
-}
-
-#[cfg(feature = "program")]
-declare_pool_entrypoint!(ExamplePool);
 
 /*
 EXAMPLE. TODO replace with actual documentation
