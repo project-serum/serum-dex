@@ -6,10 +6,12 @@ use std::ops::DerefMut;
 use arrayref::array_ref;
 use borsh::{BorshDeserialize, BorshSerialize};
 pub use solana_sdk;
+use solana_sdk::program_pack::Pack;
 use solana_sdk::{
     account_info::AccountInfo, entrypoint::ProgramResult, program_error::ProgramError,
     pubkey::Pubkey,
 };
+use spl_token::state::Account as TokenAccount;
 
 use serum_pool_schema::{AssetInfo, InitializePoolRequest, PoolAction, PoolRequest, PoolState};
 use serum_pool_schema::{PoolRequestInner, PoolRequestTag};
@@ -148,11 +150,14 @@ impl<'a, 'b, P: Pool<'a>> PoolProcessor<'a, P> {
             pool_token_mint: self.accounts[1].key.into(),
             assets: self.accounts[2..2 + request.assets_length as usize]
                 .iter()
-                .map(|account| AssetInfo {
-                    mint: account.key.into(), // TODO: parse vault account to get mint
-                    vault_address: account.key.into(),
+                .map(|account| {
+                    let acc = TokenAccount::unpack(&account.try_borrow_data()?)?;
+                    Ok(AssetInfo {
+                        mint: acc.mint.into(),
+                        vault_address: account.key.into(),
+                    })
                 })
-                .collect(),
+                .collect::<PoolResult<Vec<_>>>()?,
             vault_signer: self.accounts[2 + request.assets_length as usize].key.into(),
             vault_signer_nonce: request.vault_signer_nonce,
             account_params: vec![],
