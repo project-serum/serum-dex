@@ -28,9 +28,9 @@ type PoolResult<T> = Result<T, ProgramError>;
 macro_rules! declare_pool_entrypoint {
     ($PoolImpl:ty) => {
         solana_sdk::entrypoint!(entry);
-        fn entry<'a>(
-            program_id: &'a $crate::solana_sdk::pubkey::Pubkey,
-            accounts: &'a [$crate::solana_sdk::account_info::AccountInfo<'a>],
+        fn entry(
+            program_id: &$crate::solana_sdk::pubkey::Pubkey,
+            accounts: &[$crate::solana_sdk::account_info::AccountInfo],
             instruction_data: &[u8],
         ) -> ProgramResult {
             $crate::pool_entrypoint::<$PoolImpl>(program_id, accounts, instruction_data)
@@ -39,9 +39,9 @@ macro_rules! declare_pool_entrypoint {
 }
 
 #[inline(always)]
-pub fn pool_entrypoint<'a, P: pool::Pool<'a>>(
-    program_id: &'a Pubkey,
-    accounts: &'a [AccountInfo<'a>],
+pub fn pool_entrypoint<P: pool::Pool>(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
     instruction_data: &[u8],
 ) -> ProgramResult {
     if instruction_data.len() >= 8 {
@@ -49,7 +49,7 @@ pub fn pool_entrypoint<'a, P: pool::Pool<'a>>(
         if u64::from_le_bytes(*tag_bytes) == PoolRequestTag::TAG_VALUE {
             let request: PoolRequest = BorshDeserialize::try_from_slice(instruction_data)
                 .map_err(|_| ProgramError::InvalidInstructionData)?;
-            return PoolProcessor::<'_, P> {
+            return PoolProcessor::<'_, '_, P> {
                 program_id,
                 accounts,
                 request: request.inner,
@@ -61,14 +61,14 @@ pub fn pool_entrypoint<'a, P: pool::Pool<'a>>(
     P::process_foreign_instruction(program_id, accounts, instruction_data)
 }
 
-struct PoolProcessor<'a, P> {
+struct PoolProcessor<'a, 'b, P> {
     program_id: &'a Pubkey,
-    accounts: &'a [AccountInfo<'a>],
+    accounts: &'a [AccountInfo<'b>],
     request: PoolRequestInner,
     pool: std::marker::PhantomData<P>,
 }
 
-impl<'a, 'b, P: Pool<'a>> PoolProcessor<'a, P> {
+impl<'a, 'b, P: Pool> PoolProcessor<'a, 'b, P> {
     #[inline(never)]
     fn get_state(&self) -> PoolResult<Option<PoolState>> {
         if self.accounts.len() < 1 {

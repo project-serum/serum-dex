@@ -5,7 +5,7 @@ use serum_pool_schema::{Basket, PoolState};
 
 use crate::context::PoolContext;
 
-pub trait Pool<'a> {
+pub trait Pool {
     #[allow(unused_variables)]
     fn initialize_pool(context: &PoolContext, state: &mut PoolState) -> Result<(), ProgramError> {
         unimplemented!()
@@ -67,8 +67,8 @@ pub trait Pool<'a> {
     }
 
     fn process_foreign_instruction(
-        program_id: &'a Pubkey,
-        accounts: &'a [AccountInfo<'a>],
+        program_id: &Pubkey,
+        accounts: &[AccountInfo],
         instruction_data: &[u8],
     ) -> ProgramResult {
         let _ = program_id;
