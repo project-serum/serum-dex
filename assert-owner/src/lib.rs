@@ -1,18 +1,10 @@
 use solana_program::{
-    pubkey::Pubkey,
-    account_info::AccountInfo,
-    program_error::ProgramError,
-    entrypoint::ProgramResult,
-    info,
-    entrypoint,
+    account_info::AccountInfo, entrypoint, entrypoint::ProgramResult, info,
+    program_error::ProgramError, pubkey::Pubkey,
 };
 
 entrypoint!(entry);
-fn entry(
-    _program_id: &Pubkey,
-    accounts: &[AccountInfo],
-    instruction_data: &[u8],
-) -> ProgramResult {
+fn entry(_program_id: &Pubkey, accounts: &[AccountInfo], instruction_data: &[u8]) -> ProgramResult {
     let account = accounts.get(0).ok_or(ProgramError::NotEnoughAccountKeys)?;
     if instruction_data.len() != 32 {
         return Err(ProgramError::InvalidInstructionData);
