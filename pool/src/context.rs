@@ -5,9 +5,15 @@ use solana_sdk::account_info::next_account_info;
 use solana_sdk::program_option::COption;
 use solana_sdk::program_pack::Pack;
 use solana_sdk::{account_info::AccountInfo, info, program_error::ProgramError, pubkey::Pubkey};
+use solana_sdk::sysvar::{rent, Sysvar};
 use spl_token::state::{Account as TokenAccount, Mint};
 
-use serum_pool_schema::{Address, Basket, PoolRequestInner, PoolState};
+use serum_pool_schema::{
+    Address,
+    Basket,
+    PoolRequestInner,
+    PoolState,
+};
 
 pub struct PoolContext<'a, 'b> {
     pub program_id: &'a Pubkey,
@@ -21,6 +27,9 @@ pub struct PoolContext<'a, 'b> {
     pub pool_vault_accounts: &'a [AccountInfo<'b>],
     /// Signer for `pool_token_mint` and `pool_vault_accounts`.
     pub pool_authority: &'a AccountInfo<'b>,
+
+    /// Present for `Initialize` requests.
+    pub rent: Option<rent::Rent>,
 
     /// Present for `GetBasket` requests.
     pub retbuf: Option<RetbufAccounts<'a, 'b>>,
@@ -68,6 +77,7 @@ impl<'a, 'b> PoolContext<'a, 'b> {
             pool_token_mint,
             pool_vault_accounts,
             pool_authority,
+            rent: None,
             retbuf: None,
             user_accounts: None,
             spl_token_program: None,
@@ -117,7 +127,18 @@ impl<'a, 'b> PoolContext<'a, 'b> {
                     state.account_params.len(),
                 )?);
             }
-            _ => {}
+            PoolRequestInner::Initialize(_) => {
+                let rent_sysvar_account = next_account_info(accounts_iter)?;
+                if rent_sysvar_account.key != &rent::ID {
+                    info!("Incorrect rent sysvar account");
+                    return Err(ProgramError::InvalidArgument);
+                }
+                let rent = rent::Rent::from_account_info(rent_sysvar_account).map_err(|_| {
+                    info!("Failed to deserialize rent sysvar");
+                    ProgramError::InvalidArgument
+                })?;
+                context.rent = Some(rent);
+            }
         }
 
         if let Some(spl_token_program) = context.spl_token_program {
@@ -177,6 +198,32 @@ impl<'a, 'b> RetbufAccounts<'a, 'b> {
 }
 
 impl<'a, 'b> PoolContext<'a, 'b> {
+    pub(crate) fn derive_vault_authority(&self, state: &PoolState) -> Result<Pubkey, ProgramError> {
+        let seeds = &[
+            self.pool_account.key.as_ref(),
+            &[state.vault_signer_nonce],
+        ];
+        Ok(Pubkey::create_program_address(seeds, self.program_id).map_err(|e| {
+            info!("Invalid vault signer nonce");
+            e
+        })?)
+    }
+
+    pub fn check_rent_exemption(&self, account: &AccountInfo) -> Result<(), ProgramError> {
+        let rent = self.rent.ok_or_else(|| {
+            info!("Rent parameters not present");
+            ProgramError::InvalidArgument
+        })?;
+        let data_len = account.try_data_len()?;
+        let lamports = account.try_lamports()?;
+        if rent.is_exempt(lamports, data_len as usize) {
+            Ok(())
+        } else {
+            info!("Account is not rent exempt");
+            Err(ProgramError::InvalidArgument)
+        }
+    }
+
     /// Total number of pool tokens currently in existence.
     pub fn total_pool_tokens(&self) -> Result<u64, ProgramError> {
         let mint = Mint::unpack(&self.pool_token_mint.try_borrow_data()?)?;
@@ -201,16 +248,18 @@ impl<'a, 'b> PoolContext<'a, 'b> {
             .pool_asset_quantities()?
             .iter()
             .map(|pool_quantity| {
-                pool_quantity
-                    .checked_mul(pool_tokens_requested)?
-                    .checked_div(total_pool_tokens)?
+                (*pool_quantity as u128)
+                    .checked_mul(pool_tokens_requested as u128)?
+                    .checked_div(total_pool_tokens as u128)?
                     .try_into()
                     .ok()
             })
             .collect();
-        // TODO: add an error type
         Ok(Basket {
-            quantities: basket_quantities.ok_or(ProgramError::Custom(123))?,
+            quantities: basket_quantities.ok_or_else(|| {
+                info!("Per-share quantity doesn't fit into an i64");
+                ProgramError::InvalidArgument
+            })?,
         })
     }
 }

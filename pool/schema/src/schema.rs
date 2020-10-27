@@ -120,10 +120,11 @@ pub enum PoolRequestInner {
     ///
     /// Accounts:
     ///
-    /// - `[]` Pool account
+    /// - `[]` Pool account 
     /// - `[]` Pool token mint (`PoolState::pool_token_mint`)
     /// - `[]` Pool vault account for each of the N pool assets (`AssetInfo::vault_address`)
     /// - `[]` Pool vault authority (`PoolState::vault_signer`)
+    /// - `[]` Rent sysvar
     /// - `[]/[writable]` Any additional accounts needed to initialize the pool
     Initialize(InitializePoolRequest),
 

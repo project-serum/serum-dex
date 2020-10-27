@@ -10,6 +10,7 @@ use solana_sdk::program_pack::Pack;
 use solana_sdk::{
     account_info::AccountInfo, entrypoint::ProgramResult, program_error::ProgramError,
     pubkey::Pubkey,
+    info,
 };
 use spl_token::state::Account as TokenAccount;
 
@@ -144,7 +145,6 @@ impl<'a, 'b, P: Pool> PoolProcessor<'a, 'b, P> {
     }
 
     fn initialize_pool(&self, request: &InitializePoolRequest) -> PoolResult<()> {
-        // TODO: validate params
         let mut state = PoolState {
             tag: Default::default(),
             pool_token_mint: self.accounts[1].key.into(),
@@ -165,7 +165,18 @@ impl<'a, 'b, P: Pool> PoolProcessor<'a, 'b, P> {
             custom_state: vec![],
         };
         let context = PoolContext::new(self.program_id, self.accounts, &state, &self.request)?;
+
+        context.check_rent_exemption(context.pool_account)?;
+        context.check_rent_exemption(context.pool_token_mint)?;
+        for vault_account in context.pool_vault_accounts {
+            context.check_rent_exemption(vault_account)?;
+        }
+
         P::initialize_pool(&context, &mut state)?;
+        if *context.pool_authority.key != context.derive_vault_authority(&state)? {
+            info!("Invalid pool authority");
+            return Err(ProgramError::InvalidArgument)
+        }
         self.set_state(state)?;
         Ok(())
     }
