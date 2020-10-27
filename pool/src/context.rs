@@ -1,9 +1,14 @@
 use std::convert::TryInto;
 
 use solana_sdk;
+use solana_sdk::instruction::{
+    Instruction,
+    AccountMeta,
+};
 use solana_sdk::account_info::next_account_info;
 use solana_sdk::program_option::COption;
 use solana_sdk::program_pack::Pack;
+use solana_sdk::program;
 use solana_sdk::{account_info::AccountInfo, info, program_error::ProgramError, pubkey::Pubkey};
 use solana_sdk::sysvar::{rent, Sysvar};
 use spl_token::state::{Account as TokenAccount, Mint};
@@ -194,6 +199,21 @@ impl<'a, 'b> RetbufAccounts<'a, 'b> {
             return Err(ProgramError::IncorrectProgramId);
         }
         Ok(RetbufAccounts { account, program })
+    }
+
+    // data is a Vec whose first 8 bytes are the little-endian offset at which to
+    // write the remaining bytes
+    pub(crate) fn write_data(&self, data: Vec<u8>) -> Result<(), ProgramError> {
+        let instruction = Instruction {
+            program_id: *self.program.key,
+            accounts: vec![AccountMeta::new(*self.account.key, false)],
+            data,
+        };
+        program::invoke(
+            &instruction,
+            &[self.account.clone(), self.program.clone()],
+        )?;
+        Ok(())
     }
 }
 

@@ -116,7 +116,7 @@ impl<'a, 'b, P: Pool> PoolProcessor<'a, 'b, P> {
             (Some(pool_state), PoolRequestInner::GetBasket(action)) => {
                 let context =
                     PoolContext::new(self.program_id, self.accounts, &pool_state, &self.request)?;
-                match action {
+                let basket = match action {
                     &PoolAction::Create(amount) => {
                         P::get_creation_basket(&context, pool_state, amount)?
                     }
@@ -125,6 +125,10 @@ impl<'a, 'b, P: Pool> PoolProcessor<'a, 'b, P> {
                     }
                     PoolAction::Swap(inputs) => P::get_swap_basket(&context, pool_state, inputs)?,
                 };
+                let mut result = Vec::with_capacity(4096);
+                result.extend_from_slice(&[0u8; 8]);
+                basket.serialize(&mut result).map_err(|_| ProgramError::InvalidInstructionData)?;
+                context.retbuf.as_ref().ok_or(ProgramError::InvalidArgument)?.write_data(result)?;
             }
             (Some(pool_state), PoolRequestInner::Transact(action)) => {
                 let context =
@@ -187,22 +191,7 @@ EXAMPLE. TODO replace with actual documentation
 
 enum FakePool {}
 
-impl pool::Pool for FakePool {
-    fn process_other_instruction(
-        program_id: &Pubkey,
-        accounts: &[AccountInfo],
-        instruction_data: &[u8],
-    ) -> ProgramResult {
-        unimplemented!()
-    }
-    fn process_pool_request(
-        program_id: &Pubkey,
-        accounts: &[AccountInfo],
-        request: &PoolRequest,
-    ) -> ProgramResult {
-        unimplemented!()
-    }
-}
+impl pool::Pool for FakePool {}
 
 #[cfg(feature = "program")]
 declare_pool_entrypoint!(FakePool);
