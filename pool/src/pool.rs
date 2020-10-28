@@ -1,9 +1,6 @@
 use solana_sdk::{
-    account_info::AccountInfo,
-    entrypoint::ProgramResult,
+    account_info::AccountInfo, entrypoint::ProgramResult, program, program_error::ProgramError,
     pubkey::Pubkey,
-    program_error::ProgramError,
-    program,
 };
 
 use std::convert::TryInto;
@@ -24,7 +21,7 @@ pub trait Pool {
         state: &PoolState,
         request: u64,
     ) -> Result<Basket, ProgramError> {
-        context.get_simple_basket(request)
+        context.get_simple_basket(request, true)
     }
 
     #[allow(unused_variables)]
@@ -33,7 +30,7 @@ pub trait Pool {
         state: &PoolState,
         request: u64,
     ) -> Result<Basket, ProgramError> {
-        context.get_simple_basket(request)
+        context.get_simple_basket(request, false)
     }
 
     #[allow(unused_variables)]
@@ -52,12 +49,19 @@ pub trait Pool {
         request: u64,
     ) -> Result<(), ProgramError> {
         let basket = Self::get_creation_basket(context, state, request)?;
-        let user_accounts = context.user_accounts.as_ref().ok_or(ProgramError::InvalidArgument)?;
+        let user_accounts = context
+            .user_accounts
+            .as_ref()
+            .ok_or(ProgramError::InvalidArgument)?;
         let pool_vault_accounts = context.pool_vault_accounts;
 
-        let spl_token_program = context.spl_token_program.ok_or(ProgramError::InvalidArgument)?;
+        let spl_token_program = context
+            .spl_token_program
+            .ok_or(ProgramError::InvalidArgument)?;
 
-        let zipped_iter = basket.quantities.iter()
+        let zipped_iter = basket
+            .quantities
+            .iter()
             .zip(user_accounts.asset_accounts.iter())
             .zip(pool_vault_accounts.iter());
 
@@ -74,7 +78,9 @@ pub trait Pool {
                 destination_pubkey,
                 authority_pubkey,
                 signer_pubkeys,
-                input_qty.try_into().or(Err(ProgramError::InvalidArgument))?,
+                input_qty
+                    .try_into()
+                    .or(Err(ProgramError::InvalidArgument))?,
             )?;
 
             let account_infos = &[
@@ -113,7 +119,10 @@ pub trait Pool {
             program::invoke_signed(
                 &instruction,
                 account_infos,
-                &[&[context.pool_account.key.as_ref(), &[state.vault_signer_nonce]]],
+                &[&[
+                    context.pool_account.key.as_ref(),
+                    &[state.vault_signer_nonce],
+                ]],
             )?;
         };
         Ok(())
@@ -126,12 +135,19 @@ pub trait Pool {
         request: u64,
     ) -> Result<(), ProgramError> {
         let basket = Self::get_redemption_basket(context, state, request)?;
-        let user_accounts = context.user_accounts.as_ref().ok_or(ProgramError::InvalidArgument)?;
+        let user_accounts = context
+            .user_accounts
+            .as_ref()
+            .ok_or(ProgramError::InvalidArgument)?;
         let pool_vault_accounts = context.pool_vault_accounts;
 
-        let spl_token_program = context.spl_token_program.ok_or(ProgramError::InvalidArgument)?;
+        let spl_token_program = context
+            .spl_token_program
+            .ok_or(ProgramError::InvalidArgument)?;
 
-        let zipped_iter = basket.quantities.iter()
+        let zipped_iter = basket
+            .quantities
+            .iter()
             .zip(user_accounts.asset_accounts.iter())
             .zip(pool_vault_accounts.iter());
 
@@ -174,7 +190,9 @@ pub trait Pool {
                 destination_pubkey,
                 authority_pubkey,
                 signer_pubkeys,
-                output_qty.try_into().or(Err(ProgramError::InvalidArgument))?,
+                output_qty
+                    .try_into()
+                    .or(Err(ProgramError::InvalidArgument))?,
             )?;
 
             let account_infos = &[
@@ -187,7 +205,10 @@ pub trait Pool {
             program::invoke_signed(
                 &instruction,
                 account_infos,
-                &[&[context.pool_account.key.as_ref(), &[state.vault_signer_nonce]]],
+                &[&[
+                    context.pool_account.key.as_ref(),
+                    &[state.vault_signer_nonce],
+                ]],
             )?;
         }
         Ok(())

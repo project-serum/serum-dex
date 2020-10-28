@@ -120,9 +120,9 @@ pub enum PoolRequestInner {
     ///
     /// Accounts:
     ///
-    /// - `[]` Pool account 
-    /// - `[]` Pool token mint (`PoolState::pool_token_mint`)
-    /// - `[]` Pool vault account for each of the N pool assets (`AssetInfo::vault_address`)
+    /// - `[writable]` Pool account
+    /// - `[writable]` Pool token mint (`PoolState::pool_token_mint`)
+    /// - `[writable]` Pool vault account for each of the N pool assets (`AssetInfo::vault_address`)
     /// - `[]` Pool vault authority (`PoolState::vault_signer`)
     /// - `[]` Rent sysvar
     /// - `[]/[writable]` Any additional accounts needed to initialize the pool
@@ -163,7 +163,7 @@ pub enum PoolRequestInner {
 pub struct InitializePoolRequest {
     pub vault_signer_nonce: u8,
     pub assets_length: u8,
-    pub custom_state_length: u16,
+    pub custom_data: Vec<u8>,
 }
 
 #[derive(Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, BorshSchema)]

@@ -8,9 +8,8 @@ use borsh::{BorshDeserialize, BorshSerialize};
 pub use solana_sdk;
 use solana_sdk::program_pack::Pack;
 use solana_sdk::{
-    account_info::AccountInfo, entrypoint::ProgramResult, program_error::ProgramError,
+    account_info::AccountInfo, entrypoint::ProgramResult, info, program_error::ProgramError,
     pubkey::Pubkey,
-    info,
 };
 use spl_token::state::Account as TokenAccount;
 
@@ -48,8 +47,11 @@ pub fn pool_entrypoint<P: pool::Pool>(
     if instruction_data.len() >= 8 {
         let tag_bytes = array_ref![instruction_data, 0, 8];
         if u64::from_le_bytes(*tag_bytes) == PoolRequestTag::TAG_VALUE {
-            let request: PoolRequest = BorshDeserialize::try_from_slice(instruction_data)
-                .map_err(|_| ProgramError::InvalidInstructionData)?;
+            let request: PoolRequest =
+                BorshDeserialize::try_from_slice(instruction_data).map_err(|e| {
+                    info!(&e.to_string());
+                    ProgramError::InvalidInstructionData
+                })?;
             return PoolProcessor::<'_, '_, P> {
                 program_id,
                 accounts,
@@ -77,6 +79,7 @@ impl<'a, 'b, P: Pool> PoolProcessor<'a, 'b, P> {
         }
         let account = &self.accounts[0];
         if account.owner != self.program_id {
+            info!("Account not owned by pool program");
             return Err(ProgramError::IncorrectProgramId);
         };
         let data = account.try_borrow_data()?;
@@ -86,10 +89,12 @@ impl<'a, 'b, P: Pool> PoolProcessor<'a, 'b, P> {
         // Can't use BorshDeserialize::try_from_slice because try_from_slice expects the data to
         // take up the entire slice.
         let mut data: &[u8] = *data;
-        Ok(Some(
-            BorshDeserialize::deserialize(&mut data)
-                .map_err(|_| ProgramError::InvalidAccountData)?,
-        ))
+        Ok(Some(BorshDeserialize::deserialize(&mut data).map_err(
+            |e| {
+                info!(&e.to_string());
+                ProgramError::InvalidAccountData
+            },
+        )?))
     }
 
     fn set_state(&self, state: PoolState) -> PoolResult<()> {
@@ -127,8 +132,14 @@ impl<'a, 'b, P: Pool> PoolProcessor<'a, 'b, P> {
                 };
                 let mut result = Vec::with_capacity(4096);
                 result.extend_from_slice(&[0u8; 8]);
-                basket.serialize(&mut result).map_err(|_| ProgramError::InvalidInstructionData)?;
-                context.retbuf.as_ref().ok_or(ProgramError::InvalidArgument)?.write_data(result)?;
+                basket
+                    .serialize(&mut result)
+                    .map_err(|_| ProgramError::InvalidInstructionData)?;
+                context
+                    .retbuf
+                    .as_ref()
+                    .ok_or(ProgramError::InvalidArgument)?
+                    .write_data(result)?;
             }
             (Some(pool_state), PoolRequestInner::Transact(action)) => {
                 let context =
@@ -179,7 +190,7 @@ impl<'a, 'b, P: Pool> PoolProcessor<'a, 'b, P> {
         P::initialize_pool(&context, &mut state)?;
         if *context.pool_authority.key != context.derive_vault_authority(&state)? {
             info!("Invalid pool authority");
-            return Err(ProgramError::InvalidArgument)
+            return Err(ProgramError::InvalidArgument);
         }
         self.set_state(state)?;
         Ok(())

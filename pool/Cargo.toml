@@ -24,6 +24,7 @@ slice-of-array = "0.2.1"
 borsh = "0.7.1"
 anyhow = { version = "1.0.33", default-features = false }
 hex = "0.4.2"
+base64 = "0.13.0"
 
 [lib]
 name = "serum_pool"

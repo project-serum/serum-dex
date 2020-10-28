@@ -1,24 +1,16 @@
 use std::convert::TryInto;
 
 use solana_sdk;
-use solana_sdk::instruction::{
-    Instruction,
-    AccountMeta,
-};
 use solana_sdk::account_info::next_account_info;
+use solana_sdk::instruction::{AccountMeta, Instruction};
+use solana_sdk::program;
 use solana_sdk::program_option::COption;
 use solana_sdk::program_pack::Pack;
-use solana_sdk::program;
-use solana_sdk::{account_info::AccountInfo, info, program_error::ProgramError, pubkey::Pubkey};
 use solana_sdk::sysvar::{rent, Sysvar};
+use solana_sdk::{account_info::AccountInfo, info, program_error::ProgramError, pubkey::Pubkey};
 use spl_token::state::{Account as TokenAccount, Mint};
 
-use serum_pool_schema::{
-    Address,
-    Basket,
-    PoolRequestInner,
-    PoolState,
-};
+use serum_pool_schema::{Address, Basket, PoolRequestInner, PoolState};
 
 pub struct PoolContext<'a, 'b> {
     pub program_id: &'a Pubkey,
@@ -107,10 +99,7 @@ impl<'a, 'b> PoolContext<'a, 'b> {
             PoolRequestInner::GetBasket(_) => {
                 let retbuf_account = next_account_info(accounts_iter)?;
                 let retbuf_program = next_account_info(accounts_iter)?;
-                context.retbuf = Some(RetbufAccounts::new(
-                    retbuf_account,
-                    retbuf_program,
-                )?);
+                context.retbuf = Some(RetbufAccounts::new(retbuf_account, retbuf_program)?);
                 context.account_params = Some(next_account_infos(
                     accounts_iter,
                     state.account_params.len(),
@@ -204,29 +193,26 @@ impl<'a, 'b> RetbufAccounts<'a, 'b> {
     // data is a Vec whose first 8 bytes are the little-endian offset at which to
     // write the remaining bytes
     pub(crate) fn write_data(&self, data: Vec<u8>) -> Result<(), ProgramError> {
+        info!(&base64::encode(&data[8..]));
         let instruction = Instruction {
             program_id: *self.program.key,
             accounts: vec![AccountMeta::new(*self.account.key, false)],
             data,
         };
-        program::invoke(
-            &instruction,
-            &[self.account.clone(), self.program.clone()],
-        )?;
+        program::invoke(&instruction, &[self.account.clone(), self.program.clone()])?;
         Ok(())
     }
 }
 
 impl<'a, 'b> PoolContext<'a, 'b> {
     pub(crate) fn derive_vault_authority(&self, state: &PoolState) -> Result<Pubkey, ProgramError> {
-        let seeds = &[
-            self.pool_account.key.as_ref(),
-            &[state.vault_signer_nonce],
-        ];
-        Ok(Pubkey::create_program_address(seeds, self.program_id).map_err(|e| {
-            info!("Invalid vault signer nonce");
-            e
-        })?)
+        let seeds = &[self.pool_account.key.as_ref(), &[state.vault_signer_nonce]];
+        Ok(
+            Pubkey::create_program_address(seeds, self.program_id).map_err(|e| {
+                info!("Invalid vault signer nonce");
+                e
+            })?,
+        )
     }
 
     pub fn check_rent_exemption(&self, account: &AccountInfo) -> Result<(), ProgramError> {
@@ -262,7 +248,11 @@ impl<'a, 'b> PoolContext<'a, 'b> {
             .collect()
     }
 
-    pub fn get_simple_basket(&self, pool_tokens_requested: u64) -> Result<Basket, ProgramError> {
+    pub fn get_simple_basket(
+        &self,
+        pool_tokens_requested: u64,
+        round_up: bool,
+    ) -> Result<Basket, ProgramError> {
         let total_pool_tokens = self.total_pool_tokens()?;
         let basket_quantities: Option<Vec<i64>> = self
             .pool_asset_quantities()?
@@ -270,6 +260,11 @@ impl<'a, 'b> PoolContext<'a, 'b> {
             .map(|pool_quantity| {
                 (*pool_quantity as u128)
                     .checked_mul(pool_tokens_requested as u128)?
+                    .checked_add(if round_up {
+                        total_pool_tokens.checked_sub(1)?
+                    } else {
+                        0
+                    } as u128)?
                     .checked_div(total_pool_tokens as u128)?
                     .try_into()
                     .ok()
@@ -311,7 +306,7 @@ fn check_token_account(
     authority: &Pubkey,
 ) -> Result<(), ProgramError> {
     if account.owner != &spl_token::ID {
-        info!("Account now owned by spl-token program");
+        info!("Account not owned by spl-token program");
         return Err(ProgramError::IncorrectProgramId);
     }
     let token_account = TokenAccount::unpack(&account.try_borrow_data()?)?;
