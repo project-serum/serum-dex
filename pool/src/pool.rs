@@ -1,9 +1,9 @@
+use std::convert::TryInto;
+
 use solana_sdk::{
     account_info::AccountInfo, entrypoint::ProgramResult, program, program_error::ProgramError,
     pubkey::Pubkey,
 };
-
-use std::convert::TryInto;
 
 use serum_pool_schema::{Basket, PoolState};
 

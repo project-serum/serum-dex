@@ -83,6 +83,7 @@ impl<'a, 'b> PoolContext<'a, 'b> {
         };
 
         check_account_address(context.pool_token_mint, &state.pool_token_mint)?;
+        check_mint_minter(context.pool_token_mint, state.vault_signer.as_ref())?;
         for (asset_info, vault_account) in
             state.assets.iter().zip(context.pool_vault_accounts.iter())
         {
@@ -90,7 +91,7 @@ impl<'a, 'b> PoolContext<'a, 'b> {
             check_token_account(
                 vault_account,
                 asset_info.mint.as_ref(),
-                state.vault_signer.as_ref(),
+                Some(state.vault_signer.as_ref()),
             )?;
         }
         check_account_address(context.pool_authority, &state.vault_signer)?;
@@ -162,13 +163,9 @@ impl<'a, 'b> UserAccounts<'a, 'b> {
         asset_accounts: &'a [AccountInfo<'b>],
         authority: &'a AccountInfo<'b>,
     ) -> Result<Self, ProgramError> {
-        check_token_account(
-            pool_token_account,
-            state.pool_token_mint.as_ref(),
-            authority.key,
-        )?;
+        check_token_account(pool_token_account, state.pool_token_mint.as_ref(), None)?;
         for (asset_info, account) in state.assets.iter().zip(asset_accounts.iter()) {
-            check_token_account(account, asset_info.mint.as_ref(), authority.key)?;
+            check_token_account(account, asset_info.mint.as_ref(), None)?;
         }
         Ok(UserAccounts {
             pool_token_account,
@@ -254,6 +251,10 @@ impl<'a, 'b> PoolContext<'a, 'b> {
         round_up: bool,
     ) -> Result<Basket, ProgramError> {
         let total_pool_tokens = self.total_pool_tokens()?;
+        if total_pool_tokens == 0 {
+            info!("Pool is empty");
+            return Err(ProgramError::InvalidArgument);
+        }
         let basket_quantities: Option<Vec<i64>> = self
             .pool_asset_quantities()?
             .iter()
@@ -300,10 +301,23 @@ fn check_account_address(account: &AccountInfo, address: &Address) -> Result<(),
     Ok(())
 }
 
+fn check_mint_minter(account: &AccountInfo, mint_authority: &Pubkey) -> Result<(), ProgramError> {
+    if account.owner != &spl_token::ID {
+        info!("Account not owned by spl-token program");
+        return Err(ProgramError::IncorrectProgramId);
+    }
+    let mint = Mint::unpack(&account.try_borrow_data()?)?;
+    if mint.mint_authority != COption::Some(*mint_authority) {
+        info!("Incorrect mint authority");
+        return Err(ProgramError::InvalidArgument);
+    }
+    Ok(())
+}
+
 fn check_token_account(
     account: &AccountInfo,
     mint: &Pubkey,
-    authority: &Pubkey,
+    authority: Option<&Pubkey>,
 ) -> Result<(), ProgramError> {
     if account.owner != &spl_token::ID {
         info!("Account not owned by spl-token program");
@@ -314,9 +328,12 @@ fn check_token_account(
         info!("Incorrect mint");
         return Err(ProgramError::InvalidArgument);
     }
-    if &token_account.owner != authority && token_account.delegate != COption::Some(*authority) {
-        info!("Incorrect spl-token account owner");
-        return Err(ProgramError::InvalidArgument);
+    if let Some(authority) = authority {
+        if &token_account.owner != authority && token_account.delegate != COption::Some(*authority)
+        {
+            info!("Incorrect spl-token account owner");
+            return Err(ProgramError::InvalidArgument);
+        }
     }
     Ok(())
 }
