@@ -16,8 +16,8 @@ use spl_token::state::Account as TokenAccount;
 use serum_pool_schema::{AssetInfo, InitializePoolRequest, PoolAction, PoolRequest, PoolState};
 use serum_pool_schema::{PoolRequestInner, PoolRequestTag};
 
-use crate::context::PoolContext;
-use crate::pool::Pool;
+pub use crate::context::PoolContext;
+pub use crate::pool::Pool;
 
 pub mod context;
 pub mod pool;
@@ -32,7 +32,7 @@ macro_rules! declare_pool_entrypoint {
             program_id: &$crate::solana_sdk::pubkey::Pubkey,
             accounts: &[$crate::solana_sdk::account_info::AccountInfo],
             instruction_data: &[u8],
-        ) -> ProgramResult {
+        ) -> solana_sdk::entrypoint::ProgramResult {
             $crate::pool_entrypoint::<$PoolImpl>(program_id, accounts, instruction_data)
         }
     };

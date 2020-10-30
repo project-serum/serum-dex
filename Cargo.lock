@@ -3101,6 +3101,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "serum-pool-simple"
+version = "0.1.0"
+dependencies = [
+ "serum-pool",
+ "solana-sdk",
+]
+
+[[package]]
 name = "serum-registry"
 version = "0.1.0"
 dependencies = [
