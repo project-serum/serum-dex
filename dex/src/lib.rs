@@ -18,6 +18,7 @@ use solana_sdk::{
 };
 
 #[cfg(feature = "program")]
+#[cfg(not(feature = "no-entrypoint"))]
 entrypoint_deprecated!(process_instruction);
 #[cfg(feature = "program")]
 fn process_instruction(
