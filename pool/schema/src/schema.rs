@@ -156,7 +156,7 @@ pub enum PoolRequestInner {
     /// - `[signer]` Authority for user accounts
     /// - `[]` spl-token program
     /// - `[]/[writable]` Accounts in `PoolState::account_params`
-    Transact(PoolAction),
+    Execute(PoolAction),
 }
 
 #[derive(Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, BorshSchema)]

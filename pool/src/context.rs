@@ -106,7 +106,7 @@ impl<'a, 'b> PoolContext<'a, 'b> {
                     state.account_params.len(),
                 )?);
             }
-            PoolRequestInner::Transact(_) => {
+            PoolRequestInner::Execute(_) => {
                 let pool_token_account = next_account_info(accounts_iter)?;
                 let asset_accounts = next_account_infos(accounts_iter, state.assets.len())?;
                 let authority = next_account_info(accounts_iter)?;

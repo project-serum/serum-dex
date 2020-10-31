@@ -141,7 +141,7 @@ impl<'a, 'b, P: Pool> PoolProcessor<'a, 'b, P> {
                     .ok_or(ProgramError::InvalidArgument)?
                     .write_data(result)?;
             }
-            (Some(pool_state), PoolRequestInner::Transact(action)) => {
+            (Some(pool_state), PoolRequestInner::Execute(action)) => {
                 let context =
                     PoolContext::new(self.program_id, self.accounts, &pool_state, &self.request)?;
                 match action {
