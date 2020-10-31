@@ -176,6 +176,7 @@ impl<'a, 'b, P: Pool> PoolProcessor<'a, 'b, P> {
             vault_signer: self.accounts[2 + request.assets_length as usize].key.into(),
             vault_signer_nonce: request.vault_signer_nonce,
             account_params: vec![],
+            name: request.pool_name.clone(),
             admin_key: None,
             custom_state: vec![],
         };

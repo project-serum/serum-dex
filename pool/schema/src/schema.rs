@@ -87,6 +87,9 @@ pub struct PoolState {
     /// Additional accounts that need to be included with every request.
     pub account_params: Vec<ParamDesc>,
 
+    /// User-friendly pool name.
+    pub name: String,
+
     /// Meaning depends on the pool implementation.
     pub admin_key: Option<Address>,
 
@@ -163,6 +166,7 @@ pub enum PoolRequestInner {
 pub struct InitializePoolRequest {
     pub vault_signer_nonce: u8,
     pub assets_length: u8,
+    pub pool_name: String,
     pub custom_data: Vec<u8>,
 }
 
