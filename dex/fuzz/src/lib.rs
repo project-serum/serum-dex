@@ -5,12 +5,12 @@ use safe_transmute::to_bytes::{transmute_to_bytes, transmute_to_bytes_mut};
 use solana_sdk::account_info::AccountInfo;
 use solana_sdk::bpf_loader;
 use solana_sdk::clock::Epoch;
+use solana_sdk::program_pack::Pack;
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::rent::Rent;
 use solana_sdk::system_program;
 use solana_sdk::sysvar;
 use solana_sdk::sysvar::Sysvar;
-use spl_token::pack::Pack;
 use spl_token::state::Account as SplAccount;
 use spl_token::state::Mint;
 
