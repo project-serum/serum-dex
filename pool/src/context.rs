@@ -87,6 +87,7 @@ impl<'a, 'b> PoolContext<'a, 'b> {
         for (asset_info, vault_account) in
             state.assets.iter().zip(context.pool_vault_accounts.iter())
         {
+            info!("checking pool context token account");
             check_account_address(vault_account, &asset_info.vault_address)?;
             check_token_account(
                 vault_account,

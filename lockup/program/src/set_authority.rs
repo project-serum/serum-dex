@@ -2,14 +2,14 @@ use crate::access_control;
 use serum_common::pack::Pack;
 use serum_lockup::accounts::Safe;
 use serum_lockup::error::LockupError;
+use solana_program::info;
 use solana_sdk::account_info::{next_account_info, AccountInfo};
-use solana_sdk::info;
 use solana_sdk::pubkey::Pubkey;
 use std::convert::Into;
 
-pub fn handler<'a>(
-    program_id: &'a Pubkey,
-    accounts: &'a [AccountInfo<'a>],
+pub fn handler(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
     new_authority: Pubkey,
 ) -> Result<(), LockupError> {
     info!("handler: set_authority");
@@ -39,7 +39,7 @@ pub fn handler<'a>(
     Ok(())
 }
 
-fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), LockupError> {
+fn access_control(req: AccessControlRequest) -> Result<(), LockupError> {
     info!("access-control: set_authority");
 
     let AccessControlRequest {
@@ -56,13 +56,13 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), LockupError> 
     Ok(())
 }
 
-struct AccessControlRequest<'a> {
+struct AccessControlRequest<'a, 'b> {
     program_id: &'a Pubkey,
-    safe_acc_info: &'a AccountInfo<'a>,
-    safe_authority_acc_info: &'a AccountInfo<'a>,
+    safe_acc_info: &'a AccountInfo<'b>,
+    safe_authority_acc_info: &'a AccountInfo<'b>,
 }
 
-fn state_transition<'a>(req: StateTransitionRequest<'a>) -> Result<(), LockupError> {
+fn state_transition(req: StateTransitionRequest) -> Result<(), LockupError> {
     info!("state-transition: set_authority");
 
     let StateTransitionRequest {

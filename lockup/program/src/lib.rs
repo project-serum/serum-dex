@@ -7,14 +7,12 @@ use serum_lockup::error::{LockupError, LockupErrorCode};
 use serum_lockup::instruction::LockupInstruction;
 use solana_sdk::account_info::AccountInfo;
 use solana_sdk::entrypoint::ProgramResult;
-use solana_sdk::info;
 use solana_sdk::pubkey::Pubkey;
 
 pub(crate) mod access_control;
-mod claim;
+mod available_for_withdrawal;
 mod create_vesting;
 mod initialize;
-mod migrate;
 mod redeem;
 mod set_authority;
 mod whitelist_add;
@@ -23,34 +21,29 @@ mod whitelist_deposit;
 mod whitelist_withdraw;
 
 solana_sdk::entrypoint!(entry);
-fn entry<'a>(
-    program_id: &'a Pubkey,
-    accounts: &'a [AccountInfo<'a>],
-    instruction_data: &[u8],
-) -> ProgramResult {
-    info!("process-instruction");
-
+fn entry(program_id: &Pubkey, accounts: &[AccountInfo], instruction_data: &[u8]) -> ProgramResult {
     let instruction: LockupInstruction = LockupInstruction::unpack(instruction_data)
         .map_err(|_| LockupError::ErrorCode(LockupErrorCode::WrongSerialization))?;
 
     let result = match instruction {
-        LockupInstruction::Initialize { authority, nonce } => {
-            initialize::handler(program_id, accounts, authority, nonce)
+        LockupInstruction::Initialize { authority } => {
+            initialize::handler(program_id, accounts, authority)
         }
         LockupInstruction::CreateVesting {
             beneficiary,
-            end_slot,
+            end_ts,
             period_count,
             deposit_amount,
+            nonce,
         } => create_vesting::handler(
             program_id,
             accounts,
             beneficiary,
-            end_slot,
+            end_ts,
             period_count,
             deposit_amount,
+            nonce,
         ),
-        LockupInstruction::Claim => claim::handler(program_id, accounts),
         LockupInstruction::Redeem { amount } => redeem::handler(program_id, accounts, amount),
         LockupInstruction::WhitelistWithdraw {
             amount,
@@ -68,12 +61,12 @@ fn entry<'a>(
         LockupInstruction::SetAuthority { new_authority } => {
             set_authority::handler(program_id, accounts, new_authority)
         }
-        LockupInstruction::Migrate => migrate::handler(program_id, accounts),
+        LockupInstruction::AvailableForWithdrawal => {
+            available_for_withdrawal::handler(program_id, accounts)
+        }
     };
 
     result?;
-
-    info!("process-instruction success");
 
     Ok(())
 }

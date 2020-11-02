@@ -1,13 +1,13 @@
 use crate::access_control;
 use serum_lockup::accounts::{Whitelist, WhitelistEntry};
 use serum_lockup::error::{LockupError, LockupErrorCode};
+use solana_program::info;
 use solana_sdk::account_info::{next_account_info, AccountInfo};
-use solana_sdk::info;
 use solana_sdk::pubkey::Pubkey;
 
-pub fn handler<'a>(
-    program_id: &'a Pubkey,
-    accounts: &'a [AccountInfo<'a>],
+pub fn handler(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
     wl_entry: WhitelistEntry,
 ) -> Result<(), LockupError> {
     info!("handler: whitelist_delete");
@@ -47,7 +47,8 @@ fn access_control(req: AccessControlRequest) -> Result<(), LockupError> {
     let safe = access_control::governance(program_id, safe_acc_info, safe_authority_acc_info)?;
 
     // WhitelistDelete checks.
-    let _ = access_control::whitelist(whitelist_acc_info.clone(), &safe, program_id)?;
+    let _ =
+        access_control::whitelist(whitelist_acc_info.clone(), safe_acc_info, &safe, program_id)?;
 
     info!("access-control: success");
 
@@ -71,11 +72,11 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), LockupError> {
     Ok(())
 }
 
-struct AccessControlRequest<'a> {
+struct AccessControlRequest<'a, 'b> {
     program_id: &'a Pubkey,
-    safe_authority_acc_info: &'a AccountInfo<'a>,
-    safe_acc_info: &'a AccountInfo<'a>,
-    whitelist_acc_info: &'a AccountInfo<'a>,
+    safe_authority_acc_info: &'a AccountInfo<'b>,
+    safe_acc_info: &'a AccountInfo<'b>,
+    whitelist_acc_info: &'a AccountInfo<'b>,
 }
 
 struct StateTransitionRequest<'a> {
