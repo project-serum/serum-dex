@@ -10,7 +10,7 @@ use bumpalo::Bump;
 use itertools::Itertools;
 use lazy_static::lazy_static;
 use libfuzzer_sys::fuzz_target;
-use solana_sdk::account_info::AccountInfo;
+use solana_program::account_info::AccountInfo;
 
 use serum_dex::error::{DexError, DexErrorCode};
 use serum_dex::instruction::{CancelOrderInstruction, MarketInstruction, NewOrderInstructionV2};

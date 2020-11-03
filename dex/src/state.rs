@@ -12,16 +12,9 @@ use enumflags2::BitFlags;
 use num_traits::FromPrimitive;
 use safe_transmute::{self, to_bytes::transmute_to_bytes, trivial::TriviallyTransmutable};
 
-#[cfg(feature = "program")]
-use solana_sdk::info;
-
-#[cfg(not(feature = "program"))]
-macro_rules! info {
-    ($($i:expr),*) => { { ($($i),*) } };
-}
-
-use solana_sdk::{
+use solana_program::{
     account_info::AccountInfo,
+    info,
     program_error::ProgramError,
     program_pack::Pack,
     pubkey::Pubkey,
@@ -1114,21 +1107,20 @@ pub fn gen_vault_signer_key(
 }
 
 #[cfg(not(feature = "fuzz"))]
-#[cfg(feature = "program")]
 fn invoke_spl_token(
-    instruction: &solana_sdk::instruction::Instruction,
+    instruction: &solana_program::instruction::Instruction,
     account_infos: &[AccountInfo],
     signers_seeds: &[&[&[u8]]],
-) -> solana_sdk::entrypoint::ProgramResult {
-    solana_sdk::program::invoke_signed(instruction, account_infos, signers_seeds)
+) -> solana_program::entrypoint::ProgramResult {
+    solana_program::program::invoke_signed(instruction, account_infos, signers_seeds)
 }
 
 #[cfg(feature = "fuzz")]
 fn invoke_spl_token(
-    instruction: &solana_sdk::instruction::Instruction,
+    instruction: &solana_program::instruction::Instruction,
     account_infos: &[AccountInfo],
     _signers_seeds: &[&[&[u8]]],
-) -> solana_sdk::entrypoint::ProgramResult {
+) -> solana_program::entrypoint::ProgramResult {
     assert_eq!(instruction.program_id, spl_token::ID);
     let account_infos: Vec<AccountInfo> = instruction
         .accounts

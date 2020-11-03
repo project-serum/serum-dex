@@ -6,7 +6,7 @@ use num_enum::{IntoPrimitive, TryFromPrimitive};
 use proptest_derive::Arbitrary;
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "program")]
-use solana_sdk::info;
+use solana_program::info;
 
 use crate::critbit::SlabTreeError;
 use crate::error::{DexErrorCode, DexResult, SourceFileId};
