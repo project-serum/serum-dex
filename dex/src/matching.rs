@@ -351,6 +351,10 @@ impl<'ob> OrderBookState<'ob> {
                         cancelled_provide_qty = best_bid_ref.quantity();
                         cancelled_take_qty = 0;
                     }
+                    SelfTradeBehavior::CancelTake => {
+                        cancelled_provide_qty = 0;
+                        cancelled_take_qty = unfilled_qty;
+                    }
                 };
 
                 let remaining_provide_size = bid_size - cancelled_provide_qty;
@@ -603,9 +607,9 @@ impl<'ob> OrderBookState<'ob> {
             }
 
             let offer_size = best_offer_ref.quantity();
-            let trade_qty = offer_size
-                .min(coin_qty_remaining)
+            let take_qty = coin_qty_remaining
                 .min(pc_qty_remaining / best_offer_ref.price().get());
+            let trade_qty = offer_size.min(take_qty);
 
             if trade_qty == 0 {
                 break true;
@@ -626,6 +630,10 @@ impl<'ob> OrderBookState<'ob> {
                     SelfTradeBehavior::DecrementTake => {
                         cancelled_take_qty = trade_qty;
                         cancelled_provide_qty = trade_qty;
+                    }
+                    SelfTradeBehavior::CancelTake => {
+                        cancelled_take_qty = take_qty;
+                        cancelled_provide_qty = 0;
                     }
                 };
 

@@ -67,6 +67,7 @@ pub struct InitializeMarketInstruction {
 pub enum SelfTradeBehavior {
     DecrementTake = 0,
     CancelProvide = 1,
+    CancelTake = 2,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Serialize, Deserialize)]
