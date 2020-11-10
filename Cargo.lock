@@ -3150,6 +3150,7 @@ dependencies = [
  "arrayref",
  "bincode",
  "bytemuck",
+ "byteorder",
  "enumflags2",
  "field-offset",
  "itertools",
@@ -3162,6 +3163,7 @@ dependencies = [
  "static_assertions",
  "thiserror",
  "without-alloc",
+ "zerocopy",
 ]
 
 [[package]]
@@ -4924,6 +4926,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "244c3741f4240ef46274860397c7c74e50eb23624996930e484c16679633a54c"
 dependencies = [
  "libc",
+]
+
+[[package]]
+name = "zerocopy"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6580539ad917b7c026220c4b3f2c08d52ce54d6ce0dc491e66002e35388fab46"
+dependencies = [
+ "byteorder",
+ "zerocopy-derive",
+]
+
+[[package]]
+name = "zerocopy-derive"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d498dbd1fd7beb83c86709ae1c33ca50942889473473d287d56ce4770a18edfb"
+dependencies = [
+ "proc-macro2 1.0.24",
+ "syn 1.0.42",
+ "synstructure",
 ]
 
 [[package]]

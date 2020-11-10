@@ -1,9 +1,11 @@
 #![no_main]
+#![deny(safe_packed_borrows)]
 
 use std::cell::RefMut;
 use std::cmp::max;
 use std::collections::HashMap;
 use std::mem::size_of;
+use std::convert::identity;
 
 use arbitrary::{Arbitrary, Unstructured};
 use bumpalo::Bump;
@@ -175,7 +177,7 @@ fn run_actions(actions: Vec<Action>) {
     let mut actions = Vec::new();
     for (owner_id, owner) in owners.iter().sorted_by_key(|(order_id, _)| *order_id) {
         if let Some(orders) = owner.open_orders() {
-            for (slot, order_id) in orders.orders.iter().enumerate() {
+            for (slot, order_id) in identity(orders.orders).iter().enumerate() {
                 if *order_id > 0 {
                     if actions.len() % 8 == 0 {
                         actions.push(Action::MatchOrders(100));
@@ -219,10 +221,10 @@ fn run_actions(actions: Vec<Action>) {
             }
             _ => load_orders_result.unwrap(),
         };
-        assert_eq!(open_orders.native_coin_free, 0);
-        assert_eq!(open_orders.native_coin_total, 0);
-        assert_eq!(open_orders.native_pc_free, 0);
-        assert_eq!(open_orders.native_pc_total, 0);
+        assert_eq!(identity(open_orders.native_coin_free), 0);
+        assert_eq!(identity(open_orders.native_coin_total), 0);
+        assert_eq!(identity(open_orders.native_pc_free), 0);
+        assert_eq!(identity(open_orders.native_pc_total), 0);
     }
 
     let market_state =
@@ -248,13 +250,13 @@ fn run_actions(actions: Vec<Action>) {
         total_pc_bal + market_state.referrer_rebates_accrued + total_referrer_rebates + swept_fees,
         owners.len() as u64 * INITIAL_PC_BALANCE
     );
-    assert_eq!(market_state.coin_fees_accrued, 0);
-    assert_eq!(market_state.pc_fees_accrued, 0);
-    assert_eq!(market_state.coin_deposits_total, 0);
-    assert_eq!(market_state.pc_deposits_total, 0);
+    assert_eq!(identity(market_state.coin_fees_accrued), 0);
+    assert_eq!(identity(market_state.pc_fees_accrued), 0);
+    assert_eq!(identity(market_state.coin_deposits_total), 0);
+    assert_eq!(identity(market_state.pc_deposits_total), 0);
 
     assert_eq!(
-        market_state.coin_deposits_total,
+        identity(market_state.coin_deposits_total),
         get_token_account_balance(&market_accounts.coin_vault),
     );
     assert_eq!(
@@ -315,10 +317,10 @@ fn run_actions(actions: Vec<Action>) {
 
         owner
             .open_orders()
-            .map(|orders| assert_eq!(orders.native_coin_total, 0));
+            .map(|orders| assert_eq!(identity(orders.native_coin_total), 0));
         owner
             .open_orders()
-            .map(|orders| assert_eq!(orders.native_pc_total, 0));
+            .map(|orders| assert_eq!(identity(orders.native_pc_total), 0));
     }
 }
 

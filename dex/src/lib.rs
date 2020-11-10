@@ -1,3 +1,4 @@
+#![deny(safe_packed_borrows)]
 #![allow(clippy::try_err)]
 
 #[macro_use]

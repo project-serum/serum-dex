@@ -1,3 +1,4 @@
+#![deny(safe_packed_borrows)]
 use std::mem::size_of;
 
 use bumpalo::Bump;
