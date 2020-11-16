@@ -24,12 +24,6 @@ path = ".."
 features = ["fuzz", "program"]
 
 [[bin]]
-name = "single_order"
-path = "fuzz_targets/single_order.rs"
-test = false
-doc = false
-
-[[bin]]
 name = "multiple_orders"
 path = "fuzz_targets/multiple_orders.rs"
 test = false

@@ -4,8 +4,8 @@
 use std::cell::RefMut;
 use std::cmp::max;
 use std::collections::HashMap;
-use std::mem::size_of;
 use std::convert::identity;
+use std::mem::size_of;
 
 use arbitrary::{Arbitrary, Unstructured};
 use bumpalo::Bump;

@@ -429,14 +429,24 @@ fn get_keys_for_market<'a>(
     );
     Ok(MarketPubkeys {
         market: Box::new(*market),
-        req_q: Box::new(Pubkey::new(transmute_one_to_bytes(&identity(market_state.req_q)))),
-        event_q: Box::new(Pubkey::new(transmute_one_to_bytes(&identity(market_state.event_q)))),
-        bids: Box::new(Pubkey::new(transmute_one_to_bytes(&identity(market_state.bids)))),
-        asks: Box::new(Pubkey::new(transmute_one_to_bytes(&identity(market_state.asks)))),
-        coin_vault: Box::new(Pubkey::new(transmute_one_to_bytes(
-            &identity(market_state.coin_vault),
-        ))),
-        pc_vault: Box::new(Pubkey::new(transmute_one_to_bytes(&identity(market_state.pc_vault)))),
+        req_q: Box::new(Pubkey::new(transmute_one_to_bytes(&identity(
+            market_state.req_q,
+        )))),
+        event_q: Box::new(Pubkey::new(transmute_one_to_bytes(&identity(
+            market_state.event_q,
+        )))),
+        bids: Box::new(Pubkey::new(transmute_one_to_bytes(&identity(
+            market_state.bids,
+        )))),
+        asks: Box::new(Pubkey::new(transmute_one_to_bytes(&identity(
+            market_state.asks,
+        )))),
+        coin_vault: Box::new(Pubkey::new(transmute_one_to_bytes(&identity(
+            market_state.coin_vault,
+        )))),
+        pc_vault: Box::new(Pubkey::new(transmute_one_to_bytes(&identity(
+            market_state.pc_vault,
+        )))),
         vault_signer_key: Box::new(vault_signer_key),
     })
 }

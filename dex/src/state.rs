@@ -1,6 +1,8 @@
 #![cfg_attr(not(feature = "program"), allow(unused))]
 use num_enum::TryFromPrimitive;
-use std::{cell::RefMut, convert::TryInto, mem::size_of, num::NonZeroU64, ops::DerefMut, convert::identity};
+use std::{
+    cell::RefMut, convert::identity, convert::TryInto, mem::size_of, num::NonZeroU64, ops::DerefMut,
+};
 
 use arrayref::{array_ref, array_refs, mut_array_refs};
 
@@ -240,7 +242,10 @@ impl MarketState {
             if !rent.is_exempt(open_orders_lamports, open_orders_data_len) {
                 return Err(DexErrorCode::OrdersNotRentExempt)?;
             }
-            open_orders.init(&identity(self.own_address), &owner_account.key.to_aligned_bytes())?;
+            open_orders.init(
+                &identity(self.own_address),
+                &owner_account.key.to_aligned_bytes(),
+            )?;
         }
         open_orders.check_flags()?;
         check_assert_eq!(identity(open_orders.market), identity(self.own_address))
@@ -315,7 +320,8 @@ impl MarketState {
 
     #[inline]
     fn check_coin_payer(&self, payer: account_parser::TokenAccount) -> DexResult {
-        if &payer.inner().try_borrow_data()?[..32] != transmute_to_bytes(&identity(self.coin_mint)) {
+        if &payer.inner().try_borrow_data()?[..32] != transmute_to_bytes(&identity(self.coin_mint))
+        {
             Err(DexErrorCode::WrongCoinMint)?
         }
         Ok(())

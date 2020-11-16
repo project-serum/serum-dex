@@ -8,7 +8,7 @@ use bytemuck::{cast, cast_mut, cast_ref, cast_slice, cast_slice_mut, Pod, Zeroab
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use static_assertions::const_assert_eq;
 use std::{
-    convert::{TryFrom, identity},
+    convert::{identity, TryFrom},
     mem::{align_of, size_of},
     num::NonZeroU64,
 };
