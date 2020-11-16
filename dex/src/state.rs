@@ -2019,8 +2019,10 @@ impl State {
             orders_owner: _,
         } = args;
         let mut slot = None;
-        for (i, ith_client_order_id) in identity(open_orders.client_order_ids).iter().enumerate() {
-            if *ith_client_order_id == client_order_id.get() && !open_orders.slot_is_free(i as u8) {
+        for i in 0..128 {
+            if open_orders.client_order_ids[i] == client_order_id.get()
+                && !open_orders.slot_is_free(i as u8)
+            {
                 slot = Some(i);
                 break;
             }
