@@ -1,16 +1,17 @@
+#![deny(safe_packed_borrows)]
 use std::mem::size_of;
 
 use bumpalo::Bump;
 use safe_transmute::to_bytes::{transmute_to_bytes, transmute_to_bytes_mut};
-use solana_sdk::account_info::AccountInfo;
-use solana_sdk::bpf_loader;
-use solana_sdk::clock::Epoch;
-use solana_sdk::program_pack::Pack;
-use solana_sdk::pubkey::Pubkey;
-use solana_sdk::rent::Rent;
-use solana_sdk::system_program;
-use solana_sdk::sysvar;
-use solana_sdk::sysvar::Sysvar;
+use solana_program::account_info::AccountInfo;
+use solana_program::bpf_loader;
+use solana_program::clock::Epoch;
+use solana_program::program_pack::Pack;
+use solana_program::pubkey::Pubkey;
+use solana_program::rent::Rent;
+use solana_program::system_program;
+use solana_program::sysvar;
+use solana_program::sysvar::Sysvar;
 use spl_token::state::Account as SplAccount;
 use spl_token::state::Mint;
 

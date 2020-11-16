@@ -1,3 +1,4 @@
+#![deny(safe_packed_borrows)]
 #![allow(clippy::try_err)]
 
 #[macro_use]
@@ -13,7 +14,7 @@ pub mod matching;
 pub mod state;
 
 #[cfg(feature = "program")]
-use solana_sdk::{
+use solana_program::{
     account_info::AccountInfo, entrypoint::ProgramResult, entrypoint_deprecated, pubkey::Pubkey,
 };
 

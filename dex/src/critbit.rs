@@ -8,7 +8,7 @@ use bytemuck::{cast, cast_mut, cast_ref, cast_slice, cast_slice_mut, Pod, Zeroab
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use static_assertions::const_assert_eq;
 use std::{
-    convert::TryFrom,
+    convert::{identity, TryFrom},
     mem::{align_of, size_of},
     num::NonZeroU64,
 };
@@ -26,7 +26,7 @@ enum NodeTag {
 }
 
 #[derive(Copy, Clone)]
-#[repr(C, align(8))]
+#[repr(packed)]
 struct InnerNode {
     tag: u32,
     prefix_len: u32,
@@ -38,15 +38,15 @@ unsafe impl Zeroable for InnerNode {}
 unsafe impl Pod for InnerNode {}
 
 impl InnerNode {
-    fn walk_down(&self, search_key: &u128) -> (NodeHandle, bool) {
+    fn walk_down(&self, search_key: u128) -> (NodeHandle, bool) {
         let crit_bit_mask = (1u128 << 127) >> self.prefix_len;
-        let crit_bit = (*search_key & crit_bit_mask) != 0;
+        let crit_bit = (search_key & crit_bit_mask) != 0;
         (self.children[crit_bit as usize], crit_bit)
     }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-#[repr(C, align(8))]
+#[repr(packed)]
 pub struct LeafNode {
     tag: u32,
     owner_slot: u8,
@@ -64,8 +64,8 @@ impl LeafNode {
     #[inline]
     pub fn new(
         owner_slot: u8,
-        key: &u128,
-        owner: &[u64; 4],
+        key: u128,
+        owner: [u64; 4],
         quantity: u64,
         fee_tier: FeeTier,
         client_order_id: u64,
@@ -75,8 +75,8 @@ impl LeafNode {
             owner_slot,
             fee_tier: fee_tier.into(),
             padding: [0; 2],
-            key: *key,
-            owner: *owner,
+            key,
+            owner,
             quantity,
             client_order_id,
         }
@@ -93,8 +93,8 @@ impl LeafNode {
     }
 
     #[inline]
-    pub fn order_id(&self) -> &u128 {
-        &self.key
+    pub fn order_id(&self) -> u128 {
+        self.key
     }
 
     #[inline]
@@ -103,13 +103,13 @@ impl LeafNode {
     }
 
     #[inline]
-    pub fn quantity_mut(&mut self) -> &mut u64 {
-        &mut self.quantity
+    pub fn set_quantity(&mut self, quantity: u64) {
+        self.quantity = quantity;
     }
 
     #[inline]
-    pub fn owner(&self) -> &[u64; 4] {
-        &self.owner
+    pub fn owner(&self) -> [u64; 4] {
+        self.owner
     }
 
     #[inline]
@@ -124,7 +124,7 @@ impl LeafNode {
 }
 
 #[derive(Copy, Clone)]
-#[repr(C, align(8))]
+#[repr(packed)]
 struct FreeNode {
     tag: u32,
     next: u32,
@@ -146,7 +146,7 @@ const _NODE_SIZE: usize = 72;
 const _INNER_NODE_ALIGN: usize = align_of::<InnerNode>();
 const _LEAF_NODE_ALIGN: usize = align_of::<LeafNode>();
 const _FREE_NODE_ALIGN: usize = align_of::<FreeNode>();
-const _NODE_ALIGN: usize = 8;
+const _NODE_ALIGN: usize = 1;
 
 const_assert_eq!(_NODE_SIZE, _INNER_NODE_SIZE);
 const_assert_eq!(_NODE_SIZE, _LEAF_NODE_SIZE);
@@ -157,7 +157,7 @@ const_assert_eq!(_NODE_ALIGN, _LEAF_NODE_ALIGN);
 const_assert_eq!(_NODE_ALIGN, _FREE_NODE_ALIGN);
 
 #[derive(Copy, Clone)]
-#[repr(C, align(8))]
+#[repr(packed)]
 pub struct AnyNode {
     tag: u32,
     padding: [u32; 17],
@@ -240,7 +240,7 @@ const_assert_eq!(_NODE_SIZE, size_of::<AnyNode>());
 const_assert_eq!(_NODE_ALIGN, align_of::<AnyNode>());
 
 #[derive(Copy, Clone)]
-#[repr(C)]
+#[repr(packed)]
 struct SlabHeader {
     bump_index: u64,
     free_list_len: u64,
@@ -386,7 +386,7 @@ impl SlabView<AnyNode> for Slab {
             bump_index,
             free_list_len,
             ..
-        } = self.header();
+        } = *self.header();
         bump_index == free_list_len
     }
 
@@ -409,7 +409,7 @@ impl SlabView<AnyNode> for Slab {
     }
 
     fn insert(&mut self, val: &AnyNode) -> Result<u32, ()> {
-        match NodeTag::try_from(val.tag) {
+        match NodeTag::try_from(identity(val.tag)) {
             Ok(NodeTag::InnerNode) | Ok(NodeTag::LeafNode) => (),
             _ => unreachable!(),
         };
@@ -436,7 +436,7 @@ impl SlabView<AnyNode> for Slab {
 
         match NodeTag::try_from(node.tag) {
             Ok(NodeTag::FreeNode) => assert!(header.free_list_len > 1),
-            Ok(NodeTag::LastFreeNode) => assert_eq!(header.free_list_len, 1),
+            Ok(NodeTag::LastFreeNode) => assert_eq!(identity(header.free_list_len), 1),
             _ => unreachable!(),
         };
 
@@ -549,7 +549,7 @@ impl Slab {
                 Some(NodeRef::Inner(inner)) => {
                     let keep_old_root = shared_prefix_len >= inner.prefix_len;
                     if keep_old_root {
-                        root = inner.walk_down(&new_leaf.key).0;
+                        root = inner.walk_down(new_leaf.key).0;
                         continue;
                     };
                 }
@@ -589,13 +589,13 @@ impl Slab {
     }
 
     #[cfg(test)]
-    fn find_by_key(&self, search_key: &u128) -> Option<NodeHandle> {
+    fn find_by_key(&self, search_key: u128) -> Option<NodeHandle> {
         let mut node_handle: NodeHandle = self.root()?;
         loop {
             let node_ref = self.get(node_handle).unwrap();
             let node_prefix_len = node_ref.prefix_len();
             let node_key = node_ref.key().unwrap();
-            let common_prefix_len = (*search_key ^ node_key).leading_zeros();
+            let common_prefix_len = (search_key ^ node_key).leading_zeros();
             if common_prefix_len < node_prefix_len {
                 return None;
             }
@@ -603,7 +603,7 @@ impl Slab {
                 NodeRef::Leaf(_) => break Some(node_handle),
                 NodeRef::Inner(inner) => {
                     let crit_bit_mask = (1u128 << 127) >> node_prefix_len;
-                    let _search_key_crit_bit = (*search_key & crit_bit_mask) != 0;
+                    let _search_key_crit_bit = (search_key & crit_bit_mask) != 0;
                     node_handle = inner.walk_down(search_key).0;
                     continue;
                 }
@@ -612,14 +612,14 @@ impl Slab {
     }
 
     #[inline]
-    pub fn remove_by_key(&mut self, search_key: &u128) -> Option<LeafNode> {
+    pub fn remove_by_key(&mut self, search_key: u128) -> Option<LeafNode> {
         let mut parent_h = self.root()?;
         let mut child_h;
         let mut crit_bit;
         match self.get(parent_h).unwrap().case().unwrap() {
-            NodeRef::Leaf(&leaf) if leaf.key == *search_key => {
+            NodeRef::Leaf(&leaf) if leaf.key == search_key => {
                 let header = self.header_mut();
-                assert_eq!(header.leaf_count, 1);
+                assert_eq!(identity(header.leaf_count), 1);
                 header.root_node = 0;
                 header.leaf_count = 0;
                 let _old_root = self.remove(parent_h).unwrap();
@@ -642,7 +642,7 @@ impl Slab {
                     continue;
                 }
                 NodeRef::Leaf(&leaf) => {
-                    if leaf.key != *search_key {
+                    if leaf.key != search_key {
                         return None;
                     }
 
@@ -661,12 +661,12 @@ impl Slab {
 
     #[inline]
     pub fn remove_min(&mut self) -> Option<LeafNode> {
-        self.remove_by_key(&self.get(self.find_min()?)?.key()?)
+        self.remove_by_key(self.get(self.find_min()?)?.key()?)
     }
 
     #[inline]
     pub fn remove_max(&mut self) -> Option<LeafNode> {
-        self.remove_by_key(&self.get(self.find_max()?)?.key()?)
+        self.remove_by_key(self.get(self.find_max()?)?.key()?)
     }
 
     #[cfg(test)]
@@ -740,7 +740,7 @@ impl Slab {
         }
         assert_eq!(
             count + self.header().free_list_len as u64,
-            self.header().bump_index
+            identity(self.header().bump_index)
         );
 
         let mut free_nodes_remaining = self.header().free_list_len;
@@ -751,11 +751,11 @@ impl Slab {
                 0 => break,
                 1 => {
                     contents = &self.nodes()[next_free_node as usize];
-                    assert_eq!(contents.tag, u32::from(NodeTag::LastFreeNode));
+                    assert_eq!(identity(contents.tag), u32::from(NodeTag::LastFreeNode));
                 }
                 _ => {
                     contents = &self.nodes()[next_free_node as usize];
-                    assert_eq!(contents.tag, u32::from(NodeTag::FreeNode));
+                    assert_eq!(identity(contents.tag), u32::from(NodeTag::FreeNode));
                 }
             };
             let typed_ref: &FreeNode = cast_ref(contents);
@@ -794,7 +794,7 @@ mod tests {
                 let key = rng.gen();
                 let owner = rng.gen();
                 let qty = rng.gen();
-                let leaf = LeafNode::new(offset, &key, &owner, qty, FeeTier::Base, 0);
+                let leaf = LeafNode::new(offset, key, owner, qty, FeeTier::Base, 0);
 
                 println!("{:x}", key);
                 println!("{}", i);
@@ -807,13 +807,13 @@ mod tests {
                 let valid_search_key = *all_keys.choose(&mut rng).unwrap();
                 let invalid_search_key = rng.gen();
 
-                for search_key in &[valid_search_key, invalid_search_key] {
+                for &search_key in &[valid_search_key, invalid_search_key] {
                     let slab_value = slab
                         .find_by_key(search_key)
                         .map(|x| slab.get(x))
                         .flatten()
                         .map(bytes_of);
-                    let model_value = model.get(search_key).map(bytes_of);
+                    let model_value = model.get(&search_key).map(bytes_of);
                     assert_eq!(slab_value, model_value);
                 }
 
@@ -889,7 +889,7 @@ mod tests {
                         };
                         let owner = rng.gen();
                         let qty = rng.gen();
-                        let leaf = LeafNode::new(offset, &key, &owner, qty, FeeTier::SRM5, 5);
+                        let leaf = LeafNode::new(offset, key, owner, qty, FeeTier::SRM5, 5);
 
                         println!("Insert {:x}", key);
 
@@ -909,13 +909,13 @@ mod tests {
 
                         println!("Remove {:x}", key);
 
-                        let slab_value = slab.remove_by_key(&key);
+                        let slab_value = slab.remove_by_key(key);
                         let model_value = model.remove(&key);
                         assert_eq!(slab_value.as_ref().map(cast_ref), model_value.as_ref());
                     }
                     Op::Min => {
                         if model.len() == 0 {
-                            assert_eq!(slab.header().leaf_count, 0);
+                            assert_eq!(identity(slab.header().leaf_count), 0);
                         } else {
                             let slab_min = slab.get(slab.find_min().unwrap()).unwrap();
                             let model_min = model.iter().next().unwrap().1;
@@ -924,7 +924,7 @@ mod tests {
                     }
                     Op::Max => {
                         if model.len() == 0 {
-                            assert_eq!(slab.header().leaf_count, 0);
+                            assert_eq!(identity(slab.header().leaf_count), 0);
                         } else {
                             let slab_max = slab.get(slab.find_max().unwrap()).unwrap();
                             let model_max = model.iter().next_back().unwrap().1;
@@ -939,14 +939,5 @@ mod tests {
                 }
             }
         }
-    }
-
-    #[test]
-    #[should_panic]
-    fn panics_unaligned() {
-        let mut aligned_buf = vec![0u64; 10_000];
-        let bytes: &mut [u8] = cast_slice_mut(aligned_buf.as_mut_slice());
-
-        Slab::new(&mut bytes[1..]);
     }
 }

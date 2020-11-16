@@ -11,8 +11,8 @@ cargo-fuzz = true
 [dependencies]
 libfuzzer-sys = "0.3"
 arbitrary = "0.4.6"
-solana-sdk = { version = "=1.3.14", default-features = false, features = ["program"] }
-spl-token = {version = "=2.0.6", default-features = false, features = ["program"] }
+solana-program = "1.4.4"
+spl-token = {version = "3.0.0-pre1", features = ["no-entrypoint"] }
 bumpalo = { version = "3.4.0", features = ["collections", "boxed"] }
 safe-transmute = "0.11.0"
 rand = "0.7.3"
@@ -22,12 +22,6 @@ lazy_static = "1.4.0"
 [dependencies.serum_dex]
 path = ".."
 features = ["fuzz", "program"]
-
-[[bin]]
-name = "single_order"
-path = "fuzz_targets/single_order.rs"
-test = false
-doc = false
 
 [[bin]]
 name = "multiple_orders"

@@ -1,8 +1,10 @@
+#![deny(safe_packed_borrows)]
 #![allow(dead_code)]
 
 use std::borrow::Cow;
 use std::cmp::min;
 use std::collections::BTreeSet;
+use std::convert::identity;
 use std::mem::size_of;
 use std::num::NonZeroU64;
 use std::{thread, time};
@@ -422,19 +424,29 @@ fn get_keys_for_market<'a>(
     let vault_signer_key =
         gen_vault_signer_key(market_state.vault_signer_nonce, market, program_id)?;
     assert_eq!(
-        transmute_to_bytes(&market_state.own_address),
+        transmute_to_bytes(&identity(market_state.own_address)),
         market.as_ref()
     );
     Ok(MarketPubkeys {
         market: Box::new(*market),
-        req_q: Box::new(Pubkey::new(transmute_one_to_bytes(&market_state.req_q))),
-        event_q: Box::new(Pubkey::new(transmute_one_to_bytes(&market_state.event_q))),
-        bids: Box::new(Pubkey::new(transmute_one_to_bytes(&market_state.bids))),
-        asks: Box::new(Pubkey::new(transmute_one_to_bytes(&market_state.asks))),
-        coin_vault: Box::new(Pubkey::new(transmute_one_to_bytes(
-            &market_state.coin_vault,
-        ))),
-        pc_vault: Box::new(Pubkey::new(transmute_one_to_bytes(&market_state.pc_vault))),
+        req_q: Box::new(Pubkey::new(transmute_one_to_bytes(&identity(
+            market_state.req_q,
+        )))),
+        event_q: Box::new(Pubkey::new(transmute_one_to_bytes(&identity(
+            market_state.event_q,
+        )))),
+        bids: Box::new(Pubkey::new(transmute_one_to_bytes(&identity(
+            market_state.bids,
+        )))),
+        asks: Box::new(Pubkey::new(transmute_one_to_bytes(&identity(
+            market_state.asks,
+        )))),
+        coin_vault: Box::new(Pubkey::new(transmute_one_to_bytes(&identity(
+            market_state.coin_vault,
+        )))),
+        pc_vault: Box::new(Pubkey::new(transmute_one_to_bytes(&identity(
+            market_state.pc_vault,
+        )))),
         vault_signer_key: Box::new(vault_signer_key),
     })
 }
