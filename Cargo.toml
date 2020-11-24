@@ -5,7 +5,6 @@ members = [
     "common/tests",
     "crank",
     "pool",
-    "pool/client",
     "pool/schema",
     "pool/examples/simple",
     "registry",
