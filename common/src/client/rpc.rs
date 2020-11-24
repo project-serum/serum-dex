@@ -183,7 +183,7 @@ pub fn send_txn(client: &RpcClient, txn: &Transaction, _simulate: bool) -> Resul
         CommitmentConfig::single(),
         RpcSendTransactionConfig {
             skip_preflight: true,
-            preflight_commitment: None,
+            ..RpcSendTransactionConfig::default()
         },
     )?)
 }

@@ -21,6 +21,7 @@ members = [
     "node/context",
     "node/dev",
     "lockup/tests/stake",
+    "assert-owner",
 ]
 exclude = [
     "dex",

@@ -1,6 +1,8 @@
 #![cfg_attr(not(feature = "program"), allow(unused))]
 use num_enum::TryFromPrimitive;
-use std::{cell::RefMut, convert::TryInto, mem::size_of, num::NonZeroU64, ops::DerefMut};
+use std::{
+    cell::RefMut, convert::identity, convert::TryInto, mem::size_of, num::NonZeroU64, ops::DerefMut,
+};
 
 use arrayref::{array_ref, array_refs, mut_array_refs};
 
@@ -12,16 +14,9 @@ use enumflags2::BitFlags;
 use num_traits::FromPrimitive;
 use safe_transmute::{self, to_bytes::transmute_to_bytes, trivial::TriviallyTransmutable};
 
-#[cfg(feature = "program")]
-use solana_sdk::info;
-
-#[cfg(not(feature = "program"))]
-macro_rules! info {
-    ($($i:expr),*) => { { ($($i),*) } };
-}
-
-use solana_sdk::{
+use solana_program::{
     account_info::AccountInfo,
+    info,
     program_error::ProgramError,
     program_pack::Pack,
     pubkey::Pubkey,
@@ -69,7 +64,7 @@ pub enum AccountFlag {
 
 #[cfg_attr(target_endian = "little", derive(Debug))]
 #[derive(Copy, Clone)]
-#[repr(C)]
+#[repr(packed)]
 pub struct MarketState {
     // 0
     pub account_flags: u64, // Initialized, Market
@@ -247,13 +242,16 @@ impl MarketState {
             if !rent.is_exempt(open_orders_lamports, open_orders_data_len) {
                 return Err(DexErrorCode::OrdersNotRentExempt)?;
             }
-            open_orders.init(&self.own_address, &owner_account.key.to_aligned_bytes())?;
+            open_orders.init(
+                &identity(self.own_address),
+                &owner_account.key.to_aligned_bytes(),
+            )?;
         }
         open_orders.check_flags()?;
-        check_assert_eq!(&open_orders.market, &self.own_address)
+        check_assert_eq!(identity(open_orders.market), identity(self.own_address))
             .map_err(|_| DexErrorCode::WrongOrdersAccount)?;
         if let Some(owner) = owner_account {
-            check_assert_eq!(&open_orders.owner, &owner.key.to_aligned_bytes())
+            check_assert_eq!(&identity(open_orders.owner), &owner.key.to_aligned_bytes())
                 .map_err(|_| DexErrorCode::WrongOrdersAccount)?;
         }
 
@@ -261,7 +259,7 @@ impl MarketState {
     }
 
     fn load_bids_mut<'a>(&self, bids: &'a AccountInfo) -> DexResult<RefMut<'a, Slab>> {
-        check_assert_eq!(&bids.key.to_aligned_bytes(), &self.bids)
+        check_assert_eq!(&bids.key.to_aligned_bytes(), &identity(self.bids))
             .map_err(|_| DexErrorCode::WrongBidsAccount)?;
         let (header, buf) = strip_header::<OrderBookStateHeader, u8>(bids, false)?;
         let flags = BitFlags::from_bits(header.account_flags).unwrap();
@@ -270,7 +268,7 @@ impl MarketState {
     }
 
     fn load_asks_mut<'a>(&self, asks: &'a AccountInfo) -> DexResult<RefMut<'a, Slab>> {
-        check_assert_eq!(&asks.key.to_aligned_bytes(), &self.asks)
+        check_assert_eq!(&asks.key.to_aligned_bytes(), &identity(self.asks))
             .map_err(|_| DexErrorCode::WrongAsksAccount)?;
         let (header, buf) = strip_header::<OrderBookStateHeader, u8>(asks, false)?;
         let flags = BitFlags::from_bits(header.account_flags).unwrap();
@@ -279,7 +277,7 @@ impl MarketState {
     }
 
     fn load_request_queue_mut<'a>(&self, queue: &'a AccountInfo) -> DexResult<RequestQueue<'a>> {
-        check_assert_eq!(&queue.key.to_aligned_bytes(), &self.req_q)
+        check_assert_eq!(&queue.key.to_aligned_bytes(), &identity(self.req_q))
             .map_err(|_| DexErrorCode::WrongRequestQueueAccount)?;
 
         let (header, buf) = strip_header::<RequestQueueHeader, Request>(queue, false)?;
@@ -292,7 +290,7 @@ impl MarketState {
     }
 
     fn load_event_queue_mut<'a>(&self, queue: &'a AccountInfo) -> DexResult<EventQueue<'a>> {
-        check_assert_eq!(&queue.key.to_aligned_bytes(), &self.event_q)
+        check_assert_eq!(&queue.key.to_aligned_bytes(), &identity(self.event_q))
             .map_err(|_| DexErrorCode::WrongEventQueueAccount)?;
         let (header, buf) = strip_header::<EventQueueHeader, Event>(queue, false)?;
 
@@ -306,7 +304,7 @@ impl MarketState {
 
     #[inline]
     fn check_coin_vault(&self, vault: account_parser::TokenAccount) -> DexResult {
-        if self.coin_vault != vault.inner().key.to_aligned_bytes() {
+        if identity(self.coin_vault) != vault.inner().key.to_aligned_bytes() {
             Err(DexErrorCode::WrongCoinVault)?
         }
         Ok(())
@@ -314,7 +312,7 @@ impl MarketState {
 
     #[inline]
     fn check_pc_vault(&self, vault: account_parser::TokenAccount) -> DexResult {
-        if self.pc_vault != vault.inner().key.to_aligned_bytes() {
+        if identity(self.pc_vault) != vault.inner().key.to_aligned_bytes() {
             Err(DexErrorCode::WrongPcVault)?
         }
         Ok(())
@@ -322,7 +320,8 @@ impl MarketState {
 
     #[inline]
     fn check_coin_payer(&self, payer: account_parser::TokenAccount) -> DexResult {
-        if &payer.inner().try_borrow_data()?[..32] != transmute_to_bytes(&self.coin_mint) {
+        if &payer.inner().try_borrow_data()?[..32] != transmute_to_bytes(&identity(self.coin_mint))
+        {
             Err(DexErrorCode::WrongCoinMint)?
         }
         Ok(())
@@ -330,7 +329,7 @@ impl MarketState {
 
     #[inline]
     fn check_pc_payer(&self, payer: account_parser::TokenAccount) -> DexResult {
-        if &payer.inner().try_borrow_data()?[..32] != transmute_to_bytes(&self.pc_mint) {
+        if &payer.inner().try_borrow_data()?[..32] != transmute_to_bytes(&identity(self.pc_mint)) {
             Err(DexErrorCode::WrongPcMint)?
         }
         Ok(())
@@ -373,12 +372,12 @@ impl MarketState {
     }
 
     fn pubkey(&self) -> Pubkey {
-        Pubkey::new(cast_slice(&self.own_address as &[_]))
+        Pubkey::new(cast_slice(&identity(self.own_address) as &[_]))
     }
 }
 
 #[cfg_attr(feature = "fuzz", derive(Debug))]
-#[repr(C)]
+#[repr(packed)]
 #[derive(Copy, Clone)]
 pub struct OpenOrders {
     pub account_flags: u64, // Initialized, OpenOrders
@@ -413,7 +412,7 @@ impl OpenOrders {
     }
 
     fn init(&mut self, market: &[u64; 4], owner: &[u64; 4]) -> DexResult<()> {
-        check_assert_eq!(&self.account_flags, &0)?;
+        check_assert_eq!(self.account_flags, 0)?;
         self.account_flags = (AccountFlag::Initialized | AccountFlag::OpenOrders).bits();
         self.market = *market;
         self.owner = *owner;
@@ -501,9 +500,9 @@ pub trait QueueHeader: Pod {
     type Item: Pod + Copy;
 
     fn head(&self) -> u64;
-    fn head_mut(&mut self) -> &mut u64;
+    fn set_head(&mut self, value: u64);
     fn count(&self) -> u64;
-    fn count_mut(&mut self) -> &mut u64;
+    fn set_count(&mut self, value: u64);
 
     fn incr_event_id(&mut self);
     fn decr_event_id(&mut self, n: u64);
@@ -541,7 +540,10 @@ impl<'a, H: QueueHeader> Queue<'a, H> {
         }
         let slot = ((self.header.head() + self.header.count()) as usize) % self.buf.len();
         self.buf[slot] = value;
-        *self.header.count_mut() += 1;
+
+        let count = self.header.count();
+        self.header.set_count(count + 1);
+
         self.header.incr_event_id();
         Ok(())
     }
@@ -568,9 +570,13 @@ impl<'a, H: QueueHeader> Queue<'a, H> {
             return Err(());
         }
         let value = self.buf[self.header.head() as usize];
-        *self.header.count_mut() -= 1;
-        let head = self.header.head_mut();
-        *head = (*head + 1) % self.buf.len() as u64;
+
+        let count = self.header.count();
+        self.header.set_count(count - 1);
+
+        let head = self.header.head();
+        self.header.set_head((head + 1) % self.buf.len() as u64);
+
         Ok(value)
     }
 
@@ -578,7 +584,7 @@ impl<'a, H: QueueHeader> Queue<'a, H> {
     pub fn revert_pushes(&mut self, desired_len: u64) -> DexResult<()> {
         check_assert!(desired_len <= self.header.count())?;
         let len_diff = self.header.count() - desired_len;
-        *self.header.count_mut() = desired_len;
+        self.header.set_count(desired_len);
         self.header.decr_event_id(len_diff);
         Ok(())
     }
@@ -611,7 +617,7 @@ impl<'a, 'b, H: QueueHeader> Iterator for QueueIterator<'a, 'b, H> {
 }
 
 #[derive(Copy, Clone, Debug)]
-#[repr(C)]
+#[repr(packed)]
 pub struct RequestQueueHeader {
     account_flags: u64, // Initialized, RequestQueue
     head: u64,
@@ -627,14 +633,14 @@ impl QueueHeader for RequestQueueHeader {
     fn head(&self) -> u64 {
         self.head
     }
-    fn head_mut(&mut self) -> &mut u64 {
-        &mut self.head
+    fn set_head(&mut self, value: u64) {
+        self.head = value;
     }
     fn count(&self) -> u64 {
         self.count
     }
-    fn count_mut(&mut self) -> &mut u64 {
-        &mut self.count
+    fn set_count(&mut self, value: u64) {
+        self.count = value;
     }
     #[inline(always)]
     fn incr_event_id(&mut self) {}
@@ -674,7 +680,7 @@ enum RequestFlag {
 }
 
 #[derive(Copy, Clone, Debug)]
-#[repr(C)]
+#[repr(packed)]
 pub struct Request {
     request_flags: u8,
     owner_slot: u8,
@@ -691,25 +697,25 @@ unsafe impl Zeroable for Request {}
 unsafe impl Pod for Request {}
 
 #[derive(Debug)]
-pub enum RequestView<'a> {
+pub enum RequestView {
     NewOrder {
         side: Side,
         order_type: OrderType,
         owner_slot: u8,
         fee_tier: FeeTier,
-        order_id: &'a u128,
+        order_id: u128,
         max_coin_qty: NonZeroU64,
         native_pc_qty_locked: Option<NonZeroU64>,
-        owner: &'a [u64; 4],
+        owner: [u64; 4],
         client_order_id: Option<NonZeroU64>,
         self_trade_behavior: SelfTradeBehavior,
     },
     CancelOrder {
         side: Side,
-        order_id: &'a u128,
+        order_id: u128,
         cancel_id: u64,
         expected_owner_slot: u8,
-        expected_owner: &'a [u64; 4],
+        expected_owner: [u64; 4],
         client_order_id: Option<NonZeroU64>,
     },
 }
@@ -746,8 +752,8 @@ impl Request {
                     fee_tier: fee_tier.into(),
                     self_trade_behavior: self_trade_behavior.into(),
                     padding: Zeroable::zeroed(),
-                    order_id: *order_id,
-                    owner: *owner,
+                    order_id,
+                    owner,
                     max_coin_qty_or_cancel_id: max_coin_qty.get(),
                     native_pc_qty_locked: native_pc_qty_locked.map_or(0, NonZeroU64::get),
                     client_order_id: client_order_id.map_or(0, NonZeroU64::get),
@@ -768,11 +774,11 @@ impl Request {
                 Request {
                     request_flags: flags.bits(),
                     max_coin_qty_or_cancel_id: cancel_id,
-                    order_id: *order_id,
+                    order_id,
                     owner_slot: expected_owner_slot,
                     fee_tier: 0,
                     self_trade_behavior: 0,
-                    owner: *expected_owner,
+                    owner: expected_owner,
                     native_pc_qty_locked: 0,
                     padding: Zeroable::zeroed(),
                     client_order_id: client_order_id.map_or(0, NonZeroU64::get),
@@ -813,8 +819,8 @@ impl Request {
                 owner_slot: self.owner_slot,
                 fee_tier,
                 self_trade_behavior,
-                order_id: &self.order_id,
-                owner: &self.owner,
+                order_id: self.order_id,
+                owner: self.owner,
                 max_coin_qty: NonZeroU64::new(self.max_coin_qty_or_cancel_id).unwrap(),
                 native_pc_qty_locked: NonZeroU64::new(self.native_pc_qty_locked),
                 client_order_id: NonZeroU64::new(self.client_order_id),
@@ -829,9 +835,9 @@ impl Request {
             Ok(RequestView::CancelOrder {
                 side,
                 cancel_id: self.max_coin_qty_or_cancel_id,
-                order_id: &self.order_id,
+                order_id: self.order_id,
                 expected_owner_slot: self.owner_slot,
-                expected_owner: &self.owner,
+                expected_owner: self.owner,
                 client_order_id: NonZeroU64::new(self.client_order_id),
             })
         }
@@ -839,7 +845,7 @@ impl Request {
 }
 
 #[derive(Copy, Clone, Debug)]
-#[repr(C)]
+#[repr(packed)]
 pub struct EventQueueHeader {
     account_flags: u64, // Initialized, EventQueue
     head: u64,
@@ -858,14 +864,14 @@ impl QueueHeader for EventQueueHeader {
     fn head(&self) -> u64 {
         self.head
     }
-    fn head_mut(&mut self) -> &mut u64 {
-        &mut self.head
+    fn set_head(&mut self, value: u64) {
+        self.head = value;
     }
     fn count(&self) -> u64 {
         self.count
     }
-    fn count_mut(&mut self) -> &mut u64 {
-        &mut self.count
+    fn set_count(&mut self, value: u64) {
+        self.count = value;
     }
     fn incr_event_id(&mut self) {
         self.seq_num += 1;
@@ -906,7 +912,7 @@ impl EventFlag {
 }
 
 #[derive(Copy, Clone, Debug)]
-#[repr(C)]
+#[repr(packed)]
 pub struct Event {
     event_flags: u8,
     owner_slot: u8,
@@ -963,8 +969,8 @@ impl Event {
                     native_qty_paid,
                     native_fee_or_rebate,
 
-                    order_id: *order_id,
-                    owner: *owner,
+                    order_id,
+                    owner,
 
                     client_order_id: client_order_id.map_or(0, NonZeroU64::get),
                 }
@@ -991,8 +997,8 @@ impl Event {
                     native_qty_paid: native_qty_still_locked,
                     native_fee_or_rebate: 0,
 
-                    order_id: *order_id,
-                    owner: *owner,
+                    order_id,
+                    owner,
                     client_order_id: client_order_id.map_or(0, NonZeroU64::get),
                 }
             }
@@ -1018,8 +1024,8 @@ impl Event {
                 native_qty_received: self.native_qty_released,
                 native_fee_or_rebate: self.native_fee_or_rebate,
 
-                order_id: &self.order_id,
-                owner: &self.owner,
+                order_id: self.order_id,
+                owner: self.owner,
 
                 owner_slot: self.owner_slot,
                 fee_tier: self.fee_tier.try_into().or(check_unreachable!())?,
@@ -1036,8 +1042,8 @@ impl Event {
             native_qty_unlocked: self.native_qty_released,
             native_qty_still_locked: self.native_qty_paid,
 
-            order_id: &self.order_id,
-            owner: &self.owner,
+            order_id: self.order_id,
+            owner: self.owner,
 
             owner_slot: self.owner_slot,
             client_order_id,
@@ -1046,15 +1052,15 @@ impl Event {
 }
 
 #[derive(Debug)]
-pub enum EventView<'a> {
+pub enum EventView {
     Fill {
         side: Side,
         maker: bool,
         native_qty_paid: u64,
         native_qty_received: u64,
         native_fee_or_rebate: u64,
-        order_id: &'a u128,
-        owner: &'a [u64; 4],
+        order_id: u128,
+        owner: [u64; 4],
         owner_slot: u8,
         fee_tier: FeeTier,
         client_order_id: Option<NonZeroU64>,
@@ -1063,14 +1069,14 @@ pub enum EventView<'a> {
         side: Side,
         native_qty_unlocked: u64,
         native_qty_still_locked: u64,
-        order_id: &'a u128,
-        owner: &'a [u64; 4],
+        order_id: u128,
+        owner: [u64; 4],
         owner_slot: u8,
         client_order_id: Option<NonZeroU64>,
     },
 }
 
-impl<'a> EventView<'a> {
+impl EventView {
     fn side(&self) -> Side {
         match self {
             &EventView::Fill { side, .. } | &EventView::Out { side, .. } => side,
@@ -1079,7 +1085,7 @@ impl<'a> EventView<'a> {
 }
 
 #[derive(Copy, Clone)]
-#[repr(C)]
+#[repr(packed)]
 struct OrderBookStateHeader {
     account_flags: u64, // Initialized, (Bids or Asks)
 }
@@ -1114,21 +1120,20 @@ pub fn gen_vault_signer_key(
 }
 
 #[cfg(not(feature = "fuzz"))]
-#[cfg(feature = "program")]
 fn invoke_spl_token(
-    instruction: &solana_sdk::instruction::Instruction,
+    instruction: &solana_program::instruction::Instruction,
     account_infos: &[AccountInfo],
     signers_seeds: &[&[&[u8]]],
-) -> solana_sdk::entrypoint::ProgramResult {
-    solana_sdk::program::invoke_signed(instruction, account_infos, signers_seeds)
+) -> solana_program::entrypoint::ProgramResult {
+    solana_program::program::invoke_signed(instruction, account_infos, signers_seeds)
 }
 
 #[cfg(feature = "fuzz")]
 fn invoke_spl_token(
-    instruction: &solana_sdk::instruction::Instruction,
+    instruction: &solana_program::instruction::Instruction,
     account_infos: &[AccountInfo],
     _signers_seeds: &[&[&[u8]]],
-) -> solana_sdk::entrypoint::ProgramResult {
+) -> solana_program::entrypoint::ProgramResult {
     assert_eq!(instruction.program_id, spl_token::ID);
     let account_infos: Vec<AccountInfo> = instruction
         .accounts
@@ -1443,7 +1448,7 @@ pub mod account_parser {
         pub instruction: &'a NewOrderInstructionV2,
         pub market: &'a mut MarketState,
         pub open_orders: &'a mut OpenOrders,
-        pub open_orders_address: &'a [u64; 4],
+        pub open_orders_address: [u64; 4],
         pub owner: SignerAccount<'a, 'b>,
         pub req_q: RequestQueue<'a>,
         pub payer: TokenAccount<'a, 'b>,
@@ -1495,7 +1500,7 @@ pub mod account_parser {
                 program_id,
                 Some(rent),
             )?;
-            let ref open_orders_address = open_orders_acc.key.to_aligned_bytes();
+            let open_orders_address = open_orders_acc.key.to_aligned_bytes();
             let req_q = market.load_request_queue_mut(req_q_acc)?;
 
             let payer = TokenAccount::new(payer_acc)?;
@@ -1611,7 +1616,7 @@ pub mod account_parser {
     pub struct CancelOrderArgs<'a, 'b: 'a> {
         pub instruction: &'a CancelOrderInstruction,
         pub open_orders: &'a mut OpenOrders,
-        pub open_orders_address: &'a [u64; 4],
+        pub open_orders_address: [u64; 4],
         pub req_q: RequestQueue<'a>,
         pub orders_owner: SignerAccount<'a, 'b>,
     }
@@ -1634,7 +1639,7 @@ pub mod account_parser {
             let owner = SignerAccount::new(owner_acc)?;
             let mut open_orders =
                 market.load_orders_mut(open_orders_acc, Some(owner.inner()), program_id, None)?;
-            let ref open_orders_address = open_orders_acc.key.to_aligned_bytes();
+            let open_orders_address = open_orders_acc.key.to_aligned_bytes();
             let req_q = market.load_request_queue_mut(req_q_acc)?;
             let args = CancelOrderArgs {
                 instruction,
@@ -1650,7 +1655,7 @@ pub mod account_parser {
     pub struct CancelOrderByClientIdArgs<'a, 'b: 'a> {
         pub client_order_id: NonZeroU64,
         pub open_orders: &'a mut OpenOrders,
-        pub open_orders_address: &'a [u64; 4],
+        pub open_orders_address: [u64; 4],
         pub req_q: RequestQueue<'a>,
         pub orders_owner: SignerAccount<'a, 'b>,
     }
@@ -1674,7 +1679,7 @@ pub mod account_parser {
             let owner = SignerAccount::new(owner_acc)?;
             let mut open_orders =
                 market.load_orders_mut(open_orders_acc, Some(owner.inner()), program_id, None)?;
-            let ref open_orders_address = open_orders_acc.key.to_aligned_bytes();
+            let open_orders_address = open_orders_acc.key.to_aligned_bytes();
             let req_q = market.load_request_queue_mut(req_q_acc)?;
             let args = CancelOrderByClientIdArgs {
                 client_order_id,
@@ -1967,8 +1972,9 @@ impl State {
             ),
         ];
 
+        let nonce = market.vault_signer_nonce;
         let market_pubkey = market.pubkey();
-        let vault_signer_seeds = gen_vault_signer_seeds(&market.vault_signer_nonce, &market_pubkey);
+        let vault_signer_seeds = gen_vault_signer_seeds(&nonce, &market_pubkey);
 
         for &(token_amount, wallet_account, vault) in token_infos.iter() {
             send_from_vault(
@@ -2013,8 +2019,10 @@ impl State {
             orders_owner: _,
         } = args;
         let mut slot = None;
-        for (i, ith_client_order_id) in open_orders.client_order_ids.iter().enumerate() {
-            if *ith_client_order_id == client_order_id.get() && !open_orders.slot_is_free(i as u8) {
+        for i in 0..128 {
+            if open_orders.client_order_ids[i] == client_order_id.get()
+                && !open_orders.slot_is_free(i as u8)
+            {
                 slot = Some(i);
                 break;
             }
@@ -2023,7 +2031,7 @@ impl State {
         let side = open_orders
             .slot_side(expected_open_orders_slot)
             .ok_or(DexErrorCode::ClientIdNotFound)?;
-        let ref order_id = open_orders.orders[expected_open_orders_slot as usize];
+        let order_id = open_orders.orders[expected_open_orders_slot as usize];
         let request = Request::new(RequestView::CancelOrder {
             cancel_id: req_q.gen_seq_num(),
             expected_owner: open_orders_address,
@@ -2051,7 +2059,7 @@ impl State {
             cancel_id: req_q.gen_seq_num(),
             expected_owner: open_orders_address,
             expected_owner_slot: instruction.owner_slot,
-            order_id: &instruction.order_id,
+            order_id: instruction.order_id,
             side: instruction.side,
             client_order_id: None,
         });
@@ -2090,8 +2098,8 @@ impl State {
             check_assert!(event.owner_slot < 128)?;
             check_assert_eq!(&open_orders.slot_side(event.owner_slot), &Some(view.side()))?;
             check_assert_eq!(
-                &open_orders.orders[event.owner_slot as usize],
-                &event.order_id
+                open_orders.orders[event.owner_slot as usize],
+                event.order_id
             )?;
 
             match event.as_view()? {
@@ -2130,7 +2138,7 @@ impl State {
                     if let Some(client_id) = client_order_id {
                         debug_assert_eq!(
                             client_id.get(),
-                            open_orders.client_order_ids[owner_slot as usize]
+                            identity(open_orders.client_order_ids[owner_slot as usize])
                         );
                     }
                 }
@@ -2162,7 +2170,7 @@ impl State {
                     if let Some(client_id) = client_order_id {
                         debug_assert_eq!(
                             client_id.get(),
-                            open_orders.client_order_ids[owner_slot as usize]
+                            identity(open_orders.client_order_ids[owner_slot as usize])
                         );
                     }
                     if fully_out {
@@ -2291,7 +2299,7 @@ impl State {
         let request = Request::new(RequestView::NewOrder {
             side: instruction.side,
             order_type: instruction.order_type,
-            order_id: &order_id,
+            order_id,
             fee_tier,
             self_trade_behavior: instruction.self_trade_behavior,
             owner: open_orders_address,
@@ -2329,8 +2337,9 @@ impl State {
         let token_amount = market.pc_fees_accrued;
         market.pc_fees_accrued = 0;
 
+        let nonce = market.vault_signer_nonce;
         let market_pubkey = market.pubkey();
-        let vault_signer_seeds = gen_vault_signer_seeds(&market.vault_signer_nonce, &market_pubkey);
+        let vault_signer_seeds = gen_vault_signer_seeds(&nonce, &market_pubkey);
         send_from_vault(
             token_amount,
             fee_receiver.token_account(),

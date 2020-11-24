@@ -138,7 +138,7 @@ pub fn client_at<T: ClientGen>(program_id: Pubkey) -> T {
             commitment: CommitmentConfig::single(),
             tx: RpcSendTransactionConfig {
                 skip_preflight: true,
-                preflight_commitment: None,
+                ..RpcSendTransactionConfig::default()
             },
         })
 }

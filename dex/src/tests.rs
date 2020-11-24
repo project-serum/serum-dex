@@ -1,16 +1,19 @@
+use std::convert::identity;
 use std::mem::size_of;
 use std::num::NonZeroU64;
 
 use bumpalo::{collections::Vec as BumpVec, vec as bump_vec, Bump};
 use rand::prelude::*;
 use safe_transmute::to_bytes::{transmute_to_bytes, transmute_to_bytes_mut};
-use solana_sdk::bpf_loader;
-use solana_sdk::clock::Epoch;
-use solana_sdk::program_pack::Pack;
-use solana_sdk::rent::Rent;
-use solana_sdk::system_program;
-use solana_sdk::sysvar;
-use solana_sdk::sysvar::Sysvar;
+use solana_program::account_info::AccountInfo;
+use solana_program::bpf_loader;
+use solana_program::clock::Epoch;
+use solana_program::program_pack::Pack;
+use solana_program::pubkey::Pubkey;
+use solana_program::rent::Rent;
+use solana_program::system_program;
+use solana_program::sysvar;
+use solana_program::sysvar::Sysvar;
 use spl_token::state::{Account, AccountState, Mint};
 
 use instruction::{initialize_market, MarketInstruction, NewOrderInstructionV1};
@@ -325,8 +328,8 @@ fn test_new_order() {
 
     {
         let market = MarketState::load(&accounts.market, &dex_program_id).unwrap();
-        assert_eq!(market.pc_fees_accrued, 0);
-        assert_eq!(market.pc_deposits_total, 501_100);
+        assert_eq!(identity(market.pc_fees_accrued), 0);
+        assert_eq!(identity(market.pc_deposits_total), 501_100);
     }
 
     State::process(dex_program_id, instruction_accounts, &instruction_data).unwrap();
@@ -348,27 +351,27 @@ fn test_new_order() {
     .unwrap();
     {
         let market = MarketState::load(&accounts.market, &dex_program_id).unwrap();
-        assert_eq!(market.referrer_rebates_accrued, 176);
-        assert_eq!(market.pc_fees_accrued, 584);
-        assert_eq!(market.pc_deposits_total, 500_340);
+        assert_eq!(identity(market.referrer_rebates_accrued), 176);
+        assert_eq!(identity(market.pc_fees_accrued), 584);
+        assert_eq!(identity(market.pc_deposits_total), 500_340);
     }
     {
         let open_orders_buyer = MarketState::load(&accounts.market, &dex_program_id)
             .unwrap()
             .load_orders_mut(&orders_account_buyer, None, &dex_program_id, None)
             .unwrap();
-        assert_eq!(open_orders_buyer.native_coin_free, 0);
-        assert_eq!(open_orders_buyer.native_coin_total, 0);
-        assert_eq!(open_orders_buyer.native_pc_free, 0);
-        assert_eq!(open_orders_buyer.native_pc_total, 501_100);
+        assert_eq!(identity(open_orders_buyer.native_coin_free), 0);
+        assert_eq!(identity(open_orders_buyer.native_coin_total), 0);
+        assert_eq!(identity(open_orders_buyer.native_pc_free), 0);
+        assert_eq!(identity(open_orders_buyer.native_pc_total), 501_100);
         let open_orders_seller = MarketState::load(&accounts.market, &dex_program_id)
             .unwrap()
             .load_orders_mut(&orders_account_seller, None, &dex_program_id, None)
             .unwrap();
-        assert_eq!(open_orders_seller.native_coin_free, 0);
-        assert_eq!(open_orders_seller.native_coin_total, 4000);
-        assert_eq!(open_orders_seller.native_pc_free, 0);
-        assert_eq!(open_orders_seller.native_pc_total, 0);
+        assert_eq!(identity(open_orders_seller.native_coin_free), 0);
+        assert_eq!(identity(open_orders_seller.native_coin_total), 4000);
+        assert_eq!(identity(open_orders_seller.native_pc_free), 0);
+        assert_eq!(identity(open_orders_seller.native_pc_total), 0);
     }
 
     {
@@ -388,26 +391,26 @@ fn test_new_order() {
 
     {
         let market = MarketState::load(&accounts.market, &dex_program_id).unwrap();
-        assert_eq!(market.referrer_rebates_accrued, 176);
-        assert_eq!(market.pc_fees_accrued, 584);
-        assert_eq!(market.pc_deposits_total, 500_340);
+        assert_eq!(identity(market.referrer_rebates_accrued), 176);
+        assert_eq!(identity(market.pc_fees_accrued), 584);
+        assert_eq!(identity(market.pc_deposits_total), 500_340);
     }
     {
         let open_orders_buyer = MarketState::load(&accounts.market, &dex_program_id)
             .unwrap()
             .load_orders_mut(&orders_account_buyer, None, &dex_program_id, None)
             .unwrap();
-        assert_eq!(open_orders_buyer.native_coin_free, 4_000);
-        assert_eq!(open_orders_buyer.native_coin_total, 4_000);
-        assert_eq!(open_orders_buyer.native_pc_free, 1_220);
-        assert_eq!(open_orders_buyer.native_pc_total, 101_220);
+        assert_eq!(identity(open_orders_buyer.native_coin_free), 4_000);
+        assert_eq!(identity(open_orders_buyer.native_coin_total), 4_000);
+        assert_eq!(identity(open_orders_buyer.native_pc_free), 1_220);
+        assert_eq!(identity(open_orders_buyer.native_pc_total), 101_220);
         let open_orders_seller = MarketState::load(&accounts.market, &dex_program_id)
             .unwrap()
             .load_orders_mut(&orders_account_seller, None, &dex_program_id, None)
             .unwrap();
-        assert_eq!(open_orders_seller.native_coin_free, 0);
-        assert_eq!(open_orders_seller.native_coin_total, 0);
-        assert_eq!(open_orders_seller.native_pc_free, 399_120);
-        assert_eq!(open_orders_seller.native_pc_total, 399_120);
+        assert_eq!(identity(open_orders_seller.native_coin_free), 0);
+        assert_eq!(identity(open_orders_seller.native_coin_total), 0);
+        assert_eq!(identity(open_orders_seller.native_pc_free), 399_120);
+        assert_eq!(identity(open_orders_seller.native_pc_total), 399_120);
     }
 }
