@@ -4,6 +4,10 @@ members = [
     "common",
     "common/tests",
     "crank",
+    "pool",
+    "pool/client",
+    "pool/schema",
+    "pool/examples/simple",
     "registry",
     "registry/cli",
     "lockup",
@@ -22,6 +26,7 @@ members = [
 exclude = [
     "dex",
     "registry/program",
+    "retbuf",
     "lockup/program",
     "lockup/tests/stake/program",
 ]

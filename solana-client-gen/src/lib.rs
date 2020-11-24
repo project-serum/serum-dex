@@ -21,11 +21,11 @@
 //! pub mod instruction {
 //!   #[derive(Serialize, Deserialize)]
 //!   pub enum MyInstruction {
-//!     Add: {
+//!     Add {
 //!       a: u64,
 //!       b: u64,
 //!    },
-//!    Substract: {
+//!    Substract {
 //!      a: u64,
 //!      b: u64,
 //!    },
@@ -45,7 +45,7 @@
 //!   // Client options.
 //!   let program_id: Pubkey = "<your-program-id>>";
 //!   let payer_filpath = "<your-id.json-path>";
-//!   let cluster_url = "<your-closuter-url>>"
+//!   let cluster_url = "<your-cluster-url>";
 //!
 //!   // Create the client.
 //!   let client = SrmSafeClient::from_keypair_file(

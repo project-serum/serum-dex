@@ -1,4 +1,6 @@
 bin/
+.idea/
 target/
-.idea
 *~
+*.swp
+*.swo

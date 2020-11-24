@@ -413,7 +413,7 @@ checksum = "8aebca1129a03dc6dc2b127edd729435bbc4a37e1d5f4d7513165089ceb02634"
 
 [[package]]
 name = "crank"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "clap 3.0.0-beta.1",
@@ -2259,7 +2259,7 @@ dependencies = [
 
 [[package]]
 name = "serum_dex"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "arrayref",
  "bincode",

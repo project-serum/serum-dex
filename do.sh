@@ -29,6 +29,10 @@ perform_action() {
     set -e
     projectDir="$PWD"/$2
     targetDir="$projectDir"/target
+    if ! [[ -f "$projectDir"/Cargo.lock ]]; then
+      # Program is part of workspace
+      targetDir="$PWD"/target
+    fi
     features=
     if [[ -f "$projectDir"/Xargo.toml ]]; then
       features="--features=program"
@@ -39,7 +43,7 @@ perform_action() {
           "$sdkDir"/rust/build.sh "$projectDir"
 
           so_path="$targetDir/$profile"
-          so_name="serum_${2//\-/_}"
+          so_name="serum_${2//[-\/]/_}"
           cp "$so_path/${so_name}.so" "$so_path/${so_name}_debug.so"
           "$sdkDir"/dependencies/llvm-native/bin/llvm-objcopy --strip-all "$so_path/${so_name}.so" "$so_path/$so_name.so"
         else
@@ -68,7 +72,7 @@ perform_action() {
         (
             cd "$projectDir"
             echo "generating docs $projectDir"
-            cargo doc ${@:3}
+            cargo doc $features ${@:3}
         )
         ;;
     dump)
