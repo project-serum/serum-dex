@@ -111,7 +111,7 @@ pub fn create_vesting_account(
     let new_account = Keypair::generate(&mut OsRng);
 
     let (vault_authority, nonce) = Pubkey::find_program_address(
-        &[safe_acc.as_ref(), &new_account.pubkey().as_ref()],
+        &[safe_acc.as_ref(), vesting_acc_beneficiary.as_ref()],
         client.program(),
     );
     let vault = rpc::create_token_account(

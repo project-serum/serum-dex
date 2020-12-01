@@ -30,6 +30,21 @@ mod withdraw;
 
 solana_program::entrypoint!(entry);
 fn entry(program_id: &Pubkey, accounts: &[AccountInfo], instruction_data: &[u8]) -> ProgramResult {
+    // The lockup program prepends the instruction_data with a tag to tell
+    // whitelisted programs that funds are locked, since the instruction data
+    // is completely opaque to the lockup program. Without this measure,
+    // one would effectively be able to transfer funds from the lockup program
+    // freely and use those funds without restriction.
+    let (is_locked, instruction_data) = {
+        if instruction_data.len() <= 8
+            || instruction_data[..8] != serum_lockup::instruction::TAG.to_le_bytes()
+        {
+            (false, instruction_data)
+        } else {
+            (true, &instruction_data[8..])
+        }
+    };
+
     let instruction: RegistryInstruction = RegistryInstruction::unpack(instruction_data)
         .map_err(|_| RegistryError::ErrorCode(RegistryErrorCode::WrongSerialization))?;
 
@@ -79,8 +94,12 @@ fn entry(program_id: &Pubkey, accounts: &[AccountInfo], instruction_data: &[u8])
             update_member::handler(program_id, accounts, delegate, metadata)
         }
         RegistryInstruction::SwitchEntity => switch_entity::handler(program_id, accounts),
-        RegistryInstruction::Deposit { amount } => deposit::handler(program_id, accounts, amount),
-        RegistryInstruction::Withdraw { amount } => withdraw::handler(program_id, accounts, amount),
+        RegistryInstruction::Deposit { amount } => {
+            deposit::handler(program_id, accounts, amount, is_locked)
+        }
+        RegistryInstruction::Withdraw { amount } => {
+            withdraw::handler(program_id, accounts, amount, is_locked)
+        }
         RegistryInstruction::Stake { amount } => stake::handler(program_id, accounts, amount),
         RegistryInstruction::MarkGeneration => mark_generation::handler(program_id, accounts),
         RegistryInstruction::StartStakeWithdrawal { amount } => {

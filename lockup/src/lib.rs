@@ -11,6 +11,9 @@ pub mod error;
 #[cfg_attr(feature = "client", solana_client_gen)]
 pub mod instruction {
     use super::*;
+
+    pub const TAG: u64 = 0x9c52b5632b5f74d2;
+
     #[derive(Debug, BorshSerialize, BorshDeserialize, BorshSchema)]
     pub enum LockupInstruction {
         /// Accounts:

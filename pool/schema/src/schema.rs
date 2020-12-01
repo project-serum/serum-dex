@@ -100,6 +100,7 @@ pub struct PoolState {
 
 serum_common::packable!(PoolState);
 
+// TODO: remove this.
 #[cfg(not(feature = "program"))]
 lazy_static::lazy_static! {
     pub static ref POOL_STATE_SIZE: u64 = PoolState {

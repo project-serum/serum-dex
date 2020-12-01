@@ -425,8 +425,8 @@ impl Client {
         vesting_addr: Pubkey,
         beneficiary: Pubkey,
     ) -> Result<Pubkey, ClientError> {
-        let safe = self.vesting(&vesting_addr)?;
-        let seeds = vault::signer_seeds(&safe_addr, &beneficiary, &safe.nonce);
+        let v = self.vesting(&vesting_addr)?;
+        let seeds = vault::signer_seeds(&safe_addr, &beneficiary, &v.nonce);
 
         Pubkey::create_program_address(&seeds, self.program()).map_err(|e| {
             anyhow::anyhow!("unable to derive vault authority: {:?}", e.to_string()).into()

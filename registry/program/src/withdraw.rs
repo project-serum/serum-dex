@@ -16,6 +16,7 @@ pub fn handler(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
     amount: u64,
+    delegate: bool,
 ) -> Result<(), RegistryError> {
     info!("handler: withdraw");
 
@@ -60,6 +61,7 @@ pub fn handler(
             depositor_authority_acc_info,
             amount,
             pool,
+            delegate,
         })?;
         Member::unpack_mut(
             &mut member_acc_info.try_borrow_mut_data()?,
@@ -101,6 +103,7 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
         program_id,
         amount,
         pool,
+        delegate,
     } = req;
 
     // Authorization.
@@ -138,6 +141,10 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
     let is_mega = registrar.is_mega(*vault_acc_info.key)?;
     if !member.can_withdraw(&pool.prices(), amount, is_mega, depositor.owner)? {
         return Err(RegistryErrorCode::InsufficientBalance)?;
+    }
+    // Authenticate the delegate boolean.
+    if delegate != (depositor.owner == member.balances.delegate.owner) {
+        return Err(RegistryErrorCode::DepositorOwnerDelegateMismatch)?;
     }
 
     Ok(AccessControlResponse { depositor })
@@ -194,6 +201,7 @@ struct AccessControlRequest<'a, 'b, 'c> {
     pool: &'c Pool<'a, 'b>,
     registrar: &'c Registrar,
     amount: u64,
+    delegate: bool,
 }
 
 struct AccessControlResponse {

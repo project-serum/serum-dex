@@ -71,6 +71,7 @@ pub enum RegistryErrorCode {
     IneligibleReward = 57,
     InvalidExpiry = 58,
     InvalidEndTs = 59,
+    DepositorOwnerDelegateMismatch = 60,
     Unknown = 1000,
 }
 

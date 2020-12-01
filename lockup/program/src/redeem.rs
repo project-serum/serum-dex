@@ -42,8 +42,6 @@ pub fn handler(
             state_transition(StateTransitionRequest {
                 amount,
                 vesting,
-                vesting_acc_info,
-                accounts,
                 vault_acc_info,
                 vault_authority_acc_info,
                 beneficiary_token_acc_info,
@@ -109,9 +107,7 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), LockupError> {
 
     let StateTransitionRequest {
         vesting,
-        vesting_acc_info,
         amount,
-        accounts,
         vault_acc_info,
         vault_authority_acc_info,
         beneficiary_token_acc_info,
@@ -168,8 +164,6 @@ struct AccessControlRequest<'a, 'b> {
 struct StateTransitionRequest<'a, 'b, 'c> {
     amount: u64,
     vesting: &'c mut Vesting,
-    accounts: &'a [AccountInfo<'b>],
-    vesting_acc_info: &'a AccountInfo<'b>,
     safe_acc_info: &'a AccountInfo<'b>,
     beneficiary_token_acc_info: &'a AccountInfo<'b>,
     vault_acc_info: &'a AccountInfo<'b>,

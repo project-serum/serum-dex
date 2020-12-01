@@ -16,6 +16,7 @@ pub fn handler(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
     amount: u64,
+    delegate: bool,
 ) -> Result<(), RegistryError> {
     info!("handler: deposit");
 
@@ -57,6 +58,7 @@ pub fn handler(
             registrar_acc_info,
             registrar,
             pool,
+            delegate,
         })?;
 
         Member::unpack_mut(
@@ -96,6 +98,7 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
         registrar,
         program_id,
         pool,
+        delegate,
     } = req;
 
     // Authorization.
@@ -117,7 +120,12 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
     let depositor = access_control::token(depositor_acc_info, depositor_authority_acc_info.key)?;
     pool_check(program_id, pool, registrar_acc_info, registrar, &member)?;
 
-    // Deposit specific: none.
+    // Deposit specific.
+    //
+    // Authenticate the delegate boolean.
+    if delegate != (depositor.owner == member.balances.delegate.owner) {
+        return Err(RegistryErrorCode::DepositorOwnerDelegateMismatch)?;
+    }
 
     Ok(AccessControlResponse { depositor })
 }
@@ -166,6 +174,7 @@ struct AccessControlRequest<'a, 'b, 'c> {
     program_id: &'a Pubkey,
     pool: &'c Pool<'a, 'b>,
     registrar: &'c Registrar,
+    delegate: bool,
 }
 
 struct AccessControlResponse {

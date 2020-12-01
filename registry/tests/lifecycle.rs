@@ -167,8 +167,10 @@ fn lifecycle() {
     }
 
     // CreateMember.
-    let vesting_vault_authority = l_client.vault_authority(safe, vesting).unwrap();
     let beneficiary = &god_owner;
+    let vesting_vault_authority = l_client
+        .vault_authority(safe, vesting, beneficiary.pubkey())
+        .unwrap();
     let member = {
         let CreateMemberResponse { tx: _, member } = client
             .create_member(CreateMemberRequest {

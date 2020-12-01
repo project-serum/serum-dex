@@ -167,10 +167,12 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), LockupError> {
                 meta_accounts.push(AccountMeta::new_readonly(*a.key, a.is_signer));
             }
         }
+        let mut data = serum_lockup::instruction::TAG.to_le_bytes().to_vec();
+        data.extend(instruction_data);
         let relay_instruction = Instruction {
             program_id: *wl_prog_acc_info.key,
             accounts: meta_accounts,
-            data: instruction_data,
+            data,
         };
 
         solana_sdk::program::invoke_signed(&relay_instruction, &accounts[..], &[&signer_seeds])?;

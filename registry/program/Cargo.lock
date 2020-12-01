@@ -544,6 +544,7 @@ dependencies = [
 name = "serum-registry-program"
 version = "0.1.0"
 dependencies = [
+ "arrayref 0.3.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "borsh 0.7.2 (git+https://github.com/project-serum/borsh?branch=serum)",
  "serum-common 0.1.0",
  "serum-lockup 0.1.0",

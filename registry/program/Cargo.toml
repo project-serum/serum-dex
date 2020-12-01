@@ -25,6 +25,7 @@ serum-stake = { path = "../stake", features = ["program"] }
 serum-lockup = { path = "../../lockup", features = ["program"] }
 serum-pool-schema = { path = "../../pool/schema", default-features = false, features = ["program"] }
 solana-program = "1.4.3"
+arrayref = "0.3.6"
 borsh = { git = "https://github.com/project-serum/borsh", branch = "serum" }
 
 [profile.release]
