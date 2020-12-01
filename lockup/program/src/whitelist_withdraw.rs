@@ -1,6 +1,6 @@
 use crate::access_control;
 use serum_common::pack::Pack;
-use serum_lockup::accounts::{Safe, TokenVault, Vesting};
+use serum_lockup::accounts::{vault, Safe, Vesting};
 use serum_lockup::error::{LockupError, LockupErrorCode};
 use solana_program::info;
 use solana_sdk::account_info::{next_account_info, AccountInfo};
@@ -36,7 +36,7 @@ pub fn handler(
     // Program specific.
     let remaining_relay_accs: Vec<&AccountInfo> = acc_infos.collect();
 
-    let AccessControlResponse { safe } = access_control(AccessControlRequest {
+    access_control(AccessControlRequest {
         program_id,
         beneficiary_acc_info,
         vesting_acc_info,
@@ -58,13 +58,13 @@ pub fn handler(
                 instruction_data: instruction_data.clone(),
                 safe_acc: safe_acc_info.key,
                 nonce: vesting.nonce,
-                vesting_acc_info,
                 wl_prog_acc_info,
                 wl_prog_vault_authority_acc_info,
                 vault_acc_info,
                 vault_auth_acc_info,
                 tok_prog_acc_info,
                 vesting,
+                beneficiary_acc_info,
                 remaining_relay_accs: remaining_relay_accs.clone(),
             })
             .map_err(Into::into)
@@ -74,7 +74,7 @@ pub fn handler(
     Ok(())
 }
 
-fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, LockupError> {
+fn access_control(req: AccessControlRequest) -> Result<(), LockupError> {
     info!("access-control: whitelist_withdraw");
 
     let AccessControlRequest {
@@ -103,6 +103,7 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Lo
         vault_acc_info,
         vault_auth_acc_info,
         vesting_acc_info,
+        beneficiary_acc_info,
         safe_acc_info,
         program_id,
     )?;
@@ -124,7 +125,7 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Lo
         return Err(LockupErrorCode::WhitelistInvalidProgramId)?;
     }
 
-    Ok(AccessControlResponse { safe })
+    Ok(())
 }
 
 fn state_transition(req: StateTransitionRequest) -> Result<(), LockupError> {
@@ -132,8 +133,8 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), LockupError> {
 
     let StateTransitionRequest {
         vesting,
-        vesting_acc_info,
         instruction_data,
+        beneficiary_acc_info,
         accounts,
         amount,
         nonce,
@@ -153,7 +154,7 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), LockupError> {
 
     // Invoke relay.
     {
-        let signer_seeds = TokenVault::signer_seeds(safe_acc, vesting_acc_info.key, &nonce);
+        let signer_seeds = vault::signer_seeds(safe_acc, beneficiary_acc_info.key, &nonce);
         let mut meta_accounts = vec![
             AccountMeta::new(*vault_acc_info.key, false),
             AccountMeta::new_readonly(*vault_auth_acc_info.key, true),
@@ -207,10 +208,6 @@ struct AccessControlRequest<'a, 'b> {
     amount: u64,
 }
 
-struct AccessControlResponse {
-    safe: Safe,
-}
-
 struct StateTransitionRequest<'a, 'b, 'c> {
     instruction_data: Vec<u8>,
     vesting: &'c mut Vesting,
@@ -218,11 +215,11 @@ struct StateTransitionRequest<'a, 'b, 'c> {
     amount: u64,
     nonce: u8,
     safe_acc: &'a Pubkey,
-    vesting_acc_info: &'a AccountInfo<'b>,
     vault_acc_info: &'a AccountInfo<'b>,
     wl_prog_acc_info: &'a AccountInfo<'b>,
     wl_prog_vault_authority_acc_info: &'a AccountInfo<'b>,
     remaining_relay_accs: Vec<&'a AccountInfo<'b>>,
     tok_prog_acc_info: &'a AccountInfo<'b>,
     vault_auth_acc_info: &'a AccountInfo<'b>,
+    beneficiary_acc_info: &'a AccountInfo<'b>,
 }

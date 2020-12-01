@@ -1,10 +1,9 @@
 //! Module for safe access to accounts.
 
 use serum_common::pack::Pack;
-use serum_lockup::accounts::{Safe, TokenVault, Vesting, Whitelist};
+use serum_lockup::accounts::{vault, Safe, Vesting, Whitelist};
 use serum_lockup::error::{LockupError, LockupErrorCode};
 use solana_sdk::account_info::AccountInfo;
-use solana_sdk::program_option::COption;
 use solana_sdk::program_pack::Pack as TokenPack;
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::sysvar::clock::Clock;
@@ -129,17 +128,18 @@ pub fn vault(
     acc_info: &AccountInfo,
     vault_authority_acc_info: &AccountInfo,
     vesting_acc_info: &AccountInfo,
+    beneficiary_acc_info: &AccountInfo,
     safe_acc_info: &AccountInfo,
     program_id: &Pubkey,
 ) -> Result<TokenAccount, LockupError> {
     let vesting = vesting_raw(program_id, safe_acc_info.key, vesting_acc_info)?;
     let vault = token(acc_info)?;
     let va = vault_authority(
+        program_id,
         vault_authority_acc_info,
-        vesting_acc_info,
+        beneficiary_acc_info,
         &vesting,
         safe_acc_info.key,
-        program_id,
     )?;
 
     if va != vault.owner {
@@ -153,14 +153,14 @@ pub fn vault(
 }
 
 pub fn vault_authority(
+    program_id: &Pubkey,
     vault_authority_acc_info: &AccountInfo,
-    vesting_acc_info: &AccountInfo,
+    beneficiary_acc_info: &AccountInfo,
     vesting: &Vesting,
     safe_addr: &Pubkey,
-    program_id: &Pubkey,
 ) -> Result<Pubkey, LockupError> {
     let va = Pubkey::create_program_address(
-        &TokenVault::signer_seeds(safe_addr, vesting_acc_info.key, &vesting.nonce),
+        &vault::signer_seeds(safe_addr, beneficiary_acc_info.key, &vesting.nonce),
         program_id,
     )
     .map_err(|_| LockupErrorCode::InvalidVaultNonce)?;

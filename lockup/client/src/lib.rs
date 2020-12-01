@@ -1,7 +1,7 @@
 use anyhow::anyhow;
 use serum_common::client::rpc;
 use serum_common::pack::*;
-use serum_lockup::accounts::{Safe, TokenVault, Vesting, Whitelist, WhitelistEntry};
+use serum_lockup::accounts::{vault, Safe, Vesting, Whitelist, WhitelistEntry};
 use serum_lockup::client::{Client as InnerClient, ClientError as InnerClientError};
 use serum_lockup::error::LockupError;
 use serum_registry::accounts::vault as registry_vault;
@@ -126,7 +126,10 @@ impl Client {
             AccountMeta::new_readonly(whitelist_program_vault_authority, false),
             // Below are relay accounts.
             AccountMeta::new(vault, false),
-            AccountMeta::new_readonly(self.vault_authority(safe, vesting)?, false),
+            AccountMeta::new_readonly(
+                self.vault_authority(safe, vesting, beneficiary.pubkey())?,
+                false,
+            ),
             AccountMeta::new_readonly(spl_token::ID, false),
         ];
         accounts.append(&mut relay_accounts);
@@ -172,7 +175,10 @@ impl Client {
             //
             // Whitelist relay interface.
             AccountMeta::new(vault, false),
-            AccountMeta::new_readonly(self.vault_authority(safe, vesting)?, false),
+            AccountMeta::new_readonly(
+                self.vault_authority(safe, vesting, beneficiary.pubkey())?,
+                false,
+            ),
             AccountMeta::new_readonly(spl_token::ID, false),
             AccountMeta::new_readonly(whitelist_program_vault_authority, false),
         ];
@@ -204,7 +210,10 @@ impl Client {
             AccountMeta::new(vesting, false),
             AccountMeta::new(token_account, false),
             AccountMeta::new(vault, false),
-            AccountMeta::new_readonly(self.vault_authority(safe, vesting)?, false),
+            AccountMeta::new_readonly(
+                self.vault_authority(safe, vesting, beneficiary.pubkey())?,
+                false,
+            ),
             AccountMeta::new_readonly(safe, false),
             AccountMeta::new_readonly(spl_token::ID, false),
             AccountMeta::new_readonly(solana_sdk::sysvar::clock::ID, false),
@@ -414,9 +423,10 @@ impl Client {
         &self,
         safe_addr: Pubkey,
         vesting_addr: Pubkey,
+        beneficiary: Pubkey,
     ) -> Result<Pubkey, ClientError> {
         let safe = self.vesting(&vesting_addr)?;
-        let seeds = TokenVault::signer_seeds(&safe_addr, &vesting_addr, &safe.nonce);
+        let seeds = vault::signer_seeds(&safe_addr, &beneficiary, &safe.nonce);
 
         Pubkey::create_program_address(&seeds, self.program()).map_err(|e| {
             anyhow::anyhow!("unable to derive vault authority: {:?}", e.to_string()).into()

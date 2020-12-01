@@ -103,7 +103,9 @@ fn lifecycle() {
         // Sanity check the owner of the vault account.
         assert_eq!(
             vault.owner,
-            client.vault_authority(safe_acc, vesting).unwrap()
+            client
+                .vault_authority(safe_acc, vesting, vesting_acc_beneficiary.pubkey())
+                .unwrap()
         );
         (vesting, vesting_acc, vesting_acc_beneficiary)
     };

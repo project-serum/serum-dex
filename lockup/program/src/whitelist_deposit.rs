@@ -1,6 +1,6 @@
 use crate::access_control;
 use serum_common::pack::Pack;
-use serum_lockup::accounts::{Safe, TokenVault, Vesting};
+use serum_lockup::accounts::{vault, Safe, Vesting};
 use serum_lockup::error::{LockupError, LockupErrorCode};
 use solana_program::info;
 use solana_sdk::account_info::{next_account_info, AccountInfo};
@@ -61,7 +61,7 @@ pub fn handler(
                 vault_auth_acc_info,
                 tok_prog_acc_info,
                 vesting,
-                vesting_acc_info,
+                beneficiary_acc_info,
                 remaining_relay_accs: remaining_relay_accs.clone(),
             })
             .map_err(Into::into)
@@ -99,6 +99,7 @@ fn access_control(req: AccessControlRequest) -> Result<(), LockupError> {
         vault_acc_info,
         vault_auth_acc_info,
         vesting_acc_info,
+        beneficiary_acc_info,
         safe_acc_info,
         program_id,
     )?;
@@ -137,7 +138,7 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), LockupError> {
         wl_prog_vault_authority_acc_info,
         remaining_relay_accs,
         tok_prog_acc_info,
-        vesting_acc_info,
+        beneficiary_acc_info,
     } = req;
 
     // Check before balance.
@@ -166,7 +167,7 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), LockupError> {
             accounts: meta_accounts,
             data: instruction_data,
         };
-        let signer_seeds = TokenVault::signer_seeds(safe_acc, vesting_acc_info.key, &nonce);
+        let signer_seeds = vault::signer_seeds(safe_acc, beneficiary_acc_info.key, &nonce);
         solana_sdk::program::invoke_signed(&relay_instruction, &accounts[..], &[&signer_seeds])?;
     }
 
@@ -210,11 +211,11 @@ struct StateTransitionRequest<'a, 'b, 'c> {
     accounts: &'a [AccountInfo<'b>],
     nonce: u8,
     safe_acc: &'a Pubkey,
-    vesting_acc_info: &'a AccountInfo<'b>,
     vault_acc_info: &'a AccountInfo<'b>,
     vault_auth_acc_info: &'a AccountInfo<'b>,
     wl_prog_acc_info: &'a AccountInfo<'b>,
     wl_prog_vault_authority_acc_info: &'a AccountInfo<'b>,
     remaining_relay_accs: Vec<&'a AccountInfo<'b>>,
     tok_prog_acc_info: &'a AccountInfo<'b>,
+    beneficiary_acc_info: &'a AccountInfo<'b>,
 }

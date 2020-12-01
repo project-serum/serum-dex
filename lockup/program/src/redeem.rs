@@ -1,6 +1,6 @@
 use crate::access_control;
 use serum_common::pack::Pack;
-use serum_lockup::accounts::{TokenVault, Vesting};
+use serum_lockup::accounts::{vault, Vesting};
 use serum_lockup::error::{LockupError, LockupErrorCode};
 use solana_program::info;
 use solana_sdk::account_info::{next_account_info, AccountInfo};
@@ -16,7 +16,7 @@ pub fn handler(
 
     let acc_infos = &mut accounts.iter();
 
-    let vesting_acc_beneficiary_info = next_account_info(acc_infos)?;
+    let beneficiary_acc_info = next_account_info(acc_infos)?;
     let vesting_acc_info = next_account_info(acc_infos)?;
     let beneficiary_token_acc_info = next_account_info(acc_infos)?;
     let vault_acc_info = next_account_info(acc_infos)?;
@@ -28,7 +28,7 @@ pub fn handler(
     access_control(AccessControlRequest {
         program_id,
         amount,
-        vesting_acc_beneficiary_info,
+        beneficiary_acc_info,
         vesting_acc_info,
         vault_acc_info,
         vault_authority_acc_info,
@@ -49,6 +49,7 @@ pub fn handler(
                 beneficiary_token_acc_info,
                 safe_acc_info,
                 token_program_acc_info,
+                beneficiary_acc_info,
             })
             .map_err(Into::into)
         },
@@ -62,7 +63,7 @@ fn access_control(req: AccessControlRequest) -> Result<(), LockupError> {
     let AccessControlRequest {
         program_id,
         amount,
-        vesting_acc_beneficiary_info,
+        beneficiary_acc_info,
         vesting_acc_info,
         vault_acc_info,
         vault_authority_acc_info,
@@ -71,7 +72,7 @@ fn access_control(req: AccessControlRequest) -> Result<(), LockupError> {
     } = req;
 
     // Beneficiary authorization.
-    if !vesting_acc_beneficiary_info.is_signer {
+    if !beneficiary_acc_info.is_signer {
         return Err(LockupErrorCode::Unauthorized)?;
     }
 
@@ -81,12 +82,13 @@ fn access_control(req: AccessControlRequest) -> Result<(), LockupError> {
         program_id,
         safe_acc_info.key,
         vesting_acc_info,
-        vesting_acc_beneficiary_info,
+        beneficiary_acc_info,
     )?;
     let _ = access_control::vault(
         vault_acc_info,
         vault_authority_acc_info,
         vesting_acc_info,
+        beneficiary_acc_info,
         safe_acc_info,
         program_id,
     )?;
@@ -115,6 +117,7 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), LockupError> {
         beneficiary_token_acc_info,
         safe_acc_info,
         token_program_acc_info,
+        beneficiary_acc_info,
     } = req;
 
     // Remove the withdrawn token from the vesting account.
@@ -134,7 +137,7 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), LockupError> {
         )?;
 
         let signer_seeds =
-            TokenVault::signer_seeds(safe_acc_info.key, vesting_acc_info.key, &vesting.nonce);
+            vault::signer_seeds(safe_acc_info.key, beneficiary_acc_info.key, &vesting.nonce);
 
         solana_sdk::program::invoke_signed(
             &withdraw_instruction,
@@ -154,7 +157,7 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), LockupError> {
 struct AccessControlRequest<'a, 'b> {
     program_id: &'a Pubkey,
     amount: u64,
-    vesting_acc_beneficiary_info: &'a AccountInfo<'b>,
+    beneficiary_acc_info: &'a AccountInfo<'b>,
     vesting_acc_info: &'a AccountInfo<'b>,
     safe_acc_info: &'a AccountInfo<'b>,
     vault_acc_info: &'a AccountInfo<'b>,
@@ -172,4 +175,5 @@ struct StateTransitionRequest<'a, 'b, 'c> {
     vault_acc_info: &'a AccountInfo<'b>,
     vault_authority_acc_info: &'a AccountInfo<'b>,
     token_program_acc_info: &'a AccountInfo<'b>,
+    beneficiary_acc_info: &'a AccountInfo<'b>,
 }

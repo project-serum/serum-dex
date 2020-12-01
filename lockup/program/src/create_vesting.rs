@@ -1,10 +1,9 @@
 use crate::access_control;
 use serum_common::pack::Pack;
-use serum_lockup::accounts::{TokenVault, Vesting};
+use serum_lockup::accounts::{vault, Vesting};
 use serum_lockup::error::{LockupError, LockupErrorCode};
 use solana_program::info;
 use solana_sdk::account_info::{next_account_info, AccountInfo};
-use solana_sdk::program_option::COption;
 use solana_sdk::pubkey::Pubkey;
 use spl_token::state::Account as TokenAccount;
 use std::convert::Into;
@@ -42,6 +41,7 @@ pub fn handler(
         vault_acc_info,
         rent_acc_info,
         clock_acc_info,
+        beneficiary,
         nonce,
     })?;
 
@@ -84,6 +84,7 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Lo
         depositor_authority_acc_info,
         rent_acc_info,
         clock_acc_info,
+        beneficiary,
         nonce,
     } = req;
 
@@ -131,7 +132,7 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Lo
     // Vault.
     let vault = {
         let vault_authority = Pubkey::create_program_address(
-            &TokenVault::signer_seeds(safe_acc_info.key, vesting_acc_info.key, &nonce),
+            &vault::signer_seeds(safe_acc_info.key, &beneficiary, &nonce),
             program_id,
         )
         .map_err(|_| LockupErrorCode::InvalidVaultNonce)?;
@@ -212,6 +213,7 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), LockupError> {
 
 struct AccessControlRequest<'a, 'b> {
     program_id: &'a Pubkey,
+    beneficiary: Pubkey,
     end_ts: i64,
     period_count: u64,
     deposit_amount: u64,
