@@ -1,7 +1,5 @@
 #![cfg_attr(feature = "strict", deny(warnings))]
 
-use solana_sdk::pubkey::Pubkey;
-
 #[cfg(feature = "client")]
 pub mod client;
 #[macro_use]

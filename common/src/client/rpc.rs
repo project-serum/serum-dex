@@ -56,7 +56,7 @@ pub fn create_token_account(
     payer: &Keypair,
 ) -> Result<Keypair> {
     let spl_account = Keypair::generate(&mut OsRng);
-    let mut instructions = create_token_account_instructions(
+    let instructions = create_token_account_instructions(
         client,
         spl_account.pubkey(),
         mint_pubkey,
@@ -65,7 +65,7 @@ pub fn create_token_account(
     )?;
 
     let (recent_hash, _fee_calc) = client.get_recent_blockhash()?;
-    let mut signers = vec![payer, &spl_account];
+    let signers = vec![payer, &spl_account];
 
     let txn = Transaction::new_signed_with_payer(
         &instructions,
@@ -101,7 +101,7 @@ pub fn create_token_account_instructions(
         &owner_pubkey,
     )?;
 
-    let mut instructions = vec![create_account_instr, init_account_instr];
+    let instructions = vec![create_account_instr, init_account_instr];
 
     Ok(instructions)
 }
