@@ -3,7 +3,6 @@
 
 use heck::SnakeCase;
 use proc_quote::quote;
-use syn::parse::Parser;
 use syn::parse_macro_input;
 
 #[proc_macro_attribute]

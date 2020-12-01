@@ -1,6 +1,6 @@
 use crate::access_control;
 use serum_common::pack::Pack;
-use serum_lockup::accounts::{vault, Safe, Vesting};
+use serum_lockup::accounts::{vault, Vesting};
 use serum_lockup::error::{LockupError, LockupErrorCode};
 use solana_program::info;
 use solana_sdk::account_info::{next_account_info, AccountInfo};

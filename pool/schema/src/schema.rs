@@ -3,13 +3,11 @@ use std::{io, io::Write};
 
 use borsh::schema::{Declaration, Definition};
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
-use serum_common::pack::*;
-use solana_sdk::program_error::ProgramError;
 use solana_sdk::pubkey::Pubkey;
 
 /// Wrapper around `solana_sdk::pubkey::Pubkey` so it can implement `BorshSerialize` etc.
 #[repr(transparent)]
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Address(Pubkey);
 
 impl From<Address> for Pubkey {
@@ -44,7 +42,7 @@ impl From<&Pubkey> for Address {
 
 macro_rules! declare_tag {
     ($name:ident, $type:ty, $tag:expr) => {
-        #[derive(Debug, Clone, PartialEq, Eq, BorshSerialize, BorshSchema)]
+        #[derive(Clone, PartialEq, Eq, BorshSerialize, BorshSchema)]
         pub struct $name($type);
         impl $name {
             pub const TAG_VALUE: $type = $tag;
@@ -74,7 +72,7 @@ macro_rules! declare_tag {
 
 declare_tag!(PoolStateTag, u64, 0x16a7874c7fb2301b);
 
-#[derive(Debug, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub struct PoolState {
     pub tag: PoolStateTag,
 
@@ -98,55 +96,14 @@ pub struct PoolState {
     pub custom_state: Vec<u8>,
 }
 
-serum_common::packable!(PoolState);
-
-// TODO: remove this.
-#[cfg(not(feature = "program"))]
-lazy_static::lazy_static! {
-    pub static ref POOL_STATE_SIZE: u64 = PoolState {
-        tag: Default::default(),
-        pool_token_mint: Pubkey::new_from_array([0; 32]).into(),
-        assets: vec![AssetInfo {
-            mint: Pubkey::new_from_array([0; 32]).into(),
-            vault_address: Pubkey::new_from_array([0; 32]).into(),
-        }],
-        vault_signer: Pubkey::new_from_array([0; 32]).into(),
-        vault_signer_nonce: 0,
-        account_params: vec![],
-        admin_key: Some(Pubkey::new_from_array([0; 32]).into()),
-        custom_state: vec![],
-                name: "".to_string(),
-    }.try_to_vec().unwrap().len() as u64;
-    pub static ref MEGA_POOL_STATE_SIZE: u64 = PoolState {
-        tag: Default::default(),
-        pool_token_mint: Pubkey::new_from_array([0; 32]).into(),
-        assets: vec![
-            AssetInfo {
-                mint: Pubkey::new_from_array([0; 32]).into(),
-                vault_address: Pubkey::new_from_array([0; 32]).into(),
-            },
-            AssetInfo {
-                mint: Pubkey::new_from_array([0; 32]).into(),
-                vault_address: Pubkey::new_from_array([0; 32]).into(),
-            }
-        ],
-        vault_signer: Pubkey::new_from_array([0; 32]).into(),
-        vault_signer_nonce: 0,
-        account_params: vec![],
-        admin_key: Some(Pubkey::new_from_array([0; 32]).into()),
-        custom_state: vec![],
-        name: "".to_string(),
-    }.try_to_vec().unwrap().len() as u64;
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub struct AssetInfo {
     pub mint: Address,
     /// Vault should be owned by `PoolState::vault_signer`
     pub vault_address: Address,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub struct ParamDesc {
     pub address: Address,
     pub writable: bool,
@@ -229,9 +186,6 @@ pub struct Basket {
     /// one of the assets in `PoolState::assets`.
     pub quantities: Vec<i64>,
 }
-
-// TODO: remove.
-serum_common::packable!(Basket);
 
 impl BorshSerialize for Address {
     fn serialize<W: Write>(&self, writer: &mut W) -> io::Result<()> {

@@ -1,7 +1,6 @@
 use serum_common::pack::Pack;
 use serum_lockup::instruction::LockupInstruction;
 use serum_registry::access_control;
-use serum_registry::accounts::reward_queue::Ring;
 use serum_registry::accounts::{LockedRewardVendor, Member};
 use serum_registry::error::{RegistryError, RegistryErrorCode};
 use solana_program::info;

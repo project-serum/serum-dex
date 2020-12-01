@@ -1,8 +1,9 @@
+use anyhow::anyhow;
+use borsh::{BorshDeserialize, BorshSerialize};
 use serum_common::client::rpc;
 use serum_common::pack::*;
 use serum_common::shared_mem;
-use serum_pool_schema::Basket;
-use serum_pool_schema::PoolState;
+use serum_pool_schema::*;
 use serum_registry::accounts::{
     self, pending_withdrawal, vault, Entity, Member, PendingWithdrawal, Registrar,
 };
@@ -17,6 +18,43 @@ use std::convert::Into;
 use thiserror::Error;
 
 mod inner;
+
+lazy_static::lazy_static! {
+    pub static ref POOL_STATE_SIZE: u64 = PoolState {
+        tag: Default::default(),
+        pool_token_mint: Pubkey::new_from_array([0; 32]).into(),
+        assets: vec![AssetInfo {
+            mint: Pubkey::new_from_array([0; 32]).into(),
+            vault_address: Pubkey::new_from_array([0; 32]).into(),
+        }],
+        vault_signer: Pubkey::new_from_array([0; 32]).into(),
+        vault_signer_nonce: 0,
+        account_params: vec![],
+        admin_key: Some(Pubkey::new_from_array([0; 32]).into()),
+        custom_state: vec![],
+                name: "".to_string(),
+    }.try_to_vec().unwrap().len() as u64;
+    pub static ref MEGA_POOL_STATE_SIZE: u64 = PoolState {
+        tag: Default::default(),
+        pool_token_mint: Pubkey::new_from_array([0; 32]).into(),
+        assets: vec![
+            AssetInfo {
+                mint: Pubkey::new_from_array([0; 32]).into(),
+                vault_address: Pubkey::new_from_array([0; 32]).into(),
+            },
+            AssetInfo {
+                mint: Pubkey::new_from_array([0; 32]).into(),
+                vault_address: Pubkey::new_from_array([0; 32]).into(),
+            }
+        ],
+        vault_signer: Pubkey::new_from_array([0; 32]).into(),
+        vault_signer_nonce: 0,
+        account_params: vec![],
+        admin_key: Some(Pubkey::new_from_array([0; 32]).into()),
+        custom_state: vec![],
+        name: "".to_string(),
+    }.try_to_vec().unwrap().len() as u64;
+}
 
 pub struct Client {
     inner: InnerClient,
@@ -523,7 +561,7 @@ impl Client {
             rpc::create_account_rent_exempt(
                 self.rpc(),
                 self.payer(),
-                dummy_basket.size().expect("always serializes") as usize,
+                dummy_basket.try_to_vec().unwrap().len(),
                 &shared_mem::ID,
             )?
             .pubkey()
@@ -682,12 +720,26 @@ impl Client {
 
     pub fn stake_pool(&self, registrar: &Pubkey) -> Result<PoolState, ClientError> {
         let r = self.registrar(registrar)?;
-        rpc::get_account::<PoolState>(self.inner.rpc(), &r.pool).map_err(Into::into)
+        let account = self
+            .rpc()
+            .get_account_with_commitment(&r.pool, CommitmentConfig::recent())?
+            .value
+            .map_or(Err(anyhow!("unablle to get account data")), Ok)?;
+        let mut data: &[u8] = &account.data;
+        PoolState::deserialize(&mut data)
+            .map_err(|_| ClientError::Any(anyhow!("unable to deserialize account data")))
     }
 
     pub fn stake_mega_pool(&self, registrar: &Pubkey) -> Result<PoolState, ClientError> {
         let r = self.registrar(registrar)?;
-        rpc::get_account::<PoolState>(self.inner.rpc(), &r.mega_pool).map_err(Into::into)
+        let account = self
+            .rpc()
+            .get_account_with_commitment(&r.mega_pool, CommitmentConfig::recent())?
+            .value
+            .map_or(Err(anyhow!("unablle to get account data")), Ok)?;
+        let mut data: &[u8] = &account.data;
+        PoolState::deserialize(&mut data)
+            .map_err(|_| ClientError::Any(anyhow!("unable to deserialize account data")))
     }
 
     pub fn stake_pool_asset_vault(&self, registrar: &Pubkey) -> Result<TokenAccount, ClientError> {

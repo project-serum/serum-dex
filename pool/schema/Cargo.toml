@@ -6,13 +6,11 @@ edition = "2018"
 
 [features]
 program = ["solana-sdk/program"]
-default = ["solana-sdk/default", "lazy_static"]
+default = ["solana-sdk/default"]
 
 [dependencies]
 borsh = { git = "https://github.com/project-serum/borsh", branch = "serum" }
 solana-sdk = { version = "1.3.9", default-features = false }
-lazy_static = { version = "1.4.0", optional = true }
-serum-common = { path = "../../common" }
 
 [[bin]]
 name = "print-schema"

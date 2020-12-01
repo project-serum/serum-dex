@@ -3290,8 +3290,6 @@ name = "serum-pool-schema"
 version = "0.1.0"
 dependencies = [
  "borsh",
- "lazy_static",
- "serum-common",
  "solana-sdk",
 ]
 
@@ -3350,6 +3348,8 @@ name = "serum-registry-client"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "borsh",
+ "lazy_static",
  "serum-common",
  "serum-meta-entity",
  "serum-pool-schema",

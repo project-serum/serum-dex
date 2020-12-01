@@ -1,8 +1,7 @@
 #![cfg_attr(feature = "strict", deny(warnings))]
 #![allow(dead_code)]
 
-use crate::accounts::reward_queue::RewardEvent;
-use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
+use borsh::{BorshDeserialize, BorshSerialize};
 use serum_common::pack::*;
 use solana_client_gen::prelude::*;
 

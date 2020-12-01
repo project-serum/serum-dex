@@ -1,6 +1,6 @@
+use crate::{MEGA_POOL_STATE_SIZE, POOL_STATE_SIZE};
 use serum_common::client::rpc;
 use serum_common::pack::Pack;
-use serum_pool_schema::{MEGA_POOL_STATE_SIZE, POOL_STATE_SIZE};
 use serum_registry::accounts;
 use serum_registry::accounts::reward_queue::{RewardEventQueue, Ring};
 use serum_registry::client::{Client as InnerClient, ClientError as InnerClientError};

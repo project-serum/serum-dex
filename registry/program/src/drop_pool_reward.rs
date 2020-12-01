@@ -9,7 +9,7 @@ use solana_sdk::pubkey::Pubkey;
 
 #[inline(never)]
 pub fn handler(
-    program_id: &Pubkey,
+    _program_id: &Pubkey,
     accounts: &[AccountInfo],
     totals: Vec<u64>,
 ) -> Result<(), RegistryError> {
@@ -57,8 +57,8 @@ fn access_control(req: AccessControlRequest) -> Result<(), RegistryError> {
     let AccessControlRequest {
         registrar_acc_info,
         reward_event_q_acc_info,
-        pool_acc_info,
-        pool_vault_acc_infos,
+        pool_acc_info: _,
+        pool_vault_acc_infos: _,
     } = req;
 
     // todo

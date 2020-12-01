@@ -9,7 +9,7 @@ use solana_sdk::pubkey::Pubkey;
 use solana_sdk::sysvar::clock::Clock;
 use solana_sdk::sysvar::rent::Rent;
 use solana_sdk::sysvar::Sysvar;
-use spl_token::state::{Account as TokenAccount, Mint};
+use spl_token::state::Account as TokenAccount;
 use std::convert::Into;
 
 pub fn governance(
@@ -96,19 +96,6 @@ pub fn clock(acc_info: &AccountInfo) -> Result<Clock, LockupError> {
         return Err(LockupErrorCode::InvalidClockSysvar)?;
     }
     Clock::from_account_info(acc_info).map_err(Into::into)
-}
-
-pub fn mint(acc_info: &AccountInfo) -> Result<Mint, LockupError> {
-    if *acc_info.owner != spl_token::ID {
-        return Err(LockupErrorCode::InvalidMint)?;
-    }
-
-    let mint = Mint::unpack(&acc_info.try_borrow_data()?)?;
-    if !mint.is_initialized {
-        return Err(LockupErrorCode::UnitializedTokenMint)?;
-    }
-
-    Ok(mint)
 }
 
 pub fn safe(acc_info: &AccountInfo, program_id: &Pubkey) -> Result<Safe, LockupError> {
