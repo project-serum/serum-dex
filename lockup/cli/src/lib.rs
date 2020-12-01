@@ -59,12 +59,12 @@ pub enum SubCommand {
         #[clap(short = 'a', long)]
         deposit_amount: u64,
     },
-    /// Redeem a claimed token receipt for an amount of vested tokens.
-    Redeem {
-        /// The amount of vested tokens to redeem.
+    /// Withdraw vested tokens.
+    Withdraw {
+        /// The amount of vested tokens to withdraw.
         #[clap(short, long)]
         amount: u64,
-        /// Vesting account to redeem from.
+        /// Vesting account to withdraw from.
         #[clap(short, long)]
         vesting: Pubkey,
         /// Token account to send the vested tokens to.
@@ -171,7 +171,7 @@ pub fn run(opts: Opts) -> Result<()> {
             println!("{:#?}", resp);
             Ok(())
         }
-        SubCommand::Redeem {
+        SubCommand::Withdraw {
             vesting,
             amount,
             token_account,
@@ -180,7 +180,7 @@ pub fn run(opts: Opts) -> Result<()> {
             let client = ctx.connect::<Client>(opts.cmd.pid)?;
             let vesting_account = client.vesting(&vesting)?;
             let safe = vesting_account.safe;
-            let resp = client.redeem(RedeemRequest {
+            let resp = client.withdraw(WithdrawRequest {
                 beneficiary: &beneficiary,
                 vesting,
                 token_account,
@@ -207,7 +207,7 @@ fn account_cmd(ctx: &Context, pid: Pubkey, cmd: AccountsCommand) -> Result<()> {
 
             let current_ts = client.rpc().get_block_time(client.rpc().get_slot()?)?;
             let amount = vault.available_for_withdrawal(current_ts);
-            println!("Redeemable balance: {:?}", amount);
+            println!("Withdrawable balance: {:?}", amount);
             println!("Whitelistable balance: {:?}", amount);
 
             Ok(())

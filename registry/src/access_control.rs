@@ -214,7 +214,7 @@ pub fn generation_check(
     Ok(())
 }
 
-pub fn vault_join(
+pub fn vault_authenticated(
     acc_info: &AccountInfo,
     vault_authority_acc_info: &AccountInfo,
     registrar_acc_info: &AccountInfo,

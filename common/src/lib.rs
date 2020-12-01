@@ -4,6 +4,8 @@
 pub mod client;
 #[macro_use]
 pub mod pack;
+#[cfg(feature = "program")]
+pub mod program;
 
 // TODO: Import the shared_mem crate instead of hardcoding here.
 //       The shared memory program is awaiting audit and so is not deployed

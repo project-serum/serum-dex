@@ -273,18 +273,20 @@ impl Client {
             pool_program_id,
         } = req;
         let vault = self.vault_for(&registrar, &depositor)?;
+        let vault_acc = rpc::get_token_account::<TokenAccount>(self.inner.rpc(), &vault)?;
         let mut accounts = vec![
             // Whitelist relay interface,
             AccountMeta::new(depositor, false),
             AccountMeta::new(depositor_authority.pubkey(), true),
             AccountMeta::new_readonly(spl_token::ID, false),
+            AccountMeta::new(vault, false),
+            AccountMeta::new(vault_acc.owner, false),
             // Program specific.
             AccountMeta::new(member, false),
             AccountMeta::new_readonly(beneficiary.pubkey(), true),
             AccountMeta::new(entity, false),
             AccountMeta::new_readonly(registrar, false),
             AccountMeta::new_readonly(solana_sdk::sysvar::clock::ID, false),
-            AccountMeta::new(vault, false),
         ];
         let (pool_accs, _) = self.common_pool_accounts(pool_program_id, registrar, false)?;
         accounts.extend_from_slice(&pool_accs);
@@ -307,14 +309,15 @@ impl Client {
             amount,
             pool_program_id,
         } = req;
-        let r = self.registrar(&registrar)?;
-        let vault_acc = rpc::get_token_account::<TokenAccount>(self.inner.rpc(), &r.vault)?;
         let vault = self.vault_for(&registrar, &depositor)?;
+        let r = self.registrar(&registrar)?;
+        let vault_acc = rpc::get_token_account::<TokenAccount>(self.inner.rpc(), &vault)?;
         let mut accounts = vec![
             // Whitelist relay interface.
             AccountMeta::new(depositor, false),
             AccountMeta::new_readonly(beneficiary.pubkey(), true),
             AccountMeta::new_readonly(spl_token::ID, false),
+            AccountMeta::new(vault, false),
             AccountMeta::new(vault_acc.owner, false),
             // Program specific.
             AccountMeta::new(member, false),
@@ -322,7 +325,6 @@ impl Client {
             AccountMeta::new(entity, false),
             AccountMeta::new_readonly(registrar, false),
             AccountMeta::new_readonly(solana_sdk::sysvar::clock::ID, false),
-            AccountMeta::new(vault, false),
         ];
         let is_mega = vault == r.mega_vault; // TODO: remove is_mega.
         let (pool_accs, _) = self.common_pool_accounts(pool_program_id, registrar, is_mega)?;

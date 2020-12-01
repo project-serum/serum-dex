@@ -1,4 +1,4 @@
-use crate::access_control;
+use crate::common::access_control;
 use serum_lockup::accounts::{Whitelist, WhitelistEntry};
 use serum_lockup::error::{LockupError, LockupErrorCode};
 use solana_program::info;
@@ -54,8 +54,6 @@ fn access_control(req: AccessControlRequest) -> Result<(), LockupError> {
     // Must be a valid derived address.
     let _ = wl_entry.derived_address()?;
 
-    info!("access-control: success");
-
     Ok(())
 }
 
@@ -70,8 +68,6 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), LockupError> {
     whitelist
         .push(wl_entry)?
         .ok_or(LockupErrorCode::WhitelistFull)?;
-
-    info!("state-transition: success");
 
     Ok(())
 }

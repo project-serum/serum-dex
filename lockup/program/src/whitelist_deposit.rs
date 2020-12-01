@@ -1,6 +1,6 @@
-use crate::access_control;
+use crate::common::{access_control, whitelist_cpi};
 use serum_common::pack::Pack;
-use serum_lockup::accounts::{vault, Vesting};
+use serum_lockup::accounts::Vesting;
 use serum_lockup::error::{LockupError, LockupErrorCode};
 use solana_program::info;
 use solana_sdk::account_info::{next_account_info, AccountInfo};
@@ -8,11 +8,12 @@ use solana_sdk::instruction::{AccountMeta, Instruction};
 use solana_sdk::program_pack::Pack as TokenPack;
 use solana_sdk::pubkey::Pubkey;
 use std::convert::Into;
+use std::iter::Iterator;
 
 pub fn handler(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    instruction_data: Vec<u8>,
+    ref instruction_data: Vec<u8>,
 ) -> Result<(), LockupError> {
     info!("handler: whitelist_deposit");
 
@@ -30,10 +31,11 @@ pub fn handler(
     let vault_acc_info = next_account_info(acc_infos)?;
     let vault_auth_acc_info = next_account_info(acc_infos)?;
     let tok_prog_acc_info = next_account_info(acc_infos)?;
+    let wl_prog_vault_acc_info = next_account_info(acc_infos)?;
     let wl_prog_vault_authority_acc_info = next_account_info(acc_infos)?;
 
     // Program specific.
-    let remaining_relay_accs: Vec<&AccountInfo> = acc_infos.collect();
+    let remaining_relay_accs = acc_infos;
 
     access_control(AccessControlRequest {
         program_id,
@@ -41,6 +43,7 @@ pub fn handler(
         vesting_acc_info,
         wl_acc_info,
         wl_prog_acc_info,
+        wl_prog_vault_acc_info,
         wl_prog_vault_authority_acc_info,
         safe_acc_info,
         vault_acc_info,
@@ -52,17 +55,17 @@ pub fn handler(
         &mut |vesting: &mut Vesting| {
             state_transition(StateTransitionRequest {
                 accounts,
-                instruction_data: instruction_data.clone(),
-                safe_acc: safe_acc_info.key,
-                nonce: vesting.nonce,
+                instruction_data,
+                safe_acc_info,
                 wl_prog_acc_info,
+                wl_prog_vault_acc_info,
                 wl_prog_vault_authority_acc_info,
                 vault_acc_info,
                 vault_auth_acc_info,
                 tok_prog_acc_info,
                 vesting,
                 beneficiary_acc_info,
-                remaining_relay_accs: remaining_relay_accs.clone(),
+                remaining_relay_accs,
             })
             .map_err(Into::into)
         },
@@ -80,6 +83,7 @@ fn access_control(req: AccessControlRequest) -> Result<(), LockupError> {
         vesting_acc_info,
         wl_acc_info,
         wl_prog_acc_info,
+        wl_prog_vault_acc_info,
         wl_prog_vault_authority_acc_info,
         safe_acc_info,
         vault_acc_info,
@@ -105,20 +109,25 @@ fn access_control(req: AccessControlRequest) -> Result<(), LockupError> {
     )?;
     let _vesting = access_control::vesting(
         program_id,
-        safe_acc_info.key,
+        safe_acc_info,
         vesting_acc_info,
         beneficiary_acc_info,
     )?;
 
     // WhitelistDeposit checks.
+    //
+    // Is the given program on the whitelist?
     let entry = whitelist
         .get_derived(wl_prog_vault_authority_acc_info.key)?
         .ok_or(LockupErrorCode::WhitelistNotFound)?;
     if entry.program_id() != *wl_prog_acc_info.key {
         return Err(LockupErrorCode::WhitelistInvalidProgramId)?;
     }
-
-    info!("access-control: success");
+    // Is the vault owned by this whitelisted authority?
+    let wl_vault = access_control::token(wl_prog_vault_acc_info)?;
+    if &wl_vault.owner != wl_prog_vault_authority_acc_info.key {
+        return Err(LockupErrorCode::InvalidTokenAccountOwner)?;
+    }
 
     Ok(())
 }
@@ -130,18 +139,17 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), LockupError> {
         vesting,
         instruction_data,
         accounts,
-        nonce,
-        safe_acc,
+        safe_acc_info,
         vault_acc_info,
         vault_auth_acc_info,
         wl_prog_acc_info,
+        wl_prog_vault_acc_info,
         wl_prog_vault_authority_acc_info,
         remaining_relay_accs,
         tok_prog_acc_info,
         beneficiary_acc_info,
     } = req;
 
-    // Check before balance.
     let before_amount = {
         let vault = spl_token::state::Account::unpack(&vault_acc_info.try_borrow_data()?)?;
         vault.amount
@@ -153,44 +161,47 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), LockupError> {
             AccountMeta::new(*vault_acc_info.key, false),
             AccountMeta::new_readonly(*vault_auth_acc_info.key, true),
             AccountMeta::new_readonly(*tok_prog_acc_info.key, false),
+            AccountMeta::new(*wl_prog_vault_acc_info.key, false),
             AccountMeta::new_readonly(*wl_prog_vault_authority_acc_info.key, false),
         ];
-        for a in remaining_relay_accs {
+        meta_accounts.extend(remaining_relay_accs.map(|a| {
             if a.is_writable {
-                meta_accounts.push(AccountMeta::new(*a.key, a.is_signer));
+                AccountMeta::new(*a.key, a.is_signer)
             } else {
-                meta_accounts.push(AccountMeta::new_readonly(*a.key, a.is_signer));
+                AccountMeta::new_readonly(*a.key, a.is_signer)
             }
-        }
-        let mut data = serum_lockup::instruction::TAG.to_le_bytes().to_vec();
-        data.extend(instruction_data);
+        }));
         let relay_instruction = Instruction {
             program_id: *wl_prog_acc_info.key,
             accounts: meta_accounts,
-            data,
+            data: instruction_data.to_vec(),
         };
-        let signer_seeds = vault::signer_seeds(safe_acc, beneficiary_acc_info.key, &nonce);
-        solana_sdk::program::invoke_signed(&relay_instruction, &accounts[..], &[&signer_seeds])?;
+        whitelist_cpi(
+            relay_instruction,
+            safe_acc_info.key,
+            beneficiary_acc_info,
+            vesting,
+            accounts,
+        )?;
     }
 
-    // Update vesting account with the deposit.
-    {
+    let after_amount = {
         let vault = spl_token::state::Account::unpack(&vault_acc_info.try_borrow_data()?)?;
-        let deposit_amount = vault.amount - before_amount;
+        vault.amount
+    };
 
-        // Safety checks.
-        //
-        // Balance must go up.
-        if deposit_amount <= 0 {
-            return Err(LockupErrorCode::InsufficientDepositAmount)?;
-        }
-        // Cannot deposit more than withdrawn.
-        if deposit_amount > vesting.whitelist_owned {
-            return Err(LockupErrorCode::DepositOverflow)?;
-        }
-
-        vesting.whitelist_owned -= deposit_amount;
+    // Deposit safety checks.
+    let deposit_amount = after_amount - before_amount;
+    // Balance must go up.
+    if deposit_amount <= 0 {
+        return Err(LockupErrorCode::InsufficientDepositAmount)?;
     }
+    // Cannot deposit more than withdrawn.
+    if deposit_amount > vesting.whitelist_owned {
+        return Err(LockupErrorCode::DepositOverflow)?;
+    }
+    // Book keeping.
+    vesting.whitelist_owned -= deposit_amount;
 
     Ok(())
 }
@@ -199,6 +210,7 @@ struct AccessControlRequest<'a, 'b> {
     program_id: &'a Pubkey,
     wl_acc_info: &'a AccountInfo<'b>,
     wl_prog_acc_info: &'a AccountInfo<'b>,
+    wl_prog_vault_acc_info: &'a AccountInfo<'b>,
     wl_prog_vault_authority_acc_info: &'a AccountInfo<'b>,
     beneficiary_acc_info: &'a AccountInfo<'b>,
     vesting_acc_info: &'a AccountInfo<'b>,
@@ -208,16 +220,16 @@ struct AccessControlRequest<'a, 'b> {
 }
 
 struct StateTransitionRequest<'a, 'b, 'c> {
-    instruction_data: Vec<u8>,
-    vesting: &'c mut Vesting,
+    remaining_relay_accs: &'c mut dyn Iterator<Item = &'a AccountInfo<'b>>,
     accounts: &'a [AccountInfo<'b>],
-    nonce: u8,
-    safe_acc: &'a Pubkey,
+    safe_acc_info: &'a AccountInfo<'b>,
     vault_acc_info: &'a AccountInfo<'b>,
     vault_auth_acc_info: &'a AccountInfo<'b>,
     wl_prog_acc_info: &'a AccountInfo<'b>,
+    wl_prog_vault_acc_info: &'a AccountInfo<'b>,
     wl_prog_vault_authority_acc_info: &'a AccountInfo<'b>,
-    remaining_relay_accs: Vec<&'a AccountInfo<'b>>,
     tok_prog_acc_info: &'a AccountInfo<'b>,
     beneficiary_acc_info: &'a AccountInfo<'b>,
+    instruction_data: &'c [u8],
+    vesting: &'c mut Vesting,
 }

@@ -1,7 +1,7 @@
-use crate::common::invoke_token_transfer;
-use crate::entity::{with_entity, EntityContext};
-use crate::pool::{pool_check, Pool, PoolConfig};
+use crate::common::entity::{with_entity, EntityContext};
+use crate::common::pool::{pool_check, Pool, PoolConfig};
 use serum_common::pack::Pack;
+use serum_common::program::invoke_token_transfer;
 use serum_registry::access_control;
 use serum_registry::accounts::{vault, Entity, Member, Registrar};
 use serum_registry::error::RegistryError;
@@ -121,7 +121,7 @@ fn access_control(req: AccessControlRequest) -> Result<(), RegistryError> {
     // Account validation.
     let _entity = access_control::entity(entity_acc_info, registrar_acc_info, program_id)?;
     let member = access_control::member_raw(member_acc_info, entity_acc_info, program_id)?;
-    let _vault = access_control::vault_join(
+    let _vault = access_control::vault_authenticated(
         vault_acc_info,
         vault_authority_acc_info,
         registrar_acc_info,
@@ -129,7 +129,7 @@ fn access_control(req: AccessControlRequest) -> Result<(), RegistryError> {
         program_id,
     )?;
     if let Some(mega_vault_acc_info) = mega_vault_acc_info {
-        let _mega_vault = access_control::vault_join(
+        let _mega_vault = access_control::vault_authenticated(
             mega_vault_acc_info,
             vault_authority_acc_info,
             registrar_acc_info,

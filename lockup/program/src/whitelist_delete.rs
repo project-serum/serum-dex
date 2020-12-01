@@ -1,4 +1,4 @@
-use crate::access_control;
+use crate::common::access_control;
 use serum_lockup::accounts::{Whitelist, WhitelistEntry};
 use serum_lockup::error::{LockupError, LockupErrorCode};
 use solana_program::info;
@@ -50,8 +50,6 @@ fn access_control(req: AccessControlRequest) -> Result<(), LockupError> {
     let _ =
         access_control::whitelist(whitelist_acc_info.clone(), safe_acc_info, &safe, program_id)?;
 
-    info!("access-control: success");
-
     Ok(())
 }
 
@@ -66,8 +64,6 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), LockupError> {
     whitelist
         .delete(wl_entry)?
         .ok_or(LockupErrorCode::WhitelistNotFound)?;
-
-    info!("state-transition: success");
 
     Ok(())
 }

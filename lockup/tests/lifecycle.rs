@@ -116,7 +116,7 @@ fn lifecycle() {
         pass_time(client.rpc(), wait_ts);
     }
 
-    // Redeem 10 SRM.
+    // Withdraw 10 SRM.
     //
     // Current state:
     //
@@ -134,22 +134,22 @@ fn lifecycle() {
         )
         .unwrap();
 
-        let redeem_amount = 10;
+        let withdraw_amount = 10;
 
         let _ = client
-            .redeem(RedeemRequest {
+            .withdraw(WithdrawRequest {
                 beneficiary: &expected_beneficiary,
                 vesting,
                 token_account: bene_tok_acc.pubkey(),
                 safe: safe_acc,
-                amount: redeem_amount,
+                amount: withdraw_amount,
             })
             .unwrap();
 
         // The SRM account should be increased.
         let bene_tok =
             rpc::account_token_unpacked::<TokenAccount>(client.rpc(), &bene_tok_acc.pubkey());
-        assert_eq!(bene_tok.amount, redeem_amount);
+        assert_eq!(bene_tok.amount, withdraw_amount);
     }
 }
 

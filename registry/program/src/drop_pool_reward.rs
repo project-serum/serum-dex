@@ -1,4 +1,4 @@
-use crate::common::invoke_token_transfer;
+use serum_common::program::invoke_token_transfer;
 use serum_registry::accounts::reward_queue::Ring;
 use serum_registry::accounts::{RewardEvent, RewardEventQueue};
 use serum_registry::error::{RegistryError, RegistryErrorCode};

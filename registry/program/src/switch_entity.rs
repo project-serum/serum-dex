@@ -1,4 +1,4 @@
-use crate::pool::{pool_check, Pool, PoolConfig};
+use crate::common::pool::{pool_check, Pool, PoolConfig};
 use serum_common::pack::*;
 use serum_registry::access_control;
 use serum_registry::accounts::{Entity, Member, Registrar};

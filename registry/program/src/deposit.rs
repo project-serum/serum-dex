@@ -1,7 +1,7 @@
-use crate::common::invoke_token_transfer;
-use crate::entity::{with_entity, EntityContext};
-use crate::pool::{pool_check, Pool, PoolConfig};
+use crate::common::entity::{with_entity, EntityContext};
+use crate::common::pool::{pool_check, Pool, PoolConfig};
 use serum_common::pack::Pack;
+use serum_common::program::invoke_token_transfer;
 use serum_registry::access_control;
 use serum_registry::accounts::{Entity, Member, Registrar};
 use serum_registry::error::{RegistryError, RegistryErrorCode};
@@ -26,6 +26,8 @@ pub fn handler(
     let depositor_acc_info = next_account_info(acc_infos)?;
     let depositor_authority_acc_info = next_account_info(acc_infos)?;
     let token_program_acc_info = next_account_info(acc_infos)?;
+    let vault_acc_info = next_account_info(acc_infos)?;
+    let vault_authority_acc_info = next_account_info(acc_infos)?;
 
     // Program specfic.
     let member_acc_info = next_account_info(acc_infos)?;
@@ -33,7 +35,6 @@ pub fn handler(
     let entity_acc_info = next_account_info(acc_infos)?;
     let registrar_acc_info = next_account_info(acc_infos)?;
     let clock_acc_info = next_account_info(acc_infos)?;
-    let vault_acc_info = next_account_info(acc_infos)?;
 
     let pool = &Pool::parse_accounts(acc_infos, PoolConfig::GetBasket)?;
 
@@ -54,6 +55,7 @@ pub fn handler(
             beneficiary_acc_info,
             entity_acc_info,
             vault_acc_info,
+            vault_authority_acc_info,
             program_id,
             registrar_acc_info,
             registrar,
@@ -94,6 +96,7 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
         beneficiary_acc_info,
         entity_acc_info,
         vault_acc_info,
+        vault_authority_acc_info,
         registrar_acc_info,
         registrar,
         program_id,
@@ -116,13 +119,19 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
         beneficiary_acc_info,
         program_id,
     )?;
-    let _vault = access_control::vault(vault_acc_info, registrar_acc_info, registrar, program_id)?;
-    let depositor = access_control::token(depositor_acc_info, depositor_authority_acc_info.key)?;
+    let _vault = access_control::vault_authenticated(
+        vault_acc_info,
+        vault_authority_acc_info,
+        registrar_acc_info,
+        registrar,
+        program_id,
+    )?;
     pool_check(program_id, pool, registrar_acc_info, registrar, &member)?;
 
     // Deposit specific.
     //
     // Authenticate the delegate boolean.
+    let depositor = access_control::token(depositor_acc_info, depositor_authority_acc_info.key)?;
     if delegate != (depositor.owner == member.balances.delegate.owner) {
         return Err(RegistryErrorCode::DepositorOwnerDelegateMismatch)?;
     }
@@ -171,6 +180,7 @@ struct AccessControlRequest<'a, 'b, 'c> {
     entity_acc_info: &'a AccountInfo<'b>,
     vault_acc_info: &'a AccountInfo<'b>,
     registrar_acc_info: &'a AccountInfo<'b>,
+    vault_authority_acc_info: &'a AccountInfo<'b>,
     program_id: &'a Pubkey,
     pool: &'c Pool<'a, 'b>,
     registrar: &'c Registrar,

@@ -1,5 +1,5 @@
-use crate::entity::{with_entity, EntityContext};
-use crate::pool::{pool_check_create, Pool, PoolConfig};
+use crate::common::entity::{with_entity, EntityContext};
+use crate::common::pool::{pool_check_create, Pool, PoolConfig};
 use serum_common::pack::Pack;
 use serum_registry::access_control;
 use serum_registry::accounts::{Entity, Member, Registrar};

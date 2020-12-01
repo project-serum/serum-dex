@@ -1,4 +1,4 @@
-use crate::access_control;
+use crate::common::access_control;
 use serum_common::pack::Pack;
 use serum_lockup::accounts::Safe;
 use serum_lockup::error::LockupError;
@@ -51,15 +51,7 @@ fn access_control(req: AccessControlRequest) -> Result<(), LockupError> {
     // Governance authorization.
     let _ = access_control::governance(program_id, safe_acc_info, safe_authority_acc_info)?;
 
-    info!("access-control: success");
-
     Ok(())
-}
-
-struct AccessControlRequest<'a, 'b> {
-    program_id: &'a Pubkey,
-    safe_acc_info: &'a AccountInfo<'b>,
-    safe_authority_acc_info: &'a AccountInfo<'b>,
 }
 
 fn state_transition(req: StateTransitionRequest) -> Result<(), LockupError> {
@@ -72,9 +64,13 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), LockupError> {
 
     safe_acc.authority = new_authority;
 
-    info!("state-transition: success");
-
     Ok(())
+}
+
+struct AccessControlRequest<'a, 'b> {
+    program_id: &'a Pubkey,
+    safe_acc_info: &'a AccountInfo<'b>,
+    safe_authority_acc_info: &'a AccountInfo<'b>,
 }
 
 struct StateTransitionRequest<'a> {

@@ -1,7 +1,7 @@
-use crate::common::invoke_token_transfer;
-use crate::entity::{with_entity, EntityContext};
-use crate::pool::{pool_check, Pool, PoolConfig};
+use crate::common::entity::{with_entity, EntityContext};
+use crate::common::pool::{pool_check, Pool, PoolConfig};
 use serum_common::pack::Pack;
+use serum_common::program::invoke_token_transfer;
 use serum_registry::access_control;
 use serum_registry::accounts::entity::{EntityState, PoolPrices};
 use serum_registry::accounts::pending_withdrawal::PendingPayment;
@@ -158,7 +158,7 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
         .map_or(Ok(None), |res| res.map(Some))?;
 
     pool_check(program_id, pool, registrar_acc_info, registrar, &member)?;
-    let _vault = access_control::vault_join(
+    let _vault = access_control::vault_authenticated(
         vault_acc_info,
         vault_authority_acc_info,
         registrar_acc_info,
@@ -166,7 +166,7 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
         program_id,
     )?;
     if let Some(mega_vault_acc_info) = mega_vault_acc_info {
-        let _mega_vault = access_control::vault_join(
+        let _mega_vault = access_control::vault_authenticated(
             mega_vault_acc_info,
             vault_authority_acc_info,
             registrar_acc_info,

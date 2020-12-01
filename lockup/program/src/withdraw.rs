@@ -1,5 +1,6 @@
-use crate::access_control;
+use crate::common::access_control;
 use serum_common::pack::Pack;
+use serum_common::program::invoke_token_transfer;
 use serum_lockup::accounts::{vault, Vesting};
 use serum_lockup::error::{LockupError, LockupErrorCode};
 use solana_program::info;
@@ -12,13 +13,13 @@ pub fn handler(
     accounts: &[AccountInfo],
     amount: u64,
 ) -> Result<(), LockupError> {
-    info!("handler: redeem");
+    info!("handler: withdraw");
 
     let acc_infos = &mut accounts.iter();
 
     let beneficiary_acc_info = next_account_info(acc_infos)?;
     let vesting_acc_info = next_account_info(acc_infos)?;
-    let beneficiary_token_acc_info = next_account_info(acc_infos)?;
+    let token_acc_info = next_account_info(acc_infos)?;
     let vault_acc_info = next_account_info(acc_infos)?;
     let vault_authority_acc_info = next_account_info(acc_infos)?;
     let safe_acc_info = next_account_info(acc_infos)?;
@@ -44,7 +45,7 @@ pub fn handler(
                 vesting,
                 vault_acc_info,
                 vault_authority_acc_info,
-                beneficiary_token_acc_info,
+                token_acc_info,
                 safe_acc_info,
                 token_program_acc_info,
                 beneficiary_acc_info,
@@ -56,7 +57,7 @@ pub fn handler(
 }
 
 fn access_control(req: AccessControlRequest) -> Result<(), LockupError> {
-    info!("access-control: redeem");
+    info!("access-control: withdraw");
 
     let AccessControlRequest {
         program_id,
@@ -69,20 +70,20 @@ fn access_control(req: AccessControlRequest) -> Result<(), LockupError> {
         clock_acc_info,
     } = req;
 
-    // Beneficiary authorization.
+    // Authorization.
     if !beneficiary_acc_info.is_signer {
         return Err(LockupErrorCode::Unauthorized)?;
     }
 
     // Account validation.
-    let _ = access_control::safe(safe_acc_info, program_id)?;
+    let _safe = access_control::safe(safe_acc_info, program_id)?;
     let vesting = access_control::vesting(
         program_id,
-        safe_acc_info.key,
+        safe_acc_info,
         vesting_acc_info,
         beneficiary_acc_info,
     )?;
-    let _ = access_control::vault(
+    let _vault = access_control::vault(
         vault_acc_info,
         vault_authority_acc_info,
         vesting_acc_info,
@@ -90,62 +91,44 @@ fn access_control(req: AccessControlRequest) -> Result<(), LockupError> {
         safe_acc_info,
         program_id,
     )?;
+    let clock = access_control::clock(clock_acc_info)?;
 
-    // Redemption checks.
-    {
-        let clock = access_control::clock(clock_acc_info)?;
-        if amount == 0 || amount > vesting.available_for_withdrawal(clock.unix_timestamp) {
-            return Err(LockupErrorCode::InsufficientWithdrawalBalance)?;
-        }
+    // Withdrawal checks.
+    if amount == 0 || amount > vesting.available_for_withdrawal(clock.unix_timestamp) {
+        return Err(LockupErrorCode::InsufficientWithdrawalBalance)?;
     }
 
     Ok(())
 }
 
 fn state_transition(req: StateTransitionRequest) -> Result<(), LockupError> {
-    info!("state-transition: redeem");
+    info!("state-transition: withdraw");
 
     let StateTransitionRequest {
         vesting,
         amount,
         vault_acc_info,
         vault_authority_acc_info,
-        beneficiary_token_acc_info,
+        token_acc_info,
         safe_acc_info,
         token_program_acc_info,
         beneficiary_acc_info,
     } = req;
 
-    // Remove the withdrawn token from the vesting account.
-    {
-        vesting.deduct(amount);
-    }
-
     // Transfer token from the vault to the user address.
-    {
-        let withdraw_instruction = spl_token::instruction::transfer(
-            &spl_token::ID,
-            vault_acc_info.key,
-            beneficiary_token_acc_info.key,
-            &vault_authority_acc_info.key,
-            &[],
-            amount,
-        )?;
+    let signer_seeds =
+        vault::signer_seeds(safe_acc_info.key, beneficiary_acc_info.key, &vesting.nonce);
+    invoke_token_transfer(
+        vault_acc_info,
+        token_acc_info,
+        vault_authority_acc_info,
+        token_program_acc_info,
+        &[&signer_seeds],
+        amount,
+    )?;
 
-        let signer_seeds =
-            vault::signer_seeds(safe_acc_info.key, beneficiary_acc_info.key, &vesting.nonce);
-
-        solana_sdk::program::invoke_signed(
-            &withdraw_instruction,
-            &[
-                vault_acc_info.clone(),
-                beneficiary_token_acc_info.clone(),
-                vault_authority_acc_info.clone(),
-                token_program_acc_info.clone(),
-            ],
-            &[&signer_seeds],
-        )?;
-    }
+    // Update bookeeping.
+    vesting.outstanding -= amount;
 
     Ok(())
 }
@@ -165,7 +148,7 @@ struct StateTransitionRequest<'a, 'b, 'c> {
     amount: u64,
     vesting: &'c mut Vesting,
     safe_acc_info: &'a AccountInfo<'b>,
-    beneficiary_token_acc_info: &'a AccountInfo<'b>,
+    token_acc_info: &'a AccountInfo<'b>,
     vault_acc_info: &'a AccountInfo<'b>,
     vault_authority_acc_info: &'a AccountInfo<'b>,
     token_program_acc_info: &'a AccountInfo<'b>,

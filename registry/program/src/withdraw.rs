@@ -1,7 +1,7 @@
-use crate::common::invoke_token_transfer;
-use crate::entity::{with_entity, EntityContext};
-use crate::pool::{pool_check, Pool, PoolConfig};
+use crate::common::entity::{with_entity, EntityContext};
+use crate::common::pool::{pool_check, Pool, PoolConfig};
 use serum_common::pack::Pack;
+use serum_common::program::invoke_token_transfer;
 use serum_registry::access_control;
 use serum_registry::accounts::{vault, Entity, Member, Registrar};
 use serum_registry::error::{RegistryError, RegistryErrorCode};
@@ -26,6 +26,7 @@ pub fn handler(
     let depositor_acc_info = next_account_info(acc_infos)?;
     let depositor_authority_acc_info = next_account_info(acc_infos)?;
     let token_program_acc_info = next_account_info(acc_infos)?;
+    let vault_acc_info = next_account_info(acc_infos)?;
     let vault_authority_acc_info = next_account_info(acc_infos)?;
 
     // Program specfic.
@@ -34,7 +35,6 @@ pub fn handler(
     let entity_acc_info = next_account_info(acc_infos)?;
     let registrar_acc_info = next_account_info(acc_infos)?;
     let clock_acc_info = next_account_info(acc_infos)?;
-    let vault_acc_info = next_account_info(acc_infos)?;
 
     let pool = &Pool::parse_accounts(acc_infos, PoolConfig::GetBasket)?;
 
@@ -111,12 +111,6 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
         return Err(RegistryErrorCode::Unauthorized)?;
     }
     if !depositor_authority_acc_info.is_signer {
-        // This check is not strictly necessary. It is used to prevent people
-        // from shooting themselves in the foot, i.e., withdrawing to a delegate
-        // program without the delegate program signing.
-        //
-        // In the common case (i.e. withdrawing without a delegate program),
-        // this authority will be the same as the beneficiary.
         return Err(RegistryErrorCode::Unauthorized)?;
     }
 
@@ -127,24 +121,26 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
         beneficiary_acc_info,
         program_id,
     )?;
-    let _vault = access_control::vault_join(
+    let _vault = access_control::vault_authenticated(
         vault_acc_info,
         vault_authority_acc_info,
         registrar_acc_info,
         &registrar,
         program_id,
     )?;
-    let depositor = access_control::token(depositor_acc_info, depositor_authority_acc_info.key)?;
     pool_check(program_id, pool, registrar_acc_info, &registrar, &member)?;
 
     // Withdraw specific.
+    //
+    // Authenticate the delegate boolean.
+    let depositor = access_control::token(depositor_acc_info, depositor_authority_acc_info.key)?;
+    if delegate != (depositor.owner == member.balances.delegate.owner) {
+        return Err(RegistryErrorCode::DepositorOwnerDelegateMismatch)?;
+    }
+    // Do we have enough funds for the withdrawal?
     let is_mega = registrar.is_mega(*vault_acc_info.key)?;
     if !member.can_withdraw(&pool.prices(), amount, is_mega, depositor.owner)? {
         return Err(RegistryErrorCode::InsufficientBalance)?;
-    }
-    // Authenticate the delegate boolean.
-    if delegate != (depositor.owner == member.balances.delegate.owner) {
-        return Err(RegistryErrorCode::DepositorOwnerDelegateMismatch)?;
     }
 
     Ok(AccessControlResponse { depositor })

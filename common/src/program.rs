@@ -1,5 +1,5 @@
-use serum_registry::error::RegistryError;
 use solana_sdk::account_info::AccountInfo;
+use solana_sdk::program_error::ProgramError;
 use spl_token::instruction as token_instruction;
 use std::convert::Into;
 
@@ -10,7 +10,7 @@ pub fn invoke_token_transfer<'a, 'b>(
     tok_program_acc_info: &'a AccountInfo<'b>,
     signer_seeds: &[&[&[u8]]],
     amount: u64,
-) -> Result<(), RegistryError> {
+) -> Result<(), ProgramError> {
     let transfer_instr = token_instruction::transfer(
         &spl_token::ID,
         from_acc_info.key,
@@ -29,5 +29,4 @@ pub fn invoke_token_transfer<'a, 'b>(
         ],
         signer_seeds,
     )
-    .map_err(Into::into)
 }

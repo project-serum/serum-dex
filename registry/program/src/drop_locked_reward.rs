@@ -1,6 +1,6 @@
-use crate::common::invoke_token_transfer;
 use borsh::BorshDeserialize;
 use serum_common::pack::Pack;
+use serum_common::program::invoke_token_transfer;
 use serum_pool_schema::PoolState;
 use serum_registry::access_control;
 use serum_registry::accounts::reward_queue::Ring;

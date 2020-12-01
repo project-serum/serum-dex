@@ -59,8 +59,7 @@ pub mod instruction {
         /// 5  `[]`         Safe.
         /// 8. `[]`         SPL token program.
         /// 9. `[]`         Clock sysvar.
-        // todo: rename
-        Redeem { amount: u64 },
+        Withdraw { amount: u64 },
         /// Accounts:
         ///
         /// 0. `[signer]`   Beneficiary.
