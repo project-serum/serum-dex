@@ -1,17 +1,16 @@
 use crate::access_control;
 use serum_common::pack::Pack;
-use serum_lockup::accounts::{Safe, TokenVault};
+use serum_lockup::accounts::{Safe, Whitelist};
 use serum_lockup::error::{LockupError, LockupErrorCode};
+use solana_program::info;
 use solana_sdk::account_info::{next_account_info, AccountInfo};
-use solana_sdk::info;
 use solana_sdk::pubkey::Pubkey;
 use std::convert::Into;
 
-pub fn handler<'a>(
-    program_id: &'a Pubkey,
-    accounts: &'a [AccountInfo<'a>],
+pub fn handler(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
     authority: Pubkey,
-    nonce: u8,
 ) -> Result<(), LockupError> {
     info!("handler: initialize");
 
@@ -19,18 +18,13 @@ pub fn handler<'a>(
 
     let safe_acc_info = next_account_info(acc_infos)?;
     let whitelist_acc_info = next_account_info(acc_infos)?;
-    let vault_acc_info = next_account_info(acc_infos)?;
-    let mint_acc_info = next_account_info(acc_infos)?;
     let rent_acc_info = next_account_info(acc_infos)?;
 
     access_control(AccessControlRequest {
         program_id,
-        vault_acc_info,
         safe_acc_info,
         whitelist_acc_info,
-        mint_acc_info,
         rent_acc_info,
-        nonce,
     })?;
 
     Safe::unpack_mut(
@@ -38,11 +32,10 @@ pub fn handler<'a>(
         &mut |safe: &mut Safe| {
             state_transition(StateTransitionRequest {
                 safe,
-                whitelist: whitelist_acc_info.key,
-                mint: mint_acc_info.key,
-                vault: *vault_acc_info.key,
+                safe_addr: safe_acc_info.key,
+                whitelist: Whitelist::new(whitelist_acc_info.clone())?,
+                whitelist_addr: whitelist_acc_info.key,
                 authority,
-                nonce,
             })
             .map_err(Into::into)
         },
@@ -51,17 +44,14 @@ pub fn handler<'a>(
     Ok(())
 }
 
-fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), LockupError> {
+fn access_control(req: AccessControlRequest) -> Result<(), LockupError> {
     info!("access-control: initialize");
 
     let AccessControlRequest {
         program_id,
         safe_acc_info,
-        mint_acc_info,
-        vault_acc_info,
         rent_acc_info,
         whitelist_acc_info,
-        nonce,
     } = req;
 
     // Authorization: none.
@@ -69,7 +59,7 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), LockupError> 
     // Rent.
     let rent = access_control::rent(rent_acc_info)?;
 
-    // Safe.
+    // Safe (uninitialized).
     {
         let safe = Safe::unpack(&safe_acc_info.try_borrow_data()?)?;
         if safe_acc_info.owner != program_id {
@@ -83,7 +73,7 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), LockupError> 
         }
     }
 
-    // Whitelist.
+    // Whitelist (not yet set on Safe).
     {
         if whitelist_acc_info.owner != program_id {
             return Err(LockupErrorCode::InvalidAccountOwner)?;
@@ -94,72 +84,49 @@ fn access_control<'a>(req: AccessControlRequest<'a>) -> Result<(), LockupError> 
         ) {
             return Err(LockupErrorCode::NotRentExempt)?;
         }
-    }
-
-    // Vault.
-    {
-        let vault = access_control::token(vault_acc_info)?;
-        let vault_authority = Pubkey::create_program_address(
-            &TokenVault::signer_seeds(safe_acc_info.key, &nonce),
-            program_id,
-        )
-        .map_err(|_| LockupErrorCode::InvalidVaultNonce)?;
-
-        if vault.owner != vault_authority {
-            return Err(LockupErrorCode::InvalidVault)?;
-        }
-        if !rent.is_exempt(vault_acc_info.lamports(), vault_acc_info.try_data_len()?) {
-            return Err(LockupErrorCode::NotRentExempt)?;
+        if Pubkey::new_from_array([0; 32]) != Whitelist::new(whitelist_acc_info.clone())?.safe()? {
+            return Err(LockupErrorCode::WhitelistAlreadyInitialized)?;
         }
     }
-
-    // Mint.
-    let _ = access_control::mint(mint_acc_info)?;
-
-    info!("access-control: success");
 
     Ok(())
 }
 
-fn state_transition<'a>(req: StateTransitionRequest<'a>) -> Result<(), LockupError> {
+fn state_transition(req: StateTransitionRequest) -> Result<(), LockupError> {
     info!("state-transition: initialize");
 
     let StateTransitionRequest {
         safe,
-        mint,
+        safe_addr,
         authority,
-        nonce,
         whitelist,
-        vault,
+        whitelist_addr,
     } = req;
 
+    // Initialize Safe.
     safe.initialized = true;
-    safe.mint = *mint;
     safe.authority = authority;
-    safe.nonce = nonce;
-    safe.whitelist = *whitelist;
-    safe.vault = vault;
+    safe.whitelist = *whitelist_addr;
+
+    // Inittialize Whitelist.
+    whitelist.set_safe(safe_addr)?;
 
     info!("state-transition: success");
 
     Ok(())
 }
 
-struct AccessControlRequest<'a> {
+struct AccessControlRequest<'a, 'b> {
     program_id: &'a Pubkey,
-    safe_acc_info: &'a AccountInfo<'a>,
-    whitelist_acc_info: &'a AccountInfo<'a>,
-    mint_acc_info: &'a AccountInfo<'a>,
-    rent_acc_info: &'a AccountInfo<'a>,
-    vault_acc_info: &'a AccountInfo<'a>,
-    nonce: u8,
+    safe_acc_info: &'a AccountInfo<'b>,
+    whitelist_acc_info: &'a AccountInfo<'b>,
+    rent_acc_info: &'a AccountInfo<'b>,
 }
 
-struct StateTransitionRequest<'a> {
+struct StateTransitionRequest<'a, 'b> {
     safe: &'a mut Safe,
-    whitelist: &'a Pubkey,
-    mint: &'a Pubkey,
+    safe_addr: &'a Pubkey,
+    whitelist_addr: &'a Pubkey,
+    whitelist: Whitelist<'b>,
     authority: Pubkey,
-    vault: Pubkey,
-    nonce: u8,
 }

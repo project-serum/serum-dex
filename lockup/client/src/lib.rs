@@ -1,11 +1,13 @@
-//! Client wraps the solana generated client with Request/Response structs
-//! to make usage cleaner and less error prone.
-
 use anyhow::anyhow;
 use serum_common::client::rpc;
-use serum_lockup::accounts::{Safe, TokenVault, Vesting, Whitelist, WhitelistEntry};
+use serum_common::pack::*;
+use serum_lockup::accounts::{vault, Safe, Vesting, Whitelist, WhitelistEntry};
 use serum_lockup::client::{Client as InnerClient, ClientError as InnerClientError};
 use serum_lockup::error::LockupError;
+use serum_registry::accounts::vault as registry_vault;
+use serum_registry::client::Client as RegistryClientInner;
+use serum_registry::instruction::RegistryInstruction;
+use serum_registry_client::{Client as RegistryClient, ClientError as RegistryClientError};
 use solana_client_gen::prelude::Signer;
 use solana_client_gen::prelude::*;
 use solana_client_gen::solana_sdk;
@@ -28,34 +30,27 @@ impl Client {
     }
 
     pub fn initialize(&self, req: InitializeRequest) -> Result<InitializeResponse, ClientError> {
-        inner::create_all_accounts_and_initialize(&self.inner, &req.mint, &req.authority)
-            .map_err(Into::into)
+        inner::create_all_accounts_and_initialize(&self.inner, &req.authority).map_err(Into::into)
     }
 
     pub fn create_vesting(
         &self,
         req: CreateVestingRequest,
     ) -> Result<CreateVestingResponse, ClientError> {
-        let vault = self.safe(&req.safe)?.vault;
-        let mint_decimals = 3; // TODO: decide this.
         inner::create_vesting_account(
             &self.inner,
             &req.depositor,
             req.depositor_owner,
             &req.safe,
-            &vault,
-            &self.vault_authority(req.safe)?,
             &req.beneficiary,
-            req.end_slot,
+            req.end_ts,
             req.period_count,
             req.deposit_amount,
-            mint_decimals,
         )
         .map_err(Into::into)
         .map(|r| CreateVestingResponse {
             tx: r.0,
             vesting: r.1.pubkey(),
-            mint: r.2,
         })
     }
 
@@ -113,34 +108,41 @@ impl Client {
             safe,
             whitelist_program,
             mut relay_accounts,
-            vault,
-            whitelist_vault,
-            whitelist_vault_authority,
+            whitelist_program_vault_authority,
             delegate_amount,
             relay_data,
+            mut relay_signers,
         } = req;
-        let whitelist = self.safe(&safe)?.whitelist;
+        let s = self.safe(&safe)?;
+        let v = self.vesting(&vesting)?;
+        let vault = v.vault;
+        let whitelist = s.whitelist;
         let mut accounts = vec![
             AccountMeta::new_readonly(beneficiary.pubkey(), true),
             AccountMeta::new(vesting, false),
             AccountMeta::new_readonly(safe, false),
-            AccountMeta::new_readonly(self.vault_authority(safe)?, false),
-            AccountMeta::new_readonly(whitelist_program, false),
             AccountMeta::new_readonly(whitelist, false),
+            AccountMeta::new_readonly(whitelist_program, false),
+            AccountMeta::new_readonly(whitelist_program_vault_authority, false),
             // Below are relay accounts.
             AccountMeta::new(vault, false),
-            AccountMeta::new(whitelist_vault, false),
-            AccountMeta::new_readonly(whitelist_vault_authority, false),
+            AccountMeta::new_readonly(
+                self.vault_authority(safe, vesting, beneficiary.pubkey())?,
+                false,
+            ),
             AccountMeta::new_readonly(spl_token::ID, false),
         ];
         accounts.append(&mut relay_accounts);
 
-        let signers = [self.payer(), &beneficiary];
+        let mut signers = vec![self.payer(), &beneficiary];
+        signers.append(&mut relay_signers);
 
-        let tx = self
-            .inner
-            .whitelist_withdraw_with_signers(&signers, &accounts, delegate_amount, relay_data)
-            .unwrap();
+        let tx = self.inner.whitelist_withdraw_with_signers(
+            &signers,
+            &accounts,
+            delegate_amount,
+            relay_data,
+        )?;
 
         Ok(WhitelistWithdrawResponse { tx })
     }
@@ -154,59 +156,43 @@ impl Client {
             vesting,
             safe,
             whitelist_program,
-            mut relay_accounts,
-            vault,
-            whitelist_vault,
-            whitelist_vault_authority,
+            whitelist_program_vault_authority,
             relay_data,
+            mut relay_accounts,
+            mut relay_signers,
         } = req;
-        let whitelist = self.safe(&safe)?.whitelist;
+        let v = self.vesting(&vesting)?;
+        let s = self.safe(&safe)?;
+        let vault = v.vault;
+        let whitelist = s.whitelist;
         let mut accounts = vec![
             AccountMeta::new_readonly(beneficiary.pubkey(), true),
             AccountMeta::new(vesting, false),
             AccountMeta::new_readonly(safe, false),
-            AccountMeta::new_readonly(self.vault_authority(safe)?, false),
-            AccountMeta::new_readonly(whitelist_program, false),
             AccountMeta::new_readonly(whitelist, false),
+            AccountMeta::new_readonly(whitelist_program, false),
             // Below are relay accounts.
+            //
+            // Whitelist relay interface.
             AccountMeta::new(vault, false),
-            AccountMeta::new(whitelist_vault, false),
-            AccountMeta::new_readonly(whitelist_vault_authority, false),
+            AccountMeta::new_readonly(
+                self.vault_authority(safe, vesting, beneficiary.pubkey())?,
+                false,
+            ),
             AccountMeta::new_readonly(spl_token::ID, false),
+            AccountMeta::new_readonly(whitelist_program_vault_authority, false),
         ];
+        // Program specific relay.
         accounts.append(&mut relay_accounts);
 
-        let signers = [self.payer(), &beneficiary];
+        let mut signers = vec![self.payer(), &beneficiary];
+        signers.append(&mut relay_signers);
 
         let tx = self
             .inner
-            .whitelist_deposit_with_signers(&signers, &accounts, relay_data)
-            .unwrap();
+            .whitelist_deposit_with_signers(&signers, &accounts, relay_data)?;
 
         Ok(WhitelistDepositResponse { tx })
-    }
-
-    pub fn claim(&self, req: ClaimRequest) -> Result<ClaimResponse, ClientError> {
-        let ClaimRequest {
-            beneficiary,
-            safe,
-            vesting,
-            locked_mint,
-            locked_token_account,
-        } = req;
-        let accounts = [
-            AccountMeta::new_readonly(beneficiary.pubkey(), true),
-            AccountMeta::new(vesting, false),
-            AccountMeta::new_readonly(safe, false),
-            AccountMeta::new_readonly(self.vault_authority(safe)?, false),
-            AccountMeta::new_readonly(spl_token::ID, false),
-            AccountMeta::new(locked_mint, false),
-            AccountMeta::new(locked_token_account, false),
-        ];
-        let signers = [self.payer(), &beneficiary];
-        let tx = self.inner.claim_with_signers(&signers, &accounts)?;
-
-        Ok(ClaimResponse { tx })
     }
 
     pub fn redeem(&self, req: RedeemRequest) -> Result<RedeemResponse, ClientError> {
@@ -214,21 +200,21 @@ impl Client {
             beneficiary,
             vesting,
             token_account,
-            vault,
             safe,
-            locked_token_account,
-            locked_mint,
             amount,
         } = req;
+        let v = self.vesting(&vesting)?;
+        let vault = v.vault;
         let accounts = [
             AccountMeta::new_readonly(beneficiary.pubkey(), true),
             AccountMeta::new(vesting, false),
             AccountMeta::new(token_account, false),
             AccountMeta::new(vault, false),
-            AccountMeta::new_readonly(self.vault_authority(safe)?, false),
+            AccountMeta::new_readonly(
+                self.vault_authority(safe, vesting, beneficiary.pubkey())?,
+                false,
+            ),
             AccountMeta::new_readonly(safe, false),
-            AccountMeta::new(locked_token_account, false),
-            AccountMeta::new(locked_mint, false),
             AccountMeta::new_readonly(spl_token::ID, false),
             AccountMeta::new_readonly(solana_sdk::sysvar::clock::ID, false),
         ];
@@ -259,25 +245,134 @@ impl Client {
         Ok(SetAuthorityResponse { tx })
     }
 
-    pub fn migrate(&self, req: MigrateRequest) -> Result<MigrateResponse, ClientError> {
-        let MigrateRequest {
-            authority,
+    pub fn registry_deposit(
+        &self,
+        req: RegistryDepositRequest,
+    ) -> Result<RegistryDepositResponse, ClientError> {
+        let RegistryDepositRequest {
+            amount,
+            registry_pid,
+            registrar,
+            member,
+            entity,
+            beneficiary,
+            stake_beneficiary,
+            vesting,
             safe,
-            new_token_account,
+            pool_program_id,
+            is_mega, // TODO: remove.
         } = req;
-        let vault = self.safe(&safe)?.vault;
-        let accounts = [
-            AccountMeta::new_readonly(authority.pubkey(), true),
-            AccountMeta::new(safe, false),
-            AccountMeta::new(vault, false),
-            AccountMeta::new_readonly(self.vault_authority(safe)?, false),
-            AccountMeta::new(new_token_account, false),
-            AccountMeta::new_readonly(spl_token::ID, false),
-        ];
-        let signers = [&authority, self.payer()];
-        let tx = self.inner.migrate_with_signers(&signers, &accounts)?;
+        let relay_data = {
+            let instr = RegistryInstruction::Deposit { amount };
+            let mut relay_data = vec![0; instr.size().unwrap() as usize];
+            RegistryInstruction::pack(instr, &mut relay_data).unwrap();
+            relay_data
+        };
 
-        Ok(MigrateResponse { tx })
+        let r_client = RegistryClient::new(RegistryClientInner::new(
+            registry_pid,
+            Keypair::from_bytes(&self.payer().to_bytes()).expect("invalid payer"),
+            self.inner.url(),
+            Some(self.inner.options().clone()),
+        ));
+        let r = r_client.registrar(&registrar)?;
+        let whitelist_program_vault_authority = Pubkey::create_program_address(
+            &registry_vault::signer_seeds(&registrar, &r.nonce),
+            &registry_pid,
+        )
+        .map_err(|_| anyhow!("unable to create vault authority"))?;
+        let vault = match is_mega {
+            false => r.vault,
+            true => r.mega_vault,
+        };
+        let mut relay_accounts = vec![
+            AccountMeta::new(member, false),
+            AccountMeta::new_readonly(stake_beneficiary.pubkey(), true),
+            AccountMeta::new(entity, false),
+            AccountMeta::new_readonly(registrar, false),
+            AccountMeta::new_readonly(solana_sdk::sysvar::clock::ID, false),
+            AccountMeta::new(vault, false),
+        ];
+        let (pool_accs, _) = r_client.common_pool_accounts(pool_program_id, registrar, false)?;
+        relay_accounts.extend_from_slice(&pool_accs);
+
+        let resp = self.whitelist_withdraw(WhitelistWithdrawRequest {
+            beneficiary,
+            vesting,
+            safe,
+            whitelist_program: registry_pid,
+            relay_accounts,
+            whitelist_program_vault_authority,
+            delegate_amount: amount,
+            relay_data,
+            relay_signers: vec![&stake_beneficiary],
+        })?;
+        Ok(RegistryDepositResponse { tx: resp.tx })
+    }
+
+    pub fn registry_withdraw(
+        &self,
+        req: RegistryWithdrawRequest,
+    ) -> Result<RegistryWithdrawResponse, ClientError> {
+        let RegistryWithdrawRequest {
+            amount,
+            is_mega, // TODO: remove.
+            registry_pid,
+            registrar,
+            member,
+            entity,
+            beneficiary,
+            stake_beneficiary,
+            vesting,
+            safe,
+            pool_program_id,
+        } = req;
+        let relay_data = {
+            let instr = RegistryInstruction::Withdraw { amount };
+            let mut relay_data = vec![0; instr.size().unwrap() as usize];
+            RegistryInstruction::pack(instr, &mut relay_data).unwrap();
+            relay_data
+        };
+
+        let r_client = RegistryClient::new(RegistryClientInner::new(
+            registry_pid,
+            Keypair::from_bytes(&self.payer().to_bytes()).expect("invalid payer"),
+            self.inner.url(),
+            Some(self.inner.options().clone()),
+        ));
+        let r = r_client.registrar(&registrar)?;
+        let whitelist_program_vault_authority = Pubkey::create_program_address(
+            &registry_vault::signer_seeds(&registrar, &r.nonce),
+            &registry_pid,
+        )
+        .map_err(|_| anyhow!("unable to create vault authority"))?;
+        let vault = match is_mega {
+            false => r.vault,
+            true => r.mega_vault,
+        };
+        let mut relay_accounts = vec![
+            AccountMeta::new(member, false),
+            AccountMeta::new_readonly(stake_beneficiary.pubkey(), true),
+            AccountMeta::new(entity, false),
+            AccountMeta::new_readonly(registrar, false),
+            AccountMeta::new_readonly(solana_sdk::sysvar::clock::ID, false),
+            AccountMeta::new(vault, false),
+        ];
+        let (pool_accs, _) = r_client.common_pool_accounts(pool_program_id, registrar, is_mega)?;
+        relay_accounts.extend_from_slice(&pool_accs);
+
+        let resp = self.whitelist_deposit(WhitelistDepositRequest {
+            beneficiary,
+            vesting,
+            safe,
+            whitelist_program: registry_pid,
+            whitelist_program_vault_authority,
+            relay_data,
+            relay_accounts,
+            relay_signers: vec![&stake_beneficiary],
+        })?;
+
+        Ok(RegistryWithdrawResponse { tx: resp.tx })
     }
 }
 
@@ -315,21 +410,23 @@ impl Client {
         Ok(())
     }
 
-    pub fn vault(&self, safe: &Pubkey) -> Result<TokenAccount, ClientError> {
-        let safe = rpc::get_account::<Safe>(self.inner.rpc(), &safe)?;
-        rpc::get_token_account::<TokenAccount>(self.inner.rpc(), &safe.vault).map_err(Into::into)
+    pub fn vault_for(&self, vesting: &Pubkey) -> Result<TokenAccount, ClientError> {
+        let v = rpc::get_account::<Vesting>(self.inner.rpc(), &vesting)?;
+        rpc::get_token_account::<TokenAccount>(self.inner.rpc(), &v.vault).map_err(Into::into)
     }
 
     pub fn vesting(&self, addr: &Pubkey) -> Result<Vesting, ClientError> {
-        rpc::get_account::<Vesting>(self.inner.rpc(), addr).map_err(Into::into)
+        rpc::get_account_unchecked::<Vesting>(self.inner.rpc(), addr).map_err(Into::into)
     }
-}
 
-// Private.
-impl Client {
-    fn vault_authority(&self, safe_addr: Pubkey) -> Result<Pubkey, ClientError> {
-        let safe = self.safe(&safe_addr)?;
-        let seeds = TokenVault::signer_seeds(&safe_addr, &safe.nonce);
+    pub fn vault_authority(
+        &self,
+        safe_addr: Pubkey,
+        vesting_addr: Pubkey,
+        beneficiary: Pubkey,
+    ) -> Result<Pubkey, ClientError> {
+        let v = self.vesting(&vesting_addr)?;
+        let seeds = vault::signer_seeds(&safe_addr, &beneficiary, &v.nonce);
 
         Pubkey::create_program_address(&seeds, self.program()).map_err(|e| {
             anyhow::anyhow!("unable to derive vault authority: {:?}", e.to_string()).into()
@@ -359,7 +456,6 @@ impl solana_client_gen::prelude::ClientGen for Client {
 }
 
 pub struct InitializeRequest {
-    pub mint: Pubkey,
     pub authority: Pubkey,
 }
 
@@ -367,10 +463,7 @@ pub struct InitializeRequest {
 pub struct InitializeResponse {
     pub tx: Signature,
     pub safe: Pubkey,
-    pub vault: Pubkey,
-    pub vault_authority: Pubkey,
     pub whitelist: Pubkey,
-    pub nonce: u8,
 }
 
 pub struct CreateVestingRequest<'a> {
@@ -378,7 +471,7 @@ pub struct CreateVestingRequest<'a> {
     pub depositor_owner: &'a Keypair,
     pub safe: Pubkey,
     pub beneficiary: Pubkey,
-    pub end_slot: u64,
+    pub end_ts: i64,
     pub period_count: u64,
     pub deposit_amount: u64,
 }
@@ -387,7 +480,6 @@ pub struct CreateVestingRequest<'a> {
 pub struct CreateVestingResponse {
     pub tx: Signature,
     pub vesting: Pubkey,
-    pub mint: Pubkey,
 }
 
 pub struct WhitelistAddRequest<'a> {
@@ -418,11 +510,10 @@ pub struct WhitelistWithdrawRequest<'a> {
     pub safe: Pubkey,
     pub whitelist_program: Pubkey,
     pub relay_accounts: Vec<AccountMeta>,
-    pub vault: Pubkey,
-    pub whitelist_vault: Pubkey,
-    pub whitelist_vault_authority: Pubkey,
+    pub whitelist_program_vault_authority: Pubkey,
     pub delegate_amount: u64,
     pub relay_data: Vec<u8>,
+    pub relay_signers: Vec<&'a Keypair>,
 }
 
 #[derive(Debug)]
@@ -435,11 +526,10 @@ pub struct WhitelistDepositRequest<'a> {
     pub vesting: Pubkey,
     pub safe: Pubkey,
     pub whitelist_program: Pubkey,
+    pub whitelist_program_vault_authority: Pubkey,
     pub relay_accounts: Vec<AccountMeta>,
-    pub vault: Pubkey,
-    pub whitelist_vault: Pubkey,
-    pub whitelist_vault_authority: Pubkey,
     pub relay_data: Vec<u8>,
+    pub relay_signers: Vec<&'a Keypair>,
 }
 
 #[derive(Debug)]
@@ -447,27 +537,11 @@ pub struct WhitelistDepositResponse {
     pub tx: Signature,
 }
 
-pub struct ClaimRequest<'a> {
-    pub beneficiary: &'a Keypair,
-    pub safe: Pubkey,
-    pub vesting: Pubkey,
-    pub locked_mint: Pubkey,
-    pub locked_token_account: Pubkey,
-}
-
-#[derive(Debug)]
-pub struct ClaimResponse {
-    pub tx: Signature,
-}
-
 pub struct RedeemRequest<'a> {
     pub beneficiary: &'a Keypair,
     pub vesting: Pubkey,
     pub token_account: Pubkey,
-    pub vault: Pubkey,
     pub safe: Pubkey,
-    pub locked_token_account: Pubkey,
-    pub locked_mint: Pubkey,
     pub amount: u64,
 }
 
@@ -498,6 +572,42 @@ pub struct MigrateResponse {
     pub tx: Signature,
 }
 
+pub struct RegistryDepositRequest<'a> {
+    pub amount: u64,
+    pub registry_pid: Pubkey,
+    pub registrar: Pubkey,
+    pub member: Pubkey,
+    pub entity: Pubkey,
+    pub vesting: Pubkey,
+    pub safe: Pubkey,
+    pub beneficiary: &'a Keypair,
+    pub stake_beneficiary: &'a Keypair,
+    pub pool_program_id: Pubkey,
+    pub is_mega: bool,
+}
+
+pub struct RegistryDepositResponse {
+    pub tx: Signature,
+}
+
+pub struct RegistryWithdrawRequest<'a> {
+    pub amount: u64,
+    pub is_mega: bool,
+    pub registry_pid: Pubkey,
+    pub registrar: Pubkey,
+    pub member: Pubkey,
+    pub entity: Pubkey,
+    pub vesting: Pubkey,
+    pub safe: Pubkey,
+    pub beneficiary: &'a Keypair,
+    pub stake_beneficiary: &'a Keypair,
+    pub pool_program_id: Pubkey,
+}
+
+pub struct RegistryWithdrawResponse {
+    pub tx: Signature,
+}
+
 #[derive(Debug, Error)]
 pub enum ClientError {
     #[error("Client error {0}")]
@@ -508,4 +618,6 @@ pub enum ClientError {
     Any(#[from] anyhow::Error),
     #[error("Lockup error: {0}")]
     LockupError(#[from] LockupError),
+    #[error("Registry client error: {0}")]
+    RegistryClientError(#[from] RegistryClientError),
 }

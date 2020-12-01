@@ -1,15 +1,27 @@
 //! pack.rs defines utilities for serializing Solana accounts to/from bytes.
 
+use borsh::{BorshDeserialize, BorshSerialize};
+
 // Re-export for users of the `packable` macro.
+pub use solana_sdk;
 pub use solana_sdk::program_error::ProgramError;
 
 /// The Pack trait defines Account serialization for Solana programs.
 ///
 /// If possible, don't use `*_unchecked` methods.
-pub trait Pack: std::marker::Sized {
+pub trait Pack: std::marker::Sized + std::fmt::Debug {
     /// Serializes `src` into `dst`. The size of the serialization and
     /// dst must be equal.
-    fn pack(src: Self, dst: &mut [u8]) -> Result<(), ProgramError>;
+    fn pack(src: Self, dst: &mut [u8]) -> Result<(), ProgramError> {
+        if src.size()? != dst.len() as u64 {
+            #[cfg(feature = "program")]
+            solana_sdk::info!("pack size mismatch");
+            return Err(ProgramError::InvalidAccountData);
+        }
+        Pack::pack_unchecked(src, dst)
+    }
+
+    fn pack_unchecked(src: Self, dst: &mut [u8]) -> Result<(), ProgramError>;
 
     /// Deserializes `src` into Self. The deserialized object need not
     /// use all the bytes in `src` and should mutated the slice so that
@@ -32,6 +44,8 @@ pub trait Pack: std::marker::Sized {
         let mut src_mut = src;
         Pack::unpack_unchecked(&mut src_mut).and_then(|r: Self| {
             if !src_mut.is_empty() {
+                #[cfg(feature = "program")]
+                solana_sdk::info!("unpack did not consume entire array");
                 return Err(ProgramError::InvalidAccountData);
             }
             Ok(r)
@@ -56,7 +70,7 @@ pub trait Pack: std::marker::Sized {
     {
         let mut t = Self::unpack_unchecked(&mut input.as_ref())?;
         let u = f(&mut t)?;
-        Self::pack(t, input)?;
+        Self::pack_unchecked(t, input)?;
         Ok(u)
     }
 }
@@ -69,17 +83,29 @@ pub trait Pack: std::marker::Sized {
 /// is not entirely clear as of now.
 #[macro_export]
 macro_rules! packable {
+    ($my_struct:ident<$( $gen:tt ),+>) => {
+        impl<$($gen),*> Pack for $my_struct<$($gen), *> {
+            fn pack_unchecked(src: $my_struct, dst: &mut [u8]) -> Result<(), ProgramError> {
+                serum_common::pack::into_bytes(&src, dst)
+            }
+
+            fn unpack_unchecked(src: &mut &[u8]) -> Result<$my_struct<$($gen),*>, ProgramError> {
+                serum_common::pack::from_bytes_mut(src)
+            }
+
+            fn size(&self) -> Result<u64, ProgramError> {
+                serum_common::pack::bytes_size(&self)
+            }
+        }
+    };
     ($my_struct:ty) => {
         impl Pack for $my_struct {
-            fn pack(src: $my_struct, dst: &mut [u8]) -> Result<(), ProgramError> {
-                if src.size()? != dst.len() as u64 {
-                    return Err(ProgramError::InvalidAccountData);
-                }
+            fn pack_unchecked(src: $my_struct, dst: &mut [u8]) -> Result<(), ProgramError> {
                 serum_common::pack::into_bytes(&src, dst)
             }
 
             fn unpack_unchecked(src: &mut &[u8]) -> Result<$my_struct, ProgramError> {
-                serum_common::pack::from_reader(src)
+                serum_common::pack::from_bytes_mut(src)
             }
 
             fn size(&self) -> Result<u64, ProgramError> {
@@ -91,39 +117,41 @@ macro_rules! packable {
 
 pub fn to_bytes<T: ?Sized>(i: &T) -> Result<Vec<u8>, ProgramError>
 where
-    T: serde::Serialize,
+    T: BorshSerialize,
 {
-    bincode::serialize(i).map_err(|_| ProgramError::InvalidAccountData)
+    i.try_to_vec().map_err(|_| ProgramError::InvalidAccountData)
 }
 
 pub fn into_bytes<T: ?Sized>(i: &T, dst: &mut [u8]) -> Result<(), ProgramError>
 where
-    T: serde::Serialize,
+    T: BorshSerialize,
 {
-    let cursor = std::io::Cursor::new(dst);
-    bincode::serialize_into(cursor, i).map_err(|_| ProgramError::InvalidAccountData)
+    let mut cursor = std::io::Cursor::new(dst);
+    i.serialize(&mut cursor)
+        .map_err(|_| ProgramError::InvalidAccountData)
 }
 
-pub fn from_bytes<'a, T>(data: &'a [u8]) -> Result<T, ProgramError>
+pub fn from_bytes<T>(data: &[u8]) -> Result<T, ProgramError>
 where
-    T: serde::de::Deserialize<'a>,
+    T: BorshDeserialize,
 {
-    bincode::deserialize(data).map_err(|_| ProgramError::InvalidAccountData)
+    T::try_from_slice(data).map_err(|_| ProgramError::InvalidAccountData)
 }
 
-pub fn from_reader<T, R>(rdr: R) -> Result<T, ProgramError>
+pub fn from_bytes_mut<T>(data: &mut &[u8]) -> Result<T, ProgramError>
 where
-    R: std::io::Read,
-    T: serde::de::DeserializeOwned,
+    T: BorshDeserialize,
 {
-    bincode::deserialize_from(rdr).map_err(|_| ProgramError::InvalidAccountData)
+    T::deserialize(data).map_err(|_| ProgramError::InvalidAccountData)
 }
 
 pub fn bytes_size<T: ?Sized>(value: &T) -> Result<u64, ProgramError>
 where
-    T: serde::Serialize,
+    T: BorshSerialize,
 {
-    bincode::serialized_size(value).map_err(|_| ProgramError::InvalidAccountData)
+    to_bytes(value)
+        .map(|s| s.len() as u64)
+        .map_err(|_| ProgramError::InvalidAccountData)
 }
 
 #[cfg(test)]
@@ -131,7 +159,7 @@ mod tests {
     use super::*;
     use crate as serum_common;
 
-    #[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+    #[derive(Clone, Debug, Default, PartialEq, BorshSerialize, BorshDeserialize)]
     struct TestStruct {
         a: u64,
         b: u64,
@@ -176,7 +204,7 @@ mod tests {
         assert_eq!(r.unwrap_err(), ProgramError::InvalidAccountData);
     }
 
-    #[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+    #[derive(Clone, Debug, Default, PartialEq, BorshSerialize, BorshDeserialize)]
     pub struct VarLenStruct {
         a: u64,
         v: Vec<u64>,
@@ -188,7 +216,7 @@ mod tests {
         let mut data = [0; 100].as_ref();
         let r = VarLenStruct::unpack_unchecked(&mut data);
         assert!(r.is_ok());
-        assert_eq!(data.len(), 84);
+        assert_eq!(data.len(), 88);
     }
 
     #[test]

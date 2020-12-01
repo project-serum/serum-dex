@@ -6,11 +6,12 @@ use solana_client::rpc_config::RpcSendTransactionConfig;
 use solana_client::rpc_request::RpcRequest;
 use solana_client::rpc_response::{RpcResult, RpcSimulateTransactionResult};
 use solana_sdk::commitment_config::CommitmentConfig;
+use solana_sdk::instruction::Instruction;
 use solana_sdk::program_pack::Pack as TokenPack;
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::{Keypair, Signature, Signer};
 use solana_sdk::transaction::Transaction;
-use spl_token::instruction as token_instruction;
+use spl_token::instruction::{self as token_instruction};
 use std::convert::Into;
 
 pub fn create_account_rent_exempt(
@@ -55,28 +56,16 @@ pub fn create_token_account(
     payer: &Keypair,
 ) -> Result<Keypair> {
     let spl_account = Keypair::generate(&mut OsRng);
-    let signers = vec![payer, &spl_account];
-
-    let lamports = client.get_minimum_balance_for_rent_exemption(spl_token::state::Account::LEN)?;
-
-    let create_account_instr = solana_sdk::system_instruction::create_account(
-        &payer.pubkey(),
-        &spl_account.pubkey(),
-        lamports,
-        spl_token::state::Account::LEN as u64,
-        &spl_token::ID,
-    );
-
-    let init_account_instr = token_instruction::initialize_account(
-        &spl_token::ID,
-        &spl_account.pubkey(),
-        &mint_pubkey,
-        &owner_pubkey,
+    let instructions = create_token_account_instructions(
+        client,
+        spl_account.pubkey(),
+        mint_pubkey,
+        owner_pubkey,
+        payer,
     )?;
 
-    let instructions = vec![create_account_instr, init_account_instr];
-
     let (recent_hash, _fee_calc) = client.get_recent_blockhash()?;
+    let signers = vec![payer, &spl_account];
 
     let txn = Transaction::new_signed_with_payer(
         &instructions,
@@ -86,6 +75,46 @@ pub fn create_token_account(
     );
     send_txn(client, &txn, false)?;
     Ok(spl_account)
+}
+
+pub fn create_token_account_instructions(
+    client: &RpcClient,
+    spl_account: Pubkey,
+    mint_pubkey: &Pubkey,
+    owner_pubkey: &Pubkey,
+    payer: &Keypair,
+) -> Result<Vec<Instruction>> {
+    let lamports = client.get_minimum_balance_for_rent_exemption(spl_token::state::Account::LEN)?;
+
+    let create_account_instr = solana_sdk::system_instruction::create_account(
+        &payer.pubkey(),
+        &spl_account,
+        lamports,
+        spl_token::state::Account::LEN as u64,
+        &spl_token::ID,
+    );
+
+    let init_account_instr = token_instruction::initialize_account(
+        &spl_token::ID,
+        &spl_account,
+        &mint_pubkey,
+        &owner_pubkey,
+    )?;
+
+    let instructions = vec![create_account_instr, init_account_instr];
+
+    Ok(instructions)
+}
+
+pub fn new_mint(
+    client: &RpcClient,
+    payer_keypair: &Keypair,
+    owner_pubkey: &Pubkey,
+    decimals: u8,
+) -> Result<(Keypair, Signature)> {
+    let mint = Keypair::generate(&mut OsRng);
+    let s = create_and_init_mint(client, payer_keypair, &mint, owner_pubkey, decimals)?;
+    Ok((mint, s))
 }
 
 pub fn create_and_init_mint(
@@ -177,6 +206,29 @@ pub fn mint_to_new_account(
     Ok(recip_keypair)
 }
 
+pub fn transfer(
+    client: &RpcClient,
+    from: &Pubkey,
+    to: &Pubkey,
+    amount: u64,
+    from_authority: &Keypair,
+    payer: &Keypair,
+) -> Result<Signature> {
+    let instr = token_instruction::transfer(
+        &spl_token::ID,
+        from,
+        to,
+        &from_authority.pubkey(),
+        &[],
+        amount,
+    )?;
+    let (recent_hash, _fee_calc) = client.get_recent_blockhash()?;
+    let signers = [payer, from_authority];
+    let txn =
+        Transaction::new_signed_with_payer(&[instr], Some(&payer.pubkey()), &signers, recent_hash);
+    send_txn(client, &txn, false)
+}
+
 pub fn send_txn(client: &RpcClient, txn: &Transaction, _simulate: bool) -> Result<Signature> {
     Ok(client.send_and_confirm_transaction_with_spinner_and_config(
         txn,
@@ -217,6 +269,15 @@ pub fn get_account<T: Pack>(client: &RpcClient, addr: &Pubkey) -> Result<T> {
         .value
         .map_or(Err(anyhow!("Account not found")), Ok)?;
     T::unpack(&account.data).map_err(Into::into)
+}
+
+pub fn get_account_unchecked<T: Pack>(client: &RpcClient, addr: &Pubkey) -> Result<T> {
+    let account = client
+        .get_account_with_commitment(addr, CommitmentConfig::recent())?
+        .value
+        .map_or(Err(anyhow!("Account not found")), Ok)?;
+    let mut data: &[u8] = &account.data;
+    T::unpack_unchecked(&mut data).map_err(Into::into)
 }
 
 // Convenience for testing. Use `get_token_account` otherwise.

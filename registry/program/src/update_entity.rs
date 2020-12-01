@@ -1,15 +1,17 @@
 use serum_common::pack::Pack;
+use serum_registry::access_control;
 use serum_registry::accounts::Entity;
 use serum_registry::error::{RegistryError, RegistryErrorCode};
+use solana_program::info;
 use solana_sdk::account_info::{next_account_info, AccountInfo};
-use solana_sdk::info;
 use solana_sdk::pubkey::Pubkey;
 
-pub fn handler<'a>(
-    program_id: &'a Pubkey,
-    accounts: &'a [AccountInfo<'a>],
-    leader: Pubkey,
-    capabilities: u32,
+#[inline(never)]
+pub fn handler(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    leader: Option<Pubkey>,
+    metadata: Option<Pubkey>,
 ) -> Result<(), RegistryError> {
     info!("handler: update_entity");
 
@@ -17,19 +19,22 @@ pub fn handler<'a>(
 
     let entity_acc_info = next_account_info(acc_infos)?;
     let entity_leader_acc_info = next_account_info(acc_infos)?;
+    let registrar_acc_info = next_account_info(acc_infos)?;
 
     access_control(AccessControlRequest {
         entity_acc_info,
         entity_leader_acc_info,
+        registrar_acc_info,
+        program_id,
     })?;
 
-    Entity::unpack_mut(
+    Entity::unpack_unchecked_mut(
         &mut entity_acc_info.try_borrow_mut_data()?,
         &mut |entity: &mut Entity| {
             state_transition(StateTransitionRequest {
                 entity,
-                capabilities,
                 leader,
+                metadata,
             })
             .map_err(Into::into)
         },
@@ -44,11 +49,20 @@ fn access_control(req: AccessControlRequest) -> Result<(), RegistryError> {
     let AccessControlRequest {
         entity_acc_info,
         entity_leader_acc_info,
+        registrar_acc_info,
+        program_id,
     } = req;
 
-    // todo
+    // Node leader authorization.
+    if !entity_leader_acc_info.is_signer {
+        return Err(RegistryErrorCode::Unauthorized)?;
+    }
 
-    info!("access-control: success");
+    let _ = access_control::registrar(registrar_acc_info, program_id)?;
+    let entity = access_control::entity(entity_acc_info, registrar_acc_info, program_id)?;
+    if *entity_leader_acc_info.key != entity.leader {
+        return Err(RegistryErrorCode::EntityLeaderMismatch)?;
+    }
 
     Ok(())
 }
@@ -58,25 +72,29 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
 
     let StateTransitionRequest {
         entity,
-        capabilities,
         leader,
+        metadata,
     } = req;
 
-    entity.leader = leader;
-    entity.capabilities = capabilities;
-
-    info!("state-transition: success");
+    if let Some(leader) = leader {
+        entity.leader = leader;
+    }
+    if let Some(metadata) = metadata {
+        entity.metadata = metadata;
+    }
 
     Ok(())
 }
 
-struct AccessControlRequest<'a> {
-    entity_acc_info: &'a AccountInfo<'a>,
-    entity_leader_acc_info: &'a AccountInfo<'a>,
+struct AccessControlRequest<'a, 'b> {
+    entity_acc_info: &'a AccountInfo<'b>,
+    entity_leader_acc_info: &'a AccountInfo<'b>,
+    registrar_acc_info: &'a AccountInfo<'b>,
+    program_id: &'a Pubkey,
 }
 
 struct StateTransitionRequest<'a> {
     entity: &'a mut Entity,
-    capabilities: u32,
-    leader: Pubkey,
+    leader: Option<Pubkey>,
+    metadata: Option<Pubkey>,
 }

@@ -1,160 +1,210 @@
-//! serum-safe defines the interface for the serum safe program.
-
 #![cfg_attr(feature = "strict", deny(warnings))]
+#![allow(dead_code)]
 
+use borsh::{BorshDeserialize, BorshSerialize};
 use serum_common::pack::*;
 use solana_client_gen::prelude::*;
 
-// TODO: add pool accounts once it's ready.
-
-#[cfg_attr(feature = "client", solana_client_gen(ext))]
-pub mod instruction {
-    use super::*;
-    #[derive(serde::Serialize, serde::Deserialize)]
-    pub enum RegistryInstruction {
-        /// Initializes the registry instance for use. Anyone can invoke this
-        /// instruction so it should be run in the same transaction as the
-        /// create_account instruction.
-        ///
-        /// Accounts:
-        ///
-        /// 0. `[writable]` Registrar to initialize.
-        /// 1. `[]`         Rent sysvar.
-        #[cfg_attr(feature = "client", create_account(*registrar::SIZE))]
-        Initialize {
-            /// The priviledged account.
-            authority: Pubkey,
-            /// Number of slots that must pass for a withdrawal to complete.
-            withdrawal_timelock: u64,
-        },
-        /// RegisterCapability registers a node capability for reward collection,
-        /// or overwrites an existing capability (e.g., on fee change).
-        ///
-        /// Accounts:
-        ///
-        /// 0. `[signer]`   Registrar authority.
-        /// 1. `[writable]` Registrar instance.
-        RegisterCapability {
-            /// The identifier to assign this capability.
-            capability_id: u8,
-            /// Capability fee in bps. The amount to pay a node for an instruction fulfilling
-            /// this duty.
-            capability_fee_bps: u32,
-        },
-        /// CreateEntity initializes the new "node" with the Registry, designated "inactive".
-        ///
-        /// Accounts:
-        ///
-        /// 0. `[writable]` Entity account.
-        /// 1. `[signer]`   Leader of the node.
-        /// 2. `[]`         Rent sysvar.
-        CreateEntity {
-            /// The Serum ecosystem duties a Node performs to earn extra performance
-            /// based rewards, for example, cranking.
-            capabilities: u32,
-            /// Type of governance backing the `Entity`. For simplicity in the first version,
-            /// all `nodes` will be `delegated-staked`, which means the `node-leader`
-            /// will execute governance decisions.
-            stake_kind: crate::accounts::StakeKind,
-        },
-        /// UpdateEntity updates the leader and capabilities of the node entity.
-        ///
-        /// Accounts:
-        ///
-        /// 0. `[writable]` Entity account.
-        /// 1. `[signer]`   Leader of the entity.
-        UpdateEntity { leader: Pubkey, capabilities: u32 },
-        /// Joins the entity by creating a membership account.
-        ///
-        /// Accounts:
-        ///
-        /// 0. `[writable]` Member account being created.
-        /// 1. `[]`         Entity account to stake to.
-        /// 3. `[]`         Rent sysvar.
-        JoinEntity {
-            /// The owner of this entity account. Must sign off when staking and
-            /// withdrawing.
-            beneficiary: Pubkey,
-            /// An account that can withdrawal or stake on the beneficiary's
-            /// behalf.
-            delegate: Pubkey,
-        },
-        // TODO: update member to change delegate access.
-        /// Deposits funds into the staking pool on behalf Member account of
-        /// the Member account, issuing staking pool tokens as proof of deposit.
-        ///
-        /// Fails if there is less than 1 MSRM in the associated `Entity`
-        /// account *or* the deposit is less than 1 MSRM.
-        ///
-        /// Accounts:
-        ///
-        /// 0. `[signer]`   Owner of the depositing token account.
-        /// 1. `[]`         The depositing token account.
-        /// 2. `[writable]` Member account responsibile for the stake.
-        /// 3. `[signer]`   Beneficiary *or* delegate of the Member account
-        ///                 being staked.
-        /// 4. `[writable]` Entity account to stake to.
-        /// 5. `[]`         SPL token program.
-        #[cfg_attr(feature = "client", create_account(*member::SIZE))]
-        Stake {
-            // Amount of of the token to stake with the entity.
-            amount: u64,
-            // True iff staking MSRM.
-            is_mega: bool,
-        },
-        /// Initiates a stake withdrawal. Funds are locked up until the
-        /// withdrawl timelock passes.
-        ///
-        /// Accounts:
-        ///
-        /// 0. `[writable]  PendingWithdrawal account to initialize.
-        /// 0  `[signed]`   Benficiary/delegate of the Stake account.
-        /// 1. `[writable]` The Member account to withdraw from.
-        /// 2. `[writable]` Entity the Stake is associated with.
-        /// 3. `[signed]`   Owner of the staking pool token account to redeem.
-        StartStakeWithdrawal { amount: u64, mega_amount: u64 },
-        /// Completes the pending withdrawal once the timelock period passes.
-        ///
-        /// Accounts:
-        ///
-        /// Accounts:
-        ///
-        /// 0. `[writable]  PendingWithdrawal account to complete.
-        /// 1. `[signed]`   Beneficiary/delegate of the member account.
-        /// 2. `[writable]` Member account to withdraw from.
-        /// 3. `[writable]` Entity account the member is associated with.
-        /// 4. `[]`         SPL token program (SRM).
-        /// 5. `[]`         SPL mega token program (MSRM).
-        /// 6. `[writable]` SRM token account to send to upon redemption
-        /// 7. `[writable]` MSRM token account to send to upon redemption
-        EndStakeWithdrawal,
-        /// Donates funds into the staking pool for reward distribution. Anyone
-        /// can invoke this instruction. Only the non-mega token can be donated.
-        ///
-        /// Accounts:
-        ///
-        /// 0. `[signer]`   Owner of the account sending the funds.
-        /// 1. `[writable]` Account from which to send the funds.
-        /// 2. `[writable]` Program controlled token vault to transfer funds
-        ///                 into.
-        /// 3. `[]`         Registry instance, holding the nonce to calculate
-        ///                 the program-derived-address.
-        /// 4. `[]`         SPL token program.
-        Donate {
-            /// The amount to deposit.
-            amount: u64,
-        },
-    }
-}
-
-#[cfg(feature = "client")]
-pub mod client_ext;
-#[cfg(feature = "client")]
-pub use client_ext::client;
-#[cfg(feature = "client")]
-pub use client_ext::instruction;
-
+pub mod access_control;
 pub mod accounts;
 pub mod error;
 
-serum_common::packable!(crate::instruction::RegistryInstruction);
+#[cfg_attr(feature = "client", solana_client_gen)]
+pub mod instruction {
+    use super::*;
+    #[derive(Debug, BorshSerialize, BorshDeserialize)]
+    pub enum RegistryInstruction {
+        /// Accounts:
+        ///
+        /// 0. `[writable]` Registrar.
+        /// 1. `[]`         Vault.
+        /// 2. `[]`         Mega vault.
+        /// 3. `[]`         Pool.
+        /// 4. `[]`         Mega pool.
+        /// 5. `[]`         Pool program.
+        /// 6. `[]`         Rent sysvar.
+        Initialize {
+            authority: Pubkey,
+            nonce: u8,
+            withdrawal_timelock: i64,
+            deactivation_timelock: i64,
+            reward_activation_threshold: u64,
+            max_stake_per_entity: u64,
+        },
+        /// Accounts:
+        ///
+        /// 0. `[writable]` Registrar.
+        /// 1. `[signer]`   Authority.
+        UpdateRegistrar {
+            new_authority: Option<Pubkey>,
+            withdrawal_timelock: Option<i64>,
+            deactivation_timelock: Option<i64>,
+            reward_activation_threshold: Option<u64>,
+            max_stake_per_entity: Option<u64>,
+        },
+        /// Accounts:
+        ///
+        /// 0. `[writable]` Entity.
+        /// 1. `[signer]`   Entity leader.
+        /// 2. `[]`         Registrar.
+        /// 3. `[]`         Rent sysvar.
+        CreateEntity { metadata: Pubkey },
+        /// Accounts:
+        ///
+        /// 0. `[writable]` Entity account.
+        /// 1. `[signer]`   Entity leader.
+        /// 2. `[]`         Registrar.
+        UpdateEntity {
+            leader: Option<Pubkey>,
+            metadata: Option<Pubkey>,
+        },
+        /// Accounts:
+        ///
+        /// 0. `[signer]`   Beneficiary.
+        /// 1. `[writable]` Member.
+        /// 2. `[]`         Entity to join.
+        /// 3. `[]`         Registrar.
+        /// 2. `[]`         Staking pool token.
+        /// 3. `[]`         Mega staking pool token.
+        /// 4. `[]`         Rent sysvar.
+        CreateMember { delegate: Pubkey },
+        /// Accounts:
+        ///
+        /// 0. `[writable]` Member.
+        /// 1. `[signer]`   Beneficiary.
+        UpdateMember {
+            /// Delegate's OriginalDeposit must be 0, if updated.
+            delegate: Option<Pubkey>,
+            metadata: Option<Pubkey>,
+        },
+        /// Accounts:
+        ///
+        /// 0. `[writable]` Member.
+        /// 1. `[signed]`   Beneficiary.
+        /// 2. `[]`         Registrar.
+        /// 3. `[writable]` Current entity.
+        /// 4. `[writable]` New entity.
+        /// 5. `[]`         Clock sysvar.
+        ///
+        /// ..              GetBasket pool accounts.
+        SwitchEntity,
+        /// Accounts:
+        ///
+        /// Lockup whitelist relay interface (funds flow *from* lockup program):
+        ///
+        /// 0. `[writable]`  Depositor token account.
+        /// 1. `[]`          Depositor token authority.
+        /// 2. `[]`          Token program.
+        ///
+        /// Program specific.
+        ///
+        /// 3. `[writable]` Member.
+        /// 4. `[signer]`   Beneficiary.
+        /// 5. `[writable]` Entity.
+        /// 6. `[]`         Registrar.
+        /// 7. `[]`         Clock.
+        /// 8. `[]`         Vault (either the MSRM or SRM vault depending on
+        ///                 depositor's mint).
+        ///
+        /// ..              GetBasket pool accounts.
+        Deposit { amount: u64 },
+        /// Accounts:
+        ///
+        /// Lockup whitelist relay interface (funds flow *to* lockup program):
+        ///
+        /// 0. `[writable]`  Depositor token account.
+        /// 1. `[]`          Depositor token authority.
+        /// 2. `[]`          Token program.
+        /// 3. `[]`          Vault authority.
+        ///
+        /// Program specific.
+        ///
+        /// 4. `[writable]` Member.
+        /// 5. `[signer]`   Beneficiary.
+        /// 6. `[writable]` Entity.
+        /// 7. `[]`         Registrar.
+        /// 8. `[]`         Clock.
+        /// 9. `[]`         Vault (either the MSRM or SRM vault depending on
+        ///                 depositor's mint).
+        ///
+        /// ..              GetBasket pool accounts.
+        Withdraw { amount: u64 },
+        /// Accounts:
+        ///
+        /// 0. `[writable]` Member.
+        /// 1. `[signer]`   Beneficiary.
+        /// 2. `[writable]` Entity.
+        /// 3. `[]`         Registrar.
+        /// 4. `[]`         Clock sysvar.
+        /// 5. `[]`         Token program.
+        ///
+        /// ..              Execute pool accounts.
+        Stake { amount: u64 },
+        /// Accounts:
+        ///
+        /// 0. `[writable]` Generation.
+        /// 1. `[]`         Entity.
+        /// 2. `[]`         Registrar.
+        ///
+        /// ..              GetBasket pool accounts.
+        MarkGeneration,
+        /// Accounts:
+        ///
+        /// 0. `[writable]  PendingWithdrawal.
+        /// 1. `[writable]` Member.
+        /// 2  `[signed]`   Benficiary.
+        /// 3. `[writable]` Entity.
+        /// 4. `[writable]` Registrar.
+        /// 5. `[]`         Vault authority.
+        /// 7. `[]`         Token program.
+        /// 8. `[]`         Clock sysvar.
+        /// 9. `[]`         Rent sysvar.
+        ///
+        /// ..              Execute pool accounts.
+        ///
+        /// -1. `[]`        Generation (optional). Can be provided when
+        ///                 withdrawing from an *inactive* entity.
+        StartStakeWithdrawal { amount: u64 },
+        /// Accounts:
+        ///
+        /// 0. `[writable]  PendingWithdrawal.
+        /// 1. `[writable]` Member.
+        /// 2. `[signed]`   Beneficiary.
+        /// 3. `[writable]` Entity.
+        /// 4. `[]`         Registrar.
+        /// 5. `[]`         Clock.
+        EndStakeWithdrawal,
+        /// Accounts:
+        ///
+        /// 0. `[signer]`   Registrar authority.
+        /// 1. `[]`         Registrar.
+        /// 2. `[writable]` Member being slashed.
+        /// 3. `[writable]` Entity.
+        /// 4. `[]`         Clock sysvar.
+        /// 5. `[]`         Token program.
+        ///
+        /// ..              Execute pool accounts.
+        Slash { amount: u64 },
+        /// Accounts: TODO
+        ///
+        ///
+        DropPoolReward { totals: Vec<u64> },
+        /// Accounts: TODO
+        ///
+        ///
+        DropLockedReward {
+            total: u64,
+            end_ts: i64,
+            expiry_ts: i64,
+            expiry_receiver: Pubkey,
+            period_count: u64,
+            nonce: u8,
+        },
+        /// Accounts: TODO
+        ///
+        ///
+        ClaimLockedReward { cursor: u32, nonce: u8 },
+    }
+}
+
+serum_common::packable!(instruction::RegistryInstruction);

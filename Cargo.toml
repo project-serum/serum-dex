@@ -9,6 +9,9 @@ members = [
     "pool/examples/simple",
     "registry",
     "registry/cli",
+    "registry/client",
+    "registry/stake",
+    "registry/meta-entity",
     "lockup",
     "lockup/cli",
     "lockup/client",
@@ -19,13 +22,13 @@ members = [
     "node/registry",
     "node/context",
     "node/dev",
-    "lockup/tests/stake",
-    "assert-owner",
 ]
 exclude = [
     "dex",
+    "retbuf",
     "registry/program",
+    "registry/meta-entity/program",
+    "registry/stake/program",
     "retbuf",
     "lockup/program",
-    "lockup/tests/stake/program",
 ]

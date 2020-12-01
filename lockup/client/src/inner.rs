@@ -1,17 +1,17 @@
 use crate::InitializeResponse;
 use serum_common::client::rpc;
 use serum_common::pack::Pack;
-use serum_lockup::accounts::{Safe, Whitelist};
+use serum_lockup::accounts::{vault, Safe, Whitelist};
 use serum_lockup::client::{Client as InnerClient, ClientError as InnerClientError};
 use solana_client_gen::prelude::*;
 use solana_client_gen::solana_sdk;
 use solana_client_gen::solana_sdk::instruction::AccountMeta;
 use solana_client_gen::solana_sdk::pubkey::Pubkey;
 use solana_client_gen::solana_sdk::system_instruction;
+use spl_token::state::Account as TokenAccount;
 
 pub fn create_all_accounts_and_initialize(
     client: &InnerClient,
-    srm_mint: &Pubkey,
     safe_authority: &Pubkey,
 ) -> Result<InitializeResponse, InnerClientError> {
     // Build the data dependent addresses.
@@ -20,17 +20,6 @@ pub fn create_all_accounts_and_initialize(
     // uses a program-derived address to "sign" transactions and
     // manage funds within the program.
     let safe_acc = Keypair::generate(&mut OsRng);
-    let (safe_vault_authority, nonce) =
-        Pubkey::find_program_address(&[safe_acc.pubkey().as_ref()], client.program());
-
-    // Create and initialize the vault, owned by a program-derived-address.
-    let safe_srm_vault = serum_common::client::rpc::create_token_account(
-        client.rpc(),
-        &srm_mint,
-        &safe_vault_authority,
-        client.payer(),
-    )
-    .map_err(|e| InnerClientError::RawError(e.to_string()))?;
 
     // Now build the final transaction.
     let wl_kp = Keypair::generate(&mut OsRng);
@@ -65,17 +54,11 @@ pub fn create_all_accounts_and_initialize(
         let accounts = [
             AccountMeta::new(safe_acc.pubkey(), false),
             AccountMeta::new(wl_kp.pubkey(), false),
-            AccountMeta::new_readonly(safe_srm_vault.pubkey(), false),
-            AccountMeta::new_readonly(*srm_mint, false),
             AccountMeta::new_readonly(solana_sdk::sysvar::rent::id(), false),
         ];
 
-        let initialize_instr = serum_lockup::instruction::initialize(
-            *client.program(),
-            &accounts,
-            *safe_authority,
-            nonce,
-        );
+        let initialize_instr =
+            serum_lockup::instruction::initialize(*client.program(), &accounts, *safe_authority);
         vec![
             create_safe_acc_instr,
             create_whitelist_acc_instr,
@@ -109,10 +92,7 @@ pub fn create_all_accounts_and_initialize(
         .map(|sig| InitializeResponse {
             tx: sig,
             safe: safe_acc.pubkey(),
-            vault_authority: safe_vault_authority,
-            vault: safe_srm_vault.pubkey(),
             whitelist: wl_kp.pubkey(),
-            nonce,
         })
 }
 pub fn create_vesting_account(
@@ -120,35 +100,35 @@ pub fn create_vesting_account(
     depositor: &Pubkey,
     depositor_owner: &Keypair,
     safe_acc: &Pubkey,
-    safe_vault: &Pubkey,
-    safe_vault_authority: &Pubkey,
     vesting_acc_beneficiary: &Pubkey,
-    end_slot: u64,
+    end_ts: i64,
     period_count: u64,
     deposit_amount: u64,
-    mint_decimals: u8,
-) -> Result<(Signature, Keypair, Pubkey), InnerClientError> {
-    let mint_kp = Keypair::generate(&mut OsRng);
-
-    let _tx_sig = rpc::create_and_init_mint(
-        client.rpc(),
-        client.payer(),
-        &mint_kp,
-        &safe_vault_authority,
-        mint_decimals,
-    )
-    .map_err(|e| InnerClientError::RawError(e.to_string()))?;
+) -> Result<(Signature, Keypair), InnerClientError> {
+    let depositor_acc = rpc::get_token_account::<TokenAccount>(client.rpc(), depositor).unwrap();
 
     // The vesting account being created.
     let new_account = Keypair::generate(&mut OsRng);
+
+    let (vault_authority, nonce) = Pubkey::find_program_address(
+        &[safe_acc.as_ref(), vesting_acc_beneficiary.as_ref()],
+        client.program(),
+    );
+    let vault = rpc::create_token_account(
+        client.rpc(),
+        &depositor_acc.mint,
+        &vault_authority,
+        client.payer(),
+    )
+    .unwrap()
+    .pubkey();
+
     let deposit_accs = [
         AccountMeta::new(new_account.pubkey(), true),
         AccountMeta::new(*depositor, false),
         AccountMeta::new(depositor_owner.pubkey(), true),
-        AccountMeta::new(*safe_vault, false),
+        AccountMeta::new(vault, false),
         AccountMeta::new(*safe_acc, false),
-        AccountMeta::new(mint_kp.pubkey(), false),
-        AccountMeta::new_readonly(*safe_vault_authority, false),
         AccountMeta::new_readonly(spl_token::ID, false),
         AccountMeta::new_readonly(solana_sdk::sysvar::rent::ID, false),
         AccountMeta::new_readonly(solana_sdk::sysvar::clock::ID, false),
@@ -170,9 +150,10 @@ pub fn create_vesting_account(
         *client.program(),
         &deposit_accs,
         *vesting_acc_beneficiary,
-        end_slot,
+        end_ts,
         period_count,
         deposit_amount,
+        nonce,
     );
 
     let instructions = [create_account_instr, create_vesting_instr];
@@ -197,5 +178,5 @@ pub fn create_vesting_account(
             client.options().tx,
         )
         .map_err(InnerClientError::RpcError)
-        .map(|sig| (sig, new_account, mint_kp.pubkey()))
+        .map(|sig| (sig, new_account))
 }

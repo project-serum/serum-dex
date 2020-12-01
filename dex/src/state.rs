@@ -1156,7 +1156,7 @@ fn invoke_spl_token(
     Ok(())
 }
 
-#[cfg(not(feature = "client"))]
+#[cfg(feature = "program")]
 fn send_from_vault<'a, 'b: 'a>(
     native_amount: u64,
     recipient: account_parser::TokenAccount<'a, 'b>,

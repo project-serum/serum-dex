@@ -1,0 +1,34 @@
+[package]
+name = "serum-stake-program"
+version = "0.1.0"
+description = "Serum Stake Solana program"
+repository = "https://github.com/project-serum/serum-dex"
+edition = "2018"
+
+[workspace]
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "serum_stake_program"
+
+[features]
+program = ["serum-stake/program", "solana-sdk/program", "spl-token/program", "spl-token/no-entrypoint"]
+test = ["solana-sdk/default"]
+strict = []
+default = []
+
+[dependencies]
+borsh = { git = "https://github.com/project-serum/borsh", branch = "serum" }
+solana-sdk = { version = "1.3.14", default-features = false }
+solana-program = "1.4.3"
+spl-token = { version = "2.0.6", default-features = false }
+serum-stake = { path = "../" }
+serum-common = { path = "../../../common", features = ["program"] }
+serum-pool = { path = "../../../pool", default-features = false, features = ["program"] }
+serum-pool-schema = { path = "../../../pool/schema", default-features = false, features = ["program"] }
+
+[profile.release]
+lto = true
+
+[profile.test]
+opt-level = 2

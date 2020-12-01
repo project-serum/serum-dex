@@ -83,7 +83,7 @@ fn run_cmd(ctx: &Context, cmd: Command) -> Result<()> {
         Command::Crank(crank_cmd) => serum_node_crank::run_cmd(ctx, crank_cmd),
         Command::Registry(reg_cmd) => serum_node_registry::run_cmd(ctx, reg_cmd),
         Command::Dev(dev_cmd) => serum_node_dev::run_cmd(ctx, dev_cmd),
-        Command::Lockup(dev_cmd) => serum_node_lockup::run_cmd(ctx, dev_cmd),
+        Command::Lockup(l_cmd) => serum_node_lockup::run_cmd(ctx, l_cmd),
     }
 }
 
@@ -109,13 +109,13 @@ pub struct Config {
 
 #[derive(Debug, Clap)]
 pub enum Command {
-    /// Runs the crank client utility
+    /// Crank client utility.
     Crank(serum_node_crank::Command),
-    /// Communicates with a Serum registry.
+    /// Serum registry program.
     Registry(serum_node_registry::Command),
     /// Development utilities.
     Dev(serum_node_dev::Command),
-    /// Communicates with Serum lockups.
+    /// Serum lockup program.
     Lockup(serum_node_lockup::Command),
 }
 

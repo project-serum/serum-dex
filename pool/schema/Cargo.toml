@@ -9,7 +9,7 @@ program = ["solana-sdk/program"]
 default = ["solana-sdk/default"]
 
 [dependencies]
-borsh = "0.7.1"
+borsh = { git = "https://github.com/project-serum/borsh", branch = "serum" }
 solana-sdk = { version = "1.3.9", default-features = false }
 
 [[bin]]

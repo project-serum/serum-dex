@@ -8,7 +8,7 @@ edition = "2018"
 [workspace]
 
 [lib]
-crate-type = ["cdylib", "lib"]
+crate-type = ["cdylib"]
 name = "serum_registry_program"
 
 [features]
@@ -21,9 +21,18 @@ solana-sdk = { version = "1.3.14", default-features = false }
 spl-token = { version = "2.0.6", default-features = false }
 serum-registry = { path = "../" }
 serum-common = { path = "../../common", features = ["program"] }
+serum-stake = { path = "../stake", features = ["program"] }
+serum-lockup = { path = "../../lockup", features = ["program"] }
+serum-pool-schema = { path = "../../pool/schema", default-features = false, features = ["program"] }
+solana-program = "1.4.3"
+arrayref = "0.3.6"
+borsh = { git = "https://github.com/project-serum/borsh", branch = "serum" }
 
 [profile.release]
 lto = true
+codegen-units = 1
+panic = 'abort'
+opt-level = 'z'
 
 [profile.test]
 opt-level = 2

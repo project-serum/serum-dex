@@ -1,19 +1,15 @@
 //! Module for safe access to accounts.
 
-// TODO: it'd be great to replace or merge this with the DEX's macro doing this
-//       type of thing.
-
 use serum_common::pack::Pack;
-use serum_lockup::accounts::{Safe, TokenVault, Vesting, Whitelist};
+use serum_lockup::accounts::{vault, Safe, Vesting, Whitelist};
 use serum_lockup::error::{LockupError, LockupErrorCode};
 use solana_sdk::account_info::AccountInfo;
-use solana_sdk::program_option::COption;
 use solana_sdk::program_pack::Pack as TokenPack;
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::sysvar::clock::Clock;
 use solana_sdk::sysvar::rent::Rent;
 use solana_sdk::sysvar::Sysvar;
-use spl_token::state::{Account as TokenAccount, Mint};
+use spl_token::state::Account as TokenAccount;
 use std::convert::Into;
 
 pub fn governance(
@@ -33,6 +29,7 @@ pub fn governance(
 
 pub fn whitelist<'a>(
     wl_acc_info: AccountInfo<'a>,
+    safe_acc_info: &AccountInfo<'a>,
     safe: &Safe,
     program_id: &Pubkey,
 ) -> Result<Whitelist<'a>, LockupError> {
@@ -43,7 +40,12 @@ pub fn whitelist<'a>(
     if safe.whitelist != *wl_acc_info.key {
         return Err(LockupErrorCode::InvalidWhitelist)?;
     }
-    Whitelist::new(wl_acc_info).map_err(Into::into)
+    let wl = Whitelist::new(wl_acc_info)?;
+    if wl.safe()? != *safe_acc_info.key {
+        return Err(LockupErrorCode::WhitelistSafeMismatch)?;
+    }
+
+    Ok(wl)
 }
 
 /// Access control on any instruction mutating an existing Vesting account.
@@ -53,7 +55,22 @@ pub fn vesting(
     vesting_acc_info: &AccountInfo,
     vesting_acc_beneficiary_info: &AccountInfo,
 ) -> Result<Vesting, LockupError> {
-    let vesting = Vesting::unpack(&vesting_acc_info.try_borrow_data()?)?;
+    let vesting = vesting_raw(program_id, safe, vesting_acc_info)?;
+
+    if vesting.beneficiary != *vesting_acc_beneficiary_info.key {
+        return Err(LockupErrorCode::Unauthorized)?;
+    }
+
+    Ok(vesting)
+}
+
+pub fn vesting_raw(
+    program_id: &Pubkey,
+    safe: &Pubkey,
+    vesting_acc_info: &AccountInfo,
+) -> Result<Vesting, LockupError> {
+    let mut data: &[u8] = &vesting_acc_info.try_borrow_data()?;
+    let vesting = Vesting::unpack_unchecked(&mut data)?;
 
     if vesting_acc_info.owner != program_id {
         return Err(LockupErrorCode::InvalidAccount)?;
@@ -61,13 +78,9 @@ pub fn vesting(
     if !vesting.initialized {
         return Err(LockupErrorCode::NotInitialized)?;
     }
-    if vesting.beneficiary != *vesting_acc_beneficiary_info.key {
-        return Err(LockupErrorCode::Unauthorized)?;
-    }
     if vesting.safe != *safe {
         return Err(LockupErrorCode::WrongSafe)?;
     }
-
     Ok(vesting)
 }
 
@@ -83,19 +96,6 @@ pub fn clock(acc_info: &AccountInfo) -> Result<Clock, LockupError> {
         return Err(LockupErrorCode::InvalidClockSysvar)?;
     }
     Clock::from_account_info(acc_info).map_err(Into::into)
-}
-
-pub fn mint(acc_info: &AccountInfo) -> Result<Mint, LockupError> {
-    if *acc_info.owner != spl_token::ID {
-        return Err(LockupErrorCode::InvalidMint)?;
-    }
-
-    let mint = Mint::unpack(&acc_info.try_borrow_data()?)?;
-    if !mint.is_initialized {
-        return Err(LockupErrorCode::UnitializedTokenMint)?;
-    }
-
-    Ok(mint)
 }
 
 pub fn safe(acc_info: &AccountInfo, program_id: &Pubkey) -> Result<Safe, LockupError> {
@@ -114,20 +114,19 @@ pub fn safe(acc_info: &AccountInfo, program_id: &Pubkey) -> Result<Safe, LockupE
 pub fn vault(
     acc_info: &AccountInfo,
     vault_authority_acc_info: &AccountInfo,
+    vesting_acc_info: &AccountInfo,
+    beneficiary_acc_info: &AccountInfo,
     safe_acc_info: &AccountInfo,
     program_id: &Pubkey,
 ) -> Result<TokenAccount, LockupError> {
-    let safe = safe(safe_acc_info, program_id)?;
+    let vesting = vesting_raw(program_id, safe_acc_info.key, vesting_acc_info)?;
     let vault = token(acc_info)?;
-    if *acc_info.key != safe.vault {
-        return Err(LockupErrorCode::InvalidVault)?;
-    }
-
     let va = vault_authority(
-        vault_authority_acc_info,
-        safe_acc_info.key,
-        &safe,
         program_id,
+        vault_authority_acc_info,
+        beneficiary_acc_info,
+        &vesting,
+        safe_acc_info.key,
     )?;
 
     if va != vault.owner {
@@ -141,13 +140,14 @@ pub fn vault(
 }
 
 pub fn vault_authority(
-    vault_authority_acc_info: &AccountInfo,
-    safe_addr: &Pubkey,
-    safe: &Safe,
     program_id: &Pubkey,
+    vault_authority_acc_info: &AccountInfo,
+    beneficiary_acc_info: &AccountInfo,
+    vesting: &Vesting,
+    safe_addr: &Pubkey,
 ) -> Result<Pubkey, LockupError> {
     let va = Pubkey::create_program_address(
-        &TokenVault::signer_seeds(safe_addr, &safe.nonce),
+        &vault::signer_seeds(safe_addr, beneficiary_acc_info.key, &vesting.nonce),
         program_id,
     )
     .map_err(|_| LockupErrorCode::InvalidVaultNonce)?;
@@ -169,31 +169,4 @@ pub fn token(acc_info: &AccountInfo) -> Result<TokenAccount, LockupError> {
     }
 
     Ok(token)
-}
-
-pub fn locked_token(
-    acc_info: &AccountInfo,
-    mint_acc_info: &AccountInfo,
-    vault_authority: &Pubkey,
-    vesting: &Vesting,
-) -> Result<TokenAccount, LockupError> {
-    // Mint.
-    let mint = mint(mint_acc_info)?;
-    if mint.mint_authority != COption::Some(*vault_authority) {
-        return Err(LockupErrorCode::InvalidMintAuthority)?;
-    }
-
-    // Token.
-    let token_acc = token(acc_info)?;
-    if token_acc.owner != vesting.beneficiary {
-        return Err(LockupErrorCode::InvalidTokenAccountOwner)?;
-    }
-    if token_acc.mint != vesting.locked_nft_mint {
-        return Err(LockupErrorCode::InvalidTokenAccountMint)?;
-    }
-    if token_acc.mint != *mint_acc_info.key {
-        return Err(LockupErrorCode::InvalidMint)?;
-    }
-
-    Ok(token_acc)
 }

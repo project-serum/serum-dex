@@ -180,7 +180,7 @@ pub enum PoolAction {
     Swap(Vec<u64>),
 }
 
-#[derive(Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub struct Basket {
     /// Must have the same length as `PoolState::assets`. Each item corresponds to
     /// one of the assets in `PoolState::assets`.

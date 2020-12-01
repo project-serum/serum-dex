@@ -2,7 +2,7 @@
 # this is included in child Makefiles with commands overriden as desired
 # (this is why all the targets here end with % wildcards). In addition to
 # override targets, one can customize the behavior, by override following
-# variables in a child Makefile. See `safe/Makefile` for an example of
+# variables in a child Makefile. See `lockup/Makefile` for an example of
 # a child.
 
 #
@@ -12,16 +12,18 @@ TEST_PAYER_FILEPATH="$(HOME)/.config/solana/id.json"
 #
 # The solana cluster to test against. Defaults to local.
 #
-TEST_CLUSTER=localnet
+TEST_CLUSTER=l
+#TEST_CLUSTER=devnet
 #
 # The url of TEST_CLUSTER.
 #
 TEST_CLUSTER_URL="http://localhost:8899"
+#TEST_CLUSTER_URL="https://devnet.solana.com"
 #
 # One can optionally set this along with the test-program command
 # to avoid redeploying everytime tests are run.
 #
-TEST_PROGRAM_ID=""
+TEST_PROGRAM_ID=
 #
 # Default options used for the solana cli.
 #
@@ -47,6 +49,7 @@ LIB_NAME=<your-solana-program>
 	build-clien% \
 	build-progra% \
 	deplo% \
+	self-deplo% \
 	tes% \
 	test-progra% \
 	test-integratio% \
@@ -69,16 +72,22 @@ build-progra%:
 	@cp $(BUILD_DIR)/$(LIB_NAME).so $(BUILD_DIR)/$(LIB_NAME)_debug.so
 	@$(BPF_SDK)/dependencies/llvm-native/bin/llvm-objcopy --strip-all $(BUILD_DIR)/$(LIB_NAME).so $(BUILD_DIR)/$(LIB_NAME).so
 
-deplo%: buil%
-	@$(eval TEST_PROGRAM_ID=$(shell solana deploy $(SOL_OPTIONS) $(BUILD_DIR)/$(LIB_NAME).so | jq .programId -r))
+deplo%: buil% self-deplo%
 	@echo "{\"programId\": \"$(TEST_PROGRAM_ID)\"}"
+
+self-deplo%:
+	@$(eval TEST_PROGRAM_ID=$(shell solana deploy $(SOL_OPTIONS) $(BUILD_DIR)/$(LIB_NAME).so | jq .programId -r))
 
 test-progra%:
 	RUST_BACKTRACE=1 \
 	TEST_PROGRAM_ID=$(TEST_PROGRAM_ID) \
 	TEST_PAYER_FILEPATH=$(TEST_PAYER_FILEPATH) \
 	TEST_CLUSTER=$(TEST_CLUSTER) \
-	TEST_WHITELIST_PROGRAM_ID=$(TEST_WHITELIST_PROGRAM_ID) \
+	TEST_DEX_PROGRAM_ID=$(TEST_DEX_PROGRAM_ID) \
+	TEST_REGISTRY_PROGRAM_ID=$(TEST_REGISTRY_PROGRAM_ID) \
+	TEST_LOCKUP_PROGRAM_ID=$(TEST_LOCKUP_PROGRAM_ID) \
+	TEST_STAKE_PROGRAM_ID=$(TEST_STAKE_PROGRAM_ID) \
+	TEST_META_ENTITY_PROGRAM_ID=$(TEST_META_ENTITY_PROGRAM_ID) \
 	cargo test --features test,client -- --nocapture $(args)
 
 tes%: deplo% test-progra%
