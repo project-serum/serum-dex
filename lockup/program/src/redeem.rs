@@ -94,7 +94,7 @@ fn access_control(req: AccessControlRequest) -> Result<(), LockupError> {
     // Redemption checks.
     {
         let clock = access_control::clock(clock_acc_info)?;
-        if amount > vesting.available_for_withdrawal(clock.unix_timestamp) {
+        if amount == 0 || amount > vesting.available_for_withdrawal(clock.unix_timestamp) {
             return Err(LockupErrorCode::InsufficientWithdrawalBalance)?;
         }
     }
