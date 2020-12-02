@@ -8,12 +8,14 @@ use solana_sdk::entrypoint::ProgramResult;
 use solana_sdk::pubkey::Pubkey;
 
 mod claim_locked_reward;
+mod claim_unlocked_reward;
 mod common;
 mod create_entity;
 mod create_member;
 mod deposit;
 mod drop_locked_reward;
 mod drop_pool_reward;
+mod drop_unlocked_reward;
 mod end_stake_withdrawal;
 mod initialize;
 mod mark_generation;
@@ -127,8 +129,24 @@ fn entry(program_id: &Pubkey, accounts: &[AccountInfo], instruction_data: &[u8])
             period_count,
             nonce,
         ),
+        RegistryInstruction::DropUnlockedReward {
+            total,
+            expiry_ts,
+            expiry_receiver,
+            nonce,
+        } => drop_unlocked_reward::handler(
+            program_id,
+            accounts,
+            total,
+            expiry_ts,
+            expiry_receiver,
+            nonce,
+        ),
         RegistryInstruction::ClaimLockedReward { cursor, nonce } => {
             claim_locked_reward::handler(program_id, accounts, cursor, nonce)
+        }
+        RegistryInstruction::ClaimUnlockedReward { cursor } => {
+            claim_unlocked_reward::handler(program_id, accounts, cursor)
         }
     };
 

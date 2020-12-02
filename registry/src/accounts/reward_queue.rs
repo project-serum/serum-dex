@@ -48,7 +48,14 @@ pub enum RewardEvent {
         from: Pubkey,
         total: u64,
         pool: Pubkey,
-        locked_vendor: Pubkey,
+        vendor: Pubkey,
+        mint: Pubkey,
+    },
+    UnlockedAlloc {
+        from: Pubkey,
+        total: u64,
+        pool: Pubkey,
+        vendor: Pubkey,
         mint: Pubkey,
     },
 }
@@ -64,7 +71,7 @@ mod tests {
             from: Pubkey::new_rand(),
             total: 0,
             pool: Pubkey::new_rand(),
-            locked_vendor: Pubkey::new_rand(),
+            vendor: Pubkey::new_rand(),
             mint: Pubkey::new_rand(),
         };
         println!("TEST: {:?}", e.try_to_vec().unwrap().len());

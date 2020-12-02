@@ -203,7 +203,20 @@ pub mod instruction {
         /// Accounts: TODO
         ///
         ///
+        DropUnlockedReward {
+            total: u64,
+            expiry_ts: i64,
+            expiry_receiver: Pubkey,
+            nonce: u8,
+        },
+        /// Accounts: TODO
+        ///
+        ///
         ClaimLockedReward { cursor: u32, nonce: u8 },
+        /// Accounts: TODO
+        ///
+        ///
+        ClaimUnlockedReward { cursor: u32 },
     }
 }
 

@@ -1,7 +1,7 @@
 use crate::accounts::reward_queue::Ring;
 use crate::accounts::{
     vault, Entity, Generation, LockedRewardVendor, Member, PendingWithdrawal, Registrar,
-    RewardEventQueue,
+    RewardEventQueue, UnlockedRewardVendor,
 };
 use crate::error::{RegistryError, RegistryErrorCode};
 use serum_common::pack::*;
@@ -302,6 +302,24 @@ pub fn locked_reward_vendor(
         return Err(RegistryErrorCode::InvalidAccountOwner)?;
     }
     let vendor = LockedRewardVendor::unpack(&vendor_acc_info.try_borrow_data()?)?;
+    if !vendor.initialized {
+        return Err(RegistryErrorCode::NotInitialized)?;
+    }
+    if vendor.registrar != *registrar_acc_info.key {
+        return Err(RegistryErrorCode::VendorRegistrarMismatch)?;
+    }
+    Ok(vendor)
+}
+
+pub fn unlocked_reward_vendor(
+    vendor_acc_info: &AccountInfo,
+    registrar_acc_info: &AccountInfo,
+    program_id: &Pubkey,
+) -> Result<UnlockedRewardVendor, RegistryError> {
+    if vendor_acc_info.owner != program_id {
+        return Err(RegistryErrorCode::InvalidAccountOwner)?;
+    }
+    let vendor = UnlockedRewardVendor::unpack(&vendor_acc_info.try_borrow_data()?)?;
     if !vendor.initialized {
         return Err(RegistryErrorCode::NotInitialized)?;
     }
