@@ -28,7 +28,7 @@ pub mod instruction {
             chat: Option<Pubkey>,
         },
         SendMessage {
-            data: Vec<u8>,
+            msg: accounts::Message,
         },
     }
 }

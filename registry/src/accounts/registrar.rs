@@ -1,4 +1,3 @@
-use crate::error::{RegistryError, RegistryErrorCode};
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serum_common::pack::*;
 use solana_client_gen::solana_sdk::pubkey::Pubkey;
@@ -29,32 +28,21 @@ pub struct Registrar {
     /// Number of seconds it takes for an Entity to be "deactivated", from the
     /// moment it's SRM/MSRM amount drops below the required threshold.
     pub deactivation_timelock: i64,
-    ///
+    /// Global event queue for reward vendoring.
     pub reward_event_q: Pubkey,
-    /// Vault holding deposit tokens.
-    pub vault: Pubkey,
-    /// Vault holding deposit mega tokens.
-    pub mega_vault: Pubkey,
-    /// Address of the SRM staking pool.
-    pub pool_vault: Pubkey,
-    /// Address of the MSRM staking pool.
-    pub pool_vault_mega: Pubkey,
-    ///
+    /// Mint of the tokens that can be staked.
+    pub mint: Pubkey,
+    /// Mint of the mega tokens that can be staked.
+    pub mega_mint: Pubkey,
+    /// Staking pool token mint.
     pub pool_mint: Pubkey,
-    ///
+    /// Staking pool (mega) token mint.
     pub pool_mint_mega: Pubkey,
-}
-
-impl Registrar {
-    pub fn is_mega(&self, key: Pubkey) -> Result<bool, RegistryError> {
-        if key == self.vault {
-            Ok(false)
-        } else if key == self.mega_vault {
-            Ok(true)
-        } else {
-            Err(RegistryErrorCode::InvalidVault.into())
-        }
-    }
+    /// The amount of tokens (not decimal) that must be staked to get a single
+    /// staking pool token.
+    pub stake_rate: u64,
+    /// Stake rate for the mega pool.
+    pub stake_rate_mega: u64,
 }
 
 serum_common::packable!(Registrar);

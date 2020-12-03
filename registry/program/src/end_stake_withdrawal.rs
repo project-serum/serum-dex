@@ -1,55 +1,56 @@
 use serum_common::pack::Pack;
+use serum_common::program::invoke_token_transfer;
 use serum_registry::access_control;
-use serum_registry::accounts::{Entity, Member, PendingWithdrawal};
+use serum_registry::accounts::{vault, BalanceSandbox, PendingWithdrawal, Registrar};
 use serum_registry::error::{RegistryError, RegistryErrorCode};
-use solana_program::info;
+use solana_program::msg;
 use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::pubkey::Pubkey;
 use std::convert::Into;
 
 #[inline(never)]
 pub fn handler(program_id: &Pubkey, accounts: &[AccountInfo]) -> Result<(), RegistryError> {
-    info!("handler: end_stake_withdrawl");
+    msg!("handler: end_stake_withdrawl");
 
     let acc_infos = &mut accounts.iter();
 
     let pending_withdrawal_acc_info = next_account_info(acc_infos)?;
     let member_acc_info = next_account_info(acc_infos)?;
+    let member_vault_acc_info = next_account_info(acc_infos)?;
+    let member_vault_pw_acc_info = next_account_info(acc_infos)?;
+    let member_vault_authority_acc_info = next_account_info(acc_infos)?;
     let beneficiary_acc_info = next_account_info(acc_infos)?;
     let entity_acc_info = next_account_info(acc_infos)?;
+    let token_program_acc_info = next_account_info(acc_infos)?;
     let registrar_acc_info = next_account_info(acc_infos)?;
     let clock_acc_info = next_account_info(acc_infos)?;
 
-    let AccessControlResponse { is_mega } = access_control(AccessControlRequest {
+    let AccessControlResponse { ref registrar } = access_control(AccessControlRequest {
         registrar_acc_info,
         pending_withdrawal_acc_info,
         beneficiary_acc_info,
         member_acc_info,
+        member_vault_acc_info,
+        member_vault_pw_acc_info,
         entity_acc_info,
         clock_acc_info,
         program_id,
+        member_vault_authority_acc_info,
     })?;
 
-    Entity::unpack_unchecked_mut(
-        &mut entity_acc_info.try_borrow_mut_data()?,
-        &mut |entity: &mut Entity| {
-            Member::unpack_mut(
-                &mut member_acc_info.try_borrow_mut_data()?,
-                &mut |member: &mut Member| {
-                    PendingWithdrawal::unpack_mut(
-                        &mut pending_withdrawal_acc_info.try_borrow_mut_data()?,
-                        &mut |pending_withdrawal: &mut PendingWithdrawal| {
-                            state_transition(StateTransitionRequest {
-                                pending_withdrawal,
-                                entity,
-                                member,
-                                is_mega,
-                            })
-                            .map_err(Into::into)
-                        },
-                    )
-                },
-            )
+    PendingWithdrawal::unpack_mut(
+        &mut pending_withdrawal_acc_info.try_borrow_mut_data()?,
+        &mut |pending_withdrawal: &mut PendingWithdrawal| {
+            state_transition(StateTransitionRequest {
+                pending_withdrawal,
+                registrar,
+                registrar_acc_info,
+                member_vault_acc_info,
+                member_vault_pw_acc_info,
+                member_vault_authority_acc_info,
+                token_program_acc_info,
+            })
+            .map_err(Into::into)
         },
     )?;
 
@@ -58,7 +59,7 @@ pub fn handler(program_id: &Pubkey, accounts: &[AccountInfo]) -> Result<(), Regi
 
 #[inline(always)]
 fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, RegistryError> {
-    info!("access-control: end_stake_withdrawal");
+    msg!("access-control: end_stake_withdrawal");
 
     let AccessControlRequest {
         registrar_acc_info,
@@ -68,6 +69,9 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
         entity_acc_info,
         clock_acc_info,
         program_id,
+        member_vault_acc_info,
+        member_vault_pw_acc_info,
+        member_vault_authority_acc_info,
     } = req;
 
     // Authorization.
@@ -78,7 +82,7 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
     // Account validation.
     let registrar = access_control::registrar(registrar_acc_info, program_id)?;
     let _entity = access_control::entity(entity_acc_info, registrar_acc_info, program_id)?;
-    let _member = access_control::member_join(
+    let member = access_control::member_join(
         member_acc_info,
         entity_acc_info,
         beneficiary_acc_info,
@@ -88,36 +92,78 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
         access_control::pending_withdrawal(pending_withdrawal_acc_info, program_id)?;
     let clock = access_control::clock(clock_acc_info)?;
 
+    let b = member
+        .balances
+        .iter()
+        .filter(|b| b.owner == pending_withdrawal.balance_id)
+        .collect::<Vec<&BalanceSandbox>>();
+    let balances = b.first().ok_or(RegistryErrorCode::InvalidBalanceSandbox)?;
+
+    let (_, is_mega_vault) = access_control::member_vault(
+        &member,
+        member_vault_acc_info,
+        member_vault_authority_acc_info,
+        registrar_acc_info,
+        &registrar,
+        program_id,
+        &balances.owner,
+    )?;
+    let (_, is_mega_vault_pw) = access_control::member_vault_pending_withdrawal(
+        &member,
+        member_vault_pw_acc_info,
+        member_vault_authority_acc_info,
+        registrar_acc_info,
+        &registrar,
+        program_id,
+        &balances.owner,
+    )?;
+
     let is_mega = {
-        if pending_withdrawal.pool == registrar.pool_vault {
+        if pending_withdrawal.pool == registrar.pool_mint {
             false
-        } else if pending_withdrawal.pool == registrar.pool_vault_mega {
+        } else if pending_withdrawal.pool == registrar.pool_mint_mega {
             true
         } else {
             return Err(RegistryErrorCode::InvariantViolation)?;
         }
     };
+    if is_mega != is_mega_vault || is_mega != is_mega_vault_pw {
+        return Err(RegistryErrorCode::InvalidVault)?;
+    }
 
     // EndStakeWithdrawal specific.
     if clock.unix_timestamp < pending_withdrawal.end_ts {
         return Err(RegistryErrorCode::WithdrawalTimelockNotPassed)?;
     }
 
-    Ok(AccessControlResponse { is_mega })
+    Ok(AccessControlResponse { registrar })
 }
 
 fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
-    info!("state-transition: end_stake_withdrawal");
+    msg!("state-transition: end_stake_withdrawal");
 
     let StateTransitionRequest {
         pending_withdrawal,
-        entity,
-        member,
-        is_mega,
+        registrar,
+        registrar_acc_info,
+        member_vault_acc_info,
+        member_vault_pw_acc_info,
+        member_vault_authority_acc_info,
+        token_program_acc_info,
     } = req;
 
-    member.spt_did_unstake_end(pending_withdrawal.spt_amount, is_mega);
-    entity.spt_did_unstake_end(pending_withdrawal.spt_amount, is_mega);
+    invoke_token_transfer(
+        member_vault_pw_acc_info,
+        member_vault_acc_info,
+        member_vault_authority_acc_info,
+        token_program_acc_info,
+        &[&vault::signer_seeds(
+            registrar_acc_info.key,
+            &registrar.nonce,
+        )],
+        pending_withdrawal.amount,
+    )?;
+
     pending_withdrawal.burned = true;
 
     Ok(())
@@ -128,18 +174,24 @@ struct AccessControlRequest<'a, 'b> {
     pending_withdrawal_acc_info: &'a AccountInfo<'b>,
     beneficiary_acc_info: &'a AccountInfo<'b>,
     member_acc_info: &'a AccountInfo<'b>,
+    member_vault_acc_info: &'a AccountInfo<'b>,
+    member_vault_pw_acc_info: &'a AccountInfo<'b>,
+    member_vault_authority_acc_info: &'a AccountInfo<'b>,
     entity_acc_info: &'a AccountInfo<'b>,
     clock_acc_info: &'a AccountInfo<'b>,
     program_id: &'a Pubkey,
 }
 
 struct AccessControlResponse {
-    is_mega: bool,
+    registrar: Registrar,
 }
 
-struct StateTransitionRequest<'a> {
-    pending_withdrawal: &'a mut PendingWithdrawal,
-    entity: &'a mut Entity,
-    member: &'a mut Member,
-    is_mega: bool,
+struct StateTransitionRequest<'a, 'b, 'c> {
+    registrar_acc_info: &'a AccountInfo<'b>,
+    member_vault_acc_info: &'a AccountInfo<'b>,
+    member_vault_pw_acc_info: &'a AccountInfo<'b>,
+    member_vault_authority_acc_info: &'a AccountInfo<'b>,
+    token_program_acc_info: &'a AccountInfo<'b>,
+    pending_withdrawal: &'c mut PendingWithdrawal,
+    registrar: &'c Registrar,
 }

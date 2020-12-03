@@ -40,6 +40,7 @@ pub trait Pack: std::marker::Sized + std::fmt::Debug {
 
     /// Analogue to pack, performing a check on the size of the given byte
     /// array.
+    #[inline(never)]
     fn unpack(src: &[u8]) -> Result<Self, ProgramError> {
         let mut src_mut = src;
         Pack::unpack_unchecked(&mut src_mut).and_then(|r: Self| {
@@ -64,6 +65,7 @@ pub trait Pack: std::marker::Sized + std::fmt::Debug {
     }
 
     /// Unsafe unpack. Doesn't check the size of the given input array.
+    #[inline(never)]
     fn unpack_unchecked_mut<F, U>(input: &mut [u8], f: &mut F) -> Result<U, ProgramError>
     where
         F: FnMut(&mut Self) -> Result<U, ProgramError>,

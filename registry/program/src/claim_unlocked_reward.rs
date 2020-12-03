@@ -1,11 +1,12 @@
 use serum_common::pack::Pack;
 use serum_common::program::invoke_token_transfer;
 use serum_registry::access_control;
-use serum_registry::accounts::{EntityState, Member, Registrar, UnlockedRewardVendor};
+use serum_registry::accounts::{EntityState, Member, UnlockedRewardVendor};
 use serum_registry::error::{RegistryError, RegistryErrorCode};
-use solana_program::info;
+use solana_program::msg;
 use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::pubkey::Pubkey;
+use spl_token::state::Account as TokenAccount;
 
 #[inline(never)]
 pub fn handler(
@@ -13,7 +14,7 @@ pub fn handler(
     accounts: &[AccountInfo],
     cursor: u32,
 ) -> Result<(), RegistryError> {
-    info!("handler: claim_unlocked_reward");
+    msg!("handler: claim_unlocked_reward");
 
     let acc_infos = &mut accounts.iter();
 
@@ -26,9 +27,14 @@ pub fn handler(
     let token_acc_info = next_account_info(acc_infos)?;
     let token_program_acc_info = next_account_info(acc_infos)?;
 
+    let mut spt_acc_infos = vec![];
+    while acc_infos.len() > 0 {
+        spt_acc_infos.push(next_account_info(acc_infos)?);
+    }
+
     let AccessControlResponse {
-        ref registrar,
         ref vendor,
+        ref spts,
     } = access_control(AccessControlRequest {
         program_id,
         registrar_acc_info,
@@ -37,6 +43,7 @@ pub fn handler(
         vendor_acc_info,
         token_acc_info,
         cursor,
+        spt_acc_infos,
     })?;
 
     Member::unpack_mut(
@@ -46,13 +53,13 @@ pub fn handler(
                 cursor,
                 member,
                 vendor,
-                registrar,
                 registrar_acc_info,
                 vendor_acc_info,
                 vendor_vault_authority_acc_info,
                 vendor_vault_acc_info,
                 token_acc_info,
                 token_program_acc_info,
+                spts,
             })
             .map_err(Into::into)
         },
@@ -62,7 +69,7 @@ pub fn handler(
 }
 
 fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, RegistryError> {
-    info!("access-control: claim_unlocked_reward");
+    msg!("access-control: claim_unlocked_reward");
 
     let AccessControlRequest {
         program_id,
@@ -72,6 +79,7 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
         member_acc_info,
         vendor_acc_info,
         token_acc_info,
+        spt_acc_infos,
     } = req;
 
     // Authorization: none required. This operation is purely beneficial for
@@ -90,6 +98,23 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
     let vendor =
         access_control::unlocked_reward_vendor(vendor_acc_info, registrar_acc_info, program_id)?;
     let _token = access_control::token(token_acc_info, &member.beneficiary)?;
+    let is_mega = vendor.pool == registrar.pool_mint_mega;
+    let spts = spt_acc_infos
+        .iter()
+        .enumerate()
+        .map(|(idx, spt_acc_info)| {
+            if is_mega {
+                if &member.balances[idx].spt != spt_acc_info.key {
+                    return Err(RegistryErrorCode::InvalidSpt)?;
+                }
+            } else {
+                if &member.balances[idx].spt_mega != spt_acc_info.key {
+                    return Err(RegistryErrorCode::InvalidSpt)?;
+                }
+            }
+            access_control::token_account(spt_acc_info)
+        })
+        .collect::<Result<_, _>>()?;
 
     // ClaimLockedReward specific.
     //
@@ -110,34 +135,28 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
         return Err(RegistryErrorCode::EntityNotActivated)?;
     }
 
-    Ok(AccessControlResponse { registrar, vendor })
+    Ok(AccessControlResponse { vendor, spts })
 }
 
 fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
-    info!("state-transition: claim_unlocked_reward");
+    msg!("state-transition: claim_unlocked_reward");
 
     let StateTransitionRequest {
         cursor,
         member,
         vendor,
         token_acc_info,
-        registrar,
         registrar_acc_info,
         vendor_acc_info,
         vendor_vault_acc_info,
         vendor_vault_authority_acc_info,
         token_program_acc_info,
+        spts,
     } = req;
 
     // Transfer proportion of the reward to the user.
-    let spt = {
-        if vendor.pool == registrar.pool_vault {
-            member.balances.spt_amount
-        } else {
-            member.balances.spt_mega_amount
-        }
-    };
-    let amount = spt
+    let spt_total = spts.iter().map(|a| a.amount).fold(0, |a, b| a + b);
+    let amount = spt_total
         .checked_div(vendor.pool_token_supply)
         .unwrap()
         .checked_mul(vendor.total)
@@ -171,18 +190,19 @@ struct AccessControlRequest<'a, 'b> {
     registrar_acc_info: &'a AccountInfo<'b>,
     vendor_acc_info: &'a AccountInfo<'b>,
     token_acc_info: &'a AccountInfo<'b>,
+    spt_acc_infos: Vec<&'a AccountInfo<'b>>,
 }
 
 struct AccessControlResponse {
     vendor: UnlockedRewardVendor,
-    registrar: Registrar,
+    spts: Vec<TokenAccount>,
 }
 
 struct StateTransitionRequest<'a, 'b, 'c> {
     cursor: u32,
     member: &'c mut Member,
     vendor: &'c UnlockedRewardVendor,
-    registrar: &'c Registrar,
+    spts: &'c [TokenAccount],
     registrar_acc_info: &'a AccountInfo<'b>,
     vendor_acc_info: &'a AccountInfo<'b>,
     vendor_vault_authority_acc_info: &'a AccountInfo<'b>,

@@ -1,4 +1,4 @@
-use crate::accounts::{Member, Registrar};
+use crate::accounts::Registrar;
 use crate::error::RegistryError;
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serum_common::pack::*;
@@ -11,6 +11,12 @@ lazy_static::lazy_static! {
                 .size()
                 .expect("Entity has a fixed size");
 }
+
+// Conversion from base unit of SRM to base unit of MSRM.
+//
+// SRM has 6 decimals. MSRM ~ 1_000_000 SRM => 1 unit of
+// the MSRM mint == 10**6 * 1_000_000 units of the SRM mint.
+const MSRM_SRM_RATE: u64 = 1_000_000_000_000;
 
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub struct Entity {
@@ -45,47 +51,11 @@ impl Default for Entity {
 }
 
 impl Entity {
-    pub fn remove(&mut self, member: &mut Member) {
-        self.balances.current_deposit -= member.balances.current_deposit;
-        self.balances.current_mega_deposit -= member.balances.current_mega_deposit;
-        self.balances.spt_amount -= member.balances.spt_amount;
-        self.balances.spt_mega_amount -= member.balances.spt_mega_amount;
-    }
-
-    pub fn add(&mut self, member: &mut Member) {
-        self.balances.current_deposit += member.balances.current_deposit;
-        self.balances.current_mega_deposit += member.balances.current_mega_deposit;
-        self.balances.spt_amount += member.balances.spt_amount;
-        self.balances.spt_mega_amount += member.balances.spt_mega_amount;
-    }
-
-    pub fn activation_amount(&self) -> u64 {
-        self.amount_equivalent() + self.current_deposit_equivalent()
-    }
-
-    pub fn did_deposit(&mut self, amount: u64, mega: bool) {
-        if mega {
-            self.balances.current_mega_deposit += amount;
-        } else {
-            self.balances.current_deposit += amount;
-        }
-    }
-
-    pub fn did_withdraw(&mut self, amount: u64, mega: bool) {
-        if mega {
-            self.balances.current_mega_deposit -= amount;
-        } else {
-            self.balances.current_deposit -= amount;
-        }
-    }
-
     pub fn spt_did_stake(&mut self, amount: u64, is_mega: bool) -> Result<(), RegistryError> {
         if is_mega {
             self.balances.spt_mega_amount += amount;
-            self.balances.current_mega_deposit -= amount;
         } else {
             self.balances.spt_amount += amount;
-            self.balances.current_deposit -= amount;
         }
 
         Ok(())
@@ -99,19 +69,11 @@ impl Entity {
         }
     }
 
-    pub fn spt_did_unstake_end(&mut self, amount: u64, is_mega: bool) {
-        if is_mega {
-            self.balances.current_mega_deposit += amount;
-        } else {
-            self.balances.current_deposit += amount;
-        }
-    }
-
     #[inline(never)]
     pub fn transition_activation_if_needed(&mut self, registrar: &Registrar, clock: &Clock) {
         match self.state {
             EntityState::Inactive => {
-                if self.meets_activation_requirements(registrar) {
+                if self.meets_activation_requirements() {
                     self.state = EntityState::Active;
                 }
             }
@@ -122,12 +84,12 @@ impl Entity {
                 if clock.unix_timestamp > deactivation_start_ts + timelock {
                     self.state = EntityState::Inactive;
                 }
-                if self.meets_activation_requirements(registrar) {
+                if self.meets_activation_requirements() {
                     self.state = EntityState::Active;
                 }
             }
             EntityState::Active => {
-                if !self.meets_activation_requirements(registrar) {
+                if !self.meets_activation_requirements() {
                     self.state = EntityState::PendingDeactivation {
                         deactivation_start_ts: clock.unix_timestamp,
                         timelock: registrar.deactivation_timelock,
@@ -137,27 +99,40 @@ impl Entity {
         }
     }
 
-    /// Returns true if this Entity is capable of being "activated", i.e., can
-    /// enter the staking pool.
-    pub fn meets_activation_requirements(&self, registrar: &Registrar) -> bool {
-        self.activation_amount() >= registrar.reward_activation_threshold
-            && (self.balances.spt_mega_amount >= 1 || self.balances.current_mega_deposit >= 1)
+    pub fn meets_activation_requirements(&self) -> bool {
+        self.balances.spt_mega_amount >= 1
     }
 
-    pub fn slash(&mut self, spt_amount: u64, mega: bool) {
-        if mega {
-            self.balances.spt_mega_amount -= spt_amount;
-        } else {
-            self.balances.spt_amount -= spt_amount;
-        }
-    }
-
-    pub fn amount_equivalent(&self) -> u64 {
-        self.balances.spt_amount + self.balances.spt_mega_amount * 1_000_000
-    }
-
-    fn current_deposit_equivalent(&self) -> u64 {
-        self.balances.current_deposit + self.balances.current_mega_deposit * 1_000_000
+    pub fn stake_will_max(&self, spt_amount: u64, is_mega: bool, registrar: &Registrar) -> bool {
+        let spt_value = {
+            if is_mega {
+                spt_amount
+                    .checked_mul(registrar.stake_rate_mega)
+                    .unwrap()
+                    .checked_mul(MSRM_SRM_RATE)
+                    .unwrap()
+            } else {
+                spt_amount.checked_mul(registrar.stake_rate).unwrap()
+            }
+        };
+        let amount_equivalent = spt_value
+            .checked_add(
+                self.balances
+                    .spt_amount
+                    .checked_mul(registrar.stake_rate)
+                    .unwrap(),
+            )
+            .unwrap()
+            .checked_add(
+                self.balances
+                    .spt_mega_amount
+                    .checked_mul(registrar.stake_rate_mega)
+                    .unwrap()
+                    .checked_mul(MSRM_SRM_RATE)
+                    .unwrap(),
+            )
+            .unwrap();
+        amount_equivalent > registrar.max_stake_per_entity
     }
 }
 
@@ -168,9 +143,6 @@ pub struct Balances {
     // Denominated in staking pool tokens.
     pub spt_amount: u64,
     pub spt_mega_amount: u64,
-    // Denominated in SRM/MSRM.
-    pub current_deposit: u64,
-    pub current_mega_deposit: u64,
 }
 
 #[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]

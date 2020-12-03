@@ -2,7 +2,7 @@ use serum_common::pack::Pack;
 use serum_registry::access_control;
 use serum_registry::accounts::{Entity, EntityState};
 use serum_registry::error::{RegistryError, RegistryErrorCode};
-use solana_program::info;
+use solana_program::msg;
 use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::pubkey::Pubkey;
 
@@ -12,18 +12,18 @@ pub fn handler(
     accounts: &[AccountInfo],
     metadata: Pubkey,
 ) -> Result<(), RegistryError> {
-    info!("handler: create_entity");
+    msg!("handler: create_entity");
 
     let acc_infos = &mut accounts.iter();
 
     let entity_acc_info = next_account_info(acc_infos)?;
-    let entity_leader_acc_info = next_account_info(acc_infos)?;
+    let leader_acc_info = next_account_info(acc_infos)?;
     let registrar_acc_info = next_account_info(acc_infos)?;
     let rent_acc_info = next_account_info(acc_infos)?;
 
     access_control(AccessControlRequest {
         entity_acc_info,
-        entity_leader_acc_info,
+        leader_acc_info,
         registrar_acc_info,
         rent_acc_info,
         program_id,
@@ -33,10 +33,10 @@ pub fn handler(
         &mut entity_acc_info.try_borrow_mut_data()?,
         &mut |entity: &mut Entity| {
             state_transition(StateTransitionRequest {
-                leader: entity_leader_acc_info.key,
                 entity,
-                registrar_acc_info,
                 metadata,
+                leader_acc_info,
+                registrar_acc_info,
             })
             .map_err(Into::into)
         },
@@ -46,18 +46,18 @@ pub fn handler(
 }
 
 fn access_control(req: AccessControlRequest) -> Result<(), RegistryError> {
-    info!("access-control: create_entity");
+    msg!("access-control: create_entity");
 
     let AccessControlRequest {
         entity_acc_info,
-        entity_leader_acc_info,
+        leader_acc_info,
         registrar_acc_info,
         rent_acc_info,
         program_id,
     } = req;
 
     // Node leader authorization.
-    if !entity_leader_acc_info.is_signer {
+    if !leader_acc_info.is_signer {
         return Err(RegistryErrorCode::Unauthorized)?;
     }
 
@@ -85,18 +85,18 @@ fn access_control(req: AccessControlRequest) -> Result<(), RegistryError> {
 
 #[inline(always)]
 fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
-    info!("state-transition: create_entity");
+    msg!("state-transition: create_entity");
 
     let StateTransitionRequest {
         entity,
-        leader,
+        leader_acc_info,
         registrar_acc_info,
         metadata,
     } = req;
 
     entity.initialized = true;
     entity.registrar = *registrar_acc_info.key;
-    entity.leader = *leader;
+    entity.leader = *leader_acc_info.key;
     entity.balances = Default::default();
     entity.state = EntityState::Inactive;
     entity.metadata = metadata;
@@ -106,7 +106,7 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
 
 struct AccessControlRequest<'a, 'b> {
     entity_acc_info: &'a AccountInfo<'b>,
-    entity_leader_acc_info: &'a AccountInfo<'b>,
+    leader_acc_info: &'a AccountInfo<'b>,
     rent_acc_info: &'a AccountInfo<'b>,
     registrar_acc_info: &'a AccountInfo<'b>,
     program_id: &'a Pubkey,
@@ -114,7 +114,7 @@ struct AccessControlRequest<'a, 'b> {
 
 struct StateTransitionRequest<'a, 'b, 'c> {
     registrar_acc_info: &'a AccountInfo<'b>,
-    leader: &'a Pubkey,
+    leader_acc_info: &'a AccountInfo<'b>,
     entity: &'c mut Entity,
     metadata: Pubkey,
 }

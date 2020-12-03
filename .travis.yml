@@ -36,16 +36,12 @@ jobs:
       name: Lockup tests
       <<: *localnet
       script:
-        - docker exec dev make -C lockup init-test features=strict
-
-# Disabled because these tests require the shared memory program in the validator genesis,
-# which currently requires a custom local setup.
-#
-#    - <<: *defaults
-#      name: Registry tests
-#      <<: *localnet
-#      script:
-#        - docker exec dev make -C registry init-test
+        - docker exec dev make -C lockup init-test features=strict#
+    - <<: *defaults
+      name: Registry tests
+      <<: *localnet
+      script:
+        - docker exec dev make -C registry init-test
     - <<: *defaults
       name: Fmt and Common Tests
       script:

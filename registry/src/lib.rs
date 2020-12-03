@@ -25,11 +25,15 @@ pub mod instruction {
         /// 6. `[]`         Rent sysvar.
         Initialize {
             authority: Pubkey,
+            mint: Pubkey,
+            mint_mega: Pubkey,
             nonce: u8,
             withdrawal_timelock: i64,
             deactivation_timelock: i64,
             reward_activation_threshold: u64,
             max_stake_per_entity: u64,
+            stake_rate: u64,
+            stake_rate_mega: u64,
         },
         /// Accounts:
         ///
@@ -67,16 +71,12 @@ pub mod instruction {
         /// 2. `[]`         Staking pool token.
         /// 3. `[]`         Mega staking pool token.
         /// 4. `[]`         Rent sysvar.
-        CreateMember { delegate: Pubkey },
+        CreateMember,
         /// Accounts:
         ///
         /// 0. `[writable]` Member.
         /// 1. `[signer]`   Beneficiary.
-        UpdateMember {
-            /// Delegate's OriginalDeposit must be 0, if updated.
-            delegate: Option<Pubkey>,
-            metadata: Option<Pubkey>,
-        },
+        UpdateMember { metadata: Option<Pubkey> },
         /// Accounts:
         ///
         /// 0. `[writable]` Member.
@@ -105,8 +105,6 @@ pub mod instruction {
         /// 7. `[]`         Clock.
         /// 8. `[]`         Vault (either the MSRM or SRM vault depending on
         ///                 depositor's mint).
-        ///
-        /// ..              GetBasket pool accounts.
         Deposit { amount: u64 },
         /// Accounts:
         ///
@@ -126,8 +124,6 @@ pub mod instruction {
         /// 8. `[]`         Clock.
         /// 9. `[]`         Vault (either the MSRM or SRM vault depending on
         ///                 depositor's mint).
-        ///
-        /// ..              GetBasket pool accounts.
         Withdraw { amount: u64 },
         /// Accounts:
         ///
@@ -137,9 +133,7 @@ pub mod instruction {
         /// 3. `[]`         Registrar.
         /// 4. `[]`         Clock sysvar.
         /// 5. `[]`         Token program.
-        ///
-        /// ..              Execute pool accounts.
-        Stake { amount: u64 },
+        Stake { amount: u64, balance_id: Pubkey },
         /// Accounts:
         ///
         /// 0. `[writable]  PendingWithdrawal.
@@ -151,12 +145,7 @@ pub mod instruction {
         /// 7. `[]`         Token program.
         /// 8. `[]`         Clock sysvar.
         /// 9. `[]`         Rent sysvar.
-        ///
-        /// ..              Execute pool accounts.
-        ///
-        /// -1. `[]`        Generation (optional). Can be provided when
-        ///                 withdrawing from an *inactive* entity.
-        StartStakeWithdrawal { amount: u64 },
+        StartStakeWithdrawal { amount: u64, balance_id: Pubkey },
         /// Accounts:
         ///
         /// 0. `[writable]  PendingWithdrawal.

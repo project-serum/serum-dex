@@ -27,41 +27,34 @@ mod withdraw;
 
 solana_program::entrypoint!(entry);
 fn entry(program_id: &Pubkey, accounts: &[AccountInfo], instruction_data: &[u8]) -> ProgramResult {
-    // The lockup program prepends the instruction_data with a tag to tell
-    // whitelisted programs that funds are locked, since the instruction data
-    // is completely opaque to the lockup program. Without this measure,
-    // one would effectively be able to transfer funds from the lockup program
-    // freely and use those funds without restriction.
-    let (is_locked, instruction_data) = {
-        if instruction_data.len() <= 8
-            || instruction_data[..8] != serum_lockup::instruction::TAG.to_le_bytes()
-        {
-            (false, instruction_data)
-        } else {
-            (true, &instruction_data[8..])
-        }
-    };
-
     let instruction: RegistryInstruction = RegistryInstruction::unpack(instruction_data)
         .map_err(|_| RegistryError::ErrorCode(RegistryErrorCode::WrongSerialization))?;
 
     let result = match instruction {
         RegistryInstruction::Initialize {
             authority,
+            mint,
+            mint_mega,
             nonce,
             withdrawal_timelock,
             deactivation_timelock,
             reward_activation_threshold,
             max_stake_per_entity,
+            stake_rate,
+            stake_rate_mega,
         } => initialize::handler(
             program_id,
             accounts,
+            mint,
+            mint_mega,
             authority,
             nonce,
             withdrawal_timelock,
             deactivation_timelock,
             reward_activation_threshold,
             max_stake_per_entity,
+            stake_rate,
+            stake_rate_mega,
         ),
         RegistryInstruction::UpdateRegistrar {
             new_authority,
@@ -84,21 +77,17 @@ fn entry(program_id: &Pubkey, accounts: &[AccountInfo], instruction_data: &[u8])
         RegistryInstruction::UpdateEntity { leader, metadata } => {
             update_entity::handler(program_id, accounts, leader, metadata)
         }
-        RegistryInstruction::CreateMember { delegate } => {
-            create_member::handler(program_id, accounts, delegate)
+        RegistryInstruction::CreateMember => create_member::handler(program_id, accounts),
+        RegistryInstruction::UpdateMember { metadata } => {
+            update_member::handler(program_id, accounts, metadata)
         }
-        RegistryInstruction::UpdateMember { delegate, metadata } => {
-            update_member::handler(program_id, accounts, delegate, metadata)
+        RegistryInstruction::Deposit { amount } => deposit::handler(program_id, accounts, amount),
+        RegistryInstruction::Withdraw { amount } => withdraw::handler(program_id, accounts, amount),
+        RegistryInstruction::Stake { amount, balance_id } => {
+            stake::handler(program_id, accounts, amount, balance_id)
         }
-        RegistryInstruction::Deposit { amount } => {
-            deposit::handler(program_id, accounts, amount, is_locked)
-        }
-        RegistryInstruction::Withdraw { amount } => {
-            withdraw::handler(program_id, accounts, amount, is_locked)
-        }
-        RegistryInstruction::Stake { amount } => stake::handler(program_id, accounts, amount),
-        RegistryInstruction::StartStakeWithdrawal { amount } => {
-            start_stake_withdrawal::handler(program_id, accounts, amount)
+        RegistryInstruction::StartStakeWithdrawal { amount, balance_id } => {
+            start_stake_withdrawal::handler(program_id, accounts, amount, balance_id)
         }
         RegistryInstruction::EndStakeWithdrawal => {
             end_stake_withdrawal::handler(program_id, accounts)

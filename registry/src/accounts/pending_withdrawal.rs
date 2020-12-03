@@ -23,8 +23,9 @@ pub struct PendingWithdrawal {
     pub start_ts: i64,
     /// Timestamp when the pending withdrawal completes.
     pub end_ts: i64,
-    /// The number of staking pool tokens redeemed.
-    pub spt_amount: u64,
+    /// The number of tokens redeemed from the staking pool.
+    pub amount: u64,
+    pub balance_id: Pubkey,
 }
 
 serum_common::packable!(PendingWithdrawal);

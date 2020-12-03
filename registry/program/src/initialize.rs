@@ -1,35 +1,33 @@
 use serum_common::pack::Pack;
 use serum_registry::access_control;
 use serum_registry::accounts::reward_queue::{RewardEventQueue, Ring};
-use serum_registry::accounts::Registrar;
+use serum_registry::accounts::{vault, Registrar};
 use serum_registry::error::{RegistryError, RegistryErrorCode};
-use solana_program::info;
+use solana_program::msg;
 use solana_sdk::account_info::{next_account_info, AccountInfo};
+use solana_sdk::program_option::COption;
 use solana_sdk::pubkey::Pubkey;
 
 #[inline(never)]
 pub fn handler(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
+    mint: Pubkey,
+    mint_mega: Pubkey,
     authority: Pubkey,
     nonce: u8,
     withdrawal_timelock: i64,
     deactivation_timelock: i64,
     reward_activation_threshold: u64,
     max_stake_per_entity: u64,
+    stake_rate: u64,
+    stake_rate_mega: u64,
 ) -> Result<(), RegistryError> {
-    info!("handler: initialize");
+    msg!("handler: initialize");
 
     let acc_infos = &mut accounts.iter();
 
     let registrar_acc_info = next_account_info(acc_infos)?;
-    // Deposit vaults.
-    let vault_acc_info = next_account_info(acc_infos)?;
-    let mega_vault_acc_info = next_account_info(acc_infos)?;
-    // Pool Vaults.
-    let pool_vault_acc_info = next_account_info(acc_infos)?;
-    let pool_vault_mega_acc_info = next_account_info(acc_infos)?;
-    // Pool mints.
     let pool_mint_acc_info = next_account_info(acc_infos)?;
     let pool_mint_mega_acc_info = next_account_info(acc_infos)?;
     let reward_event_q_acc_info = next_account_info(acc_infos)?;
@@ -38,10 +36,6 @@ pub fn handler(
     access_control(AccessControlRequest {
         registrar_acc_info,
         rent_acc_info,
-        vault_acc_info,
-        mega_vault_acc_info,
-        pool_vault_acc_info,
-        pool_vault_mega_acc_info,
         pool_mint_acc_info,
         pool_mint_mega_acc_info,
         program_id,
@@ -55,10 +49,8 @@ pub fn handler(
             state_transition(StateTransitionRequest {
                 registrar,
                 authority,
-                vault_acc_info,
-                mega_vault_acc_info,
-                pool_vault_acc_info,
-                pool_vault_mega_acc_info,
+                mint,
+                mint_mega,
                 pool_mint_acc_info,
                 pool_mint_mega_acc_info,
                 withdrawal_timelock,
@@ -68,6 +60,8 @@ pub fn handler(
                 max_stake_per_entity,
                 reward_event_q_acc_info,
                 registrar_acc_info,
+                stake_rate,
+                stake_rate_mega,
             })
             .map_err(Into::into)
         },
@@ -77,15 +71,11 @@ pub fn handler(
 }
 
 fn access_control(req: AccessControlRequest) -> Result<(), RegistryError> {
-    info!("access-control: initialize");
+    msg!("access-control: initialize");
 
     let AccessControlRequest {
         registrar_acc_info,
         rent_acc_info,
-        vault_acc_info,
-        mega_vault_acc_info,
-        pool_vault_acc_info,
-        pool_vault_mega_acc_info,
         pool_mint_acc_info,
         pool_mint_mega_acc_info,
         program_id,
@@ -115,17 +105,18 @@ fn access_control(req: AccessControlRequest) -> Result<(), RegistryError> {
         }
     }
 
-    // TODO: validate all pool vaults.
-
-    // Vaults (initialized but not yet on the Registrar).
-    access_control::vault_init(vault_acc_info, registrar_acc_info, &rent, nonce, program_id)?;
-    access_control::vault_init(
-        mega_vault_acc_info,
-        registrar_acc_info,
-        &rent,
-        nonce,
+    let pool_mint = access_control::mint(pool_mint_acc_info)?;
+    let pool_mint_mega = access_control::mint(pool_mint_mega_acc_info)?;
+    let vault_authority = Pubkey::create_program_address(
+        &vault::signer_seeds(registrar_acc_info.key, &nonce),
         program_id,
-    )?;
+    )
+    .map_err(|_| RegistryErrorCode::InvalidVaultNonce)?;
+    if pool_mint.mint_authority != COption::Some(vault_authority)
+        || pool_mint_mega.mint_authority != COption::Some(vault_authority)
+    {
+        return Err(RegistryErrorCode::InvalidVaultAuthority)?;
+    }
 
     // Reward q must not yet be owned.
     let event_q = RewardEventQueue::from(reward_event_q_acc_info.data.clone());
@@ -138,24 +129,24 @@ fn access_control(req: AccessControlRequest) -> Result<(), RegistryError> {
 
 #[inline(always)]
 fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
-    info!("state-transition: initialize");
+    msg!("state-transition: initialize");
 
     let StateTransitionRequest {
         registrar,
         authority,
         withdrawal_timelock,
-        vault_acc_info,
-        mega_vault_acc_info,
         nonce,
         deactivation_timelock,
         reward_activation_threshold,
-        pool_vault_acc_info,
-        pool_vault_mega_acc_info,
         pool_mint_acc_info,
         pool_mint_mega_acc_info,
         max_stake_per_entity,
         reward_event_q_acc_info,
         registrar_acc_info,
+        mint,
+        mint_mega,
+        stake_rate,
+        stake_rate_mega,
     } = req;
 
     registrar.initialized = true;
@@ -163,15 +154,15 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
     registrar.withdrawal_timelock = withdrawal_timelock;
     registrar.deactivation_timelock = deactivation_timelock;
     registrar.max_stake_per_entity = max_stake_per_entity;
-    registrar.vault = *vault_acc_info.key;
-    registrar.mega_vault = *mega_vault_acc_info.key;
     registrar.nonce = nonce;
     registrar.reward_activation_threshold = reward_activation_threshold;
-    registrar.pool_vault = *pool_vault_acc_info.key;
-    registrar.pool_vault_mega = *pool_vault_mega_acc_info.key;
     registrar.pool_mint = *pool_mint_acc_info.key;
     registrar.pool_mint_mega = *pool_mint_mega_acc_info.key;
     registrar.reward_event_q = *reward_event_q_acc_info.key;
+    registrar.mint = mint;
+    registrar.mega_mint = mint_mega;
+    registrar.stake_rate = stake_rate;
+    registrar.stake_rate_mega = stake_rate_mega;
 
     let event_q = RewardEventQueue::from(reward_event_q_acc_info.data.clone());
     event_q.set_authority(registrar_acc_info.key);
@@ -182,11 +173,7 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
 struct AccessControlRequest<'a, 'b> {
     registrar_acc_info: &'a AccountInfo<'b>,
     rent_acc_info: &'a AccountInfo<'b>,
-    vault_acc_info: &'a AccountInfo<'b>,
-    mega_vault_acc_info: &'a AccountInfo<'b>,
     reward_event_q_acc_info: &'a AccountInfo<'b>,
-    pool_vault_acc_info: &'a AccountInfo<'b>,
-    pool_vault_mega_acc_info: &'a AccountInfo<'b>,
     pool_mint_acc_info: &'a AccountInfo<'b>,
     pool_mint_mega_acc_info: &'a AccountInfo<'b>,
     program_id: &'a Pubkey,
@@ -194,12 +181,8 @@ struct AccessControlRequest<'a, 'b> {
 }
 
 struct StateTransitionRequest<'a, 'b, 'c> {
-    vault_acc_info: &'a AccountInfo<'b>,
-    mega_vault_acc_info: &'a AccountInfo<'b>,
     reward_event_q_acc_info: &'a AccountInfo<'b>,
     registrar_acc_info: &'a AccountInfo<'b>,
-    pool_vault_acc_info: &'a AccountInfo<'b>,
-    pool_vault_mega_acc_info: &'a AccountInfo<'b>,
     pool_mint_acc_info: &'a AccountInfo<'b>,
     pool_mint_mega_acc_info: &'a AccountInfo<'b>,
     registrar: &'c mut Registrar,
@@ -209,4 +192,8 @@ struct StateTransitionRequest<'a, 'b, 'c> {
     withdrawal_timelock: i64,
     max_stake_per_entity: u64,
     nonce: u8,
+    mint: Pubkey,
+    mint_mega: Pubkey,
+    stake_rate: u64,
+    stake_rate_mega: u64,
 }

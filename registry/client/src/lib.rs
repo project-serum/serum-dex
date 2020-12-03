@@ -1,7 +1,9 @@
 use serum_common::client::rpc;
 use serum_common::pack::*;
+use serum_meta_entity::accounts::mqueue::{MQueue, Ring as MQueueRing};
+use serum_registry::accounts::reward_queue::{RewardEventQueue, Ring};
 use serum_registry::accounts::{
-    self, pending_withdrawal, vault, Entity, Member, PendingWithdrawal, Registrar,
+    self, pending_withdrawal, vault, BalanceSandbox, Entity, Member, PendingWithdrawal, Registrar,
 };
 use serum_registry::client::{Client as InnerClient, ClientError as InnerClientError};
 use solana_client_gen::prelude::*;
@@ -12,8 +14,6 @@ use solana_client_gen::solana_sdk::signature::{Keypair, Signer};
 use spl_token::state::Account as TokenAccount;
 use std::convert::Into;
 use thiserror::Error;
-
-mod inner;
 
 pub struct Client {
     inner: InnerClient,
@@ -30,31 +30,129 @@ impl Client {
             withdrawal_timelock,
             deactivation_timelock,
             max_stake_per_entity,
+            reward_activation_threshold,
             mint,
             mega_mint,
-            reward_activation_threshold,
+            stake_rate,
+            stake_rate_mega,
         } = req;
-        let (tx, registrar, reward_event_q, nonce, pool_vault, pool_vault_mega) =
-            inner::initialize(
-                &self.inner,
-                &mint,
-                &mega_mint,
-                &registrar_authority,
-                withdrawal_timelock,
-                deactivation_timelock,
-                reward_activation_threshold,
-                max_stake_per_entity,
-            )?;
+
+        let reward_event_q = Keypair::generate(&mut OsRng);
+        let registrar_kp = Keypair::generate(&mut OsRng);
+        let (registrar_vault_authority, nonce) =
+            Pubkey::find_program_address(&[registrar_kp.pubkey().as_ref()], self.inner.program());
+
+        let decimals = 6; // TODO: decide on this.
+        let pool_mint = rpc::new_mint(
+            self.rpc(),
+            self.inner.payer(),
+            &registrar_vault_authority,
+            decimals,
+        )
+        .map_err(|e| InnerClientError::RawError(e.to_string()))?
+        .0
+        .pubkey();
+
+        let mega_pool_mint = rpc::new_mint(
+            self.rpc(),
+            self.inner.payer(),
+            &registrar_vault_authority,
+            decimals,
+        )
+        .map_err(|e| InnerClientError::RawError(e.to_string()))?
+        .0
+        .pubkey();
+
+        // Build the instructions.
+        let ixs = {
+            let create_registrar_acc_instr = {
+                let lamports = self
+                    .inner
+                    .rpc()
+                    .get_minimum_balance_for_rent_exemption(*accounts::registrar::SIZE as usize)
+                    .map_err(InnerClientError::RpcError)?;
+                system_instruction::create_account(
+                    &self.inner.payer().pubkey(),
+                    &registrar_kp.pubkey(),
+                    lamports,
+                    *accounts::registrar::SIZE,
+                    self.inner.program(),
+                )
+            };
+            let create_reward_event_q_instr = {
+                let data_size = RewardEventQueue::buffer_size(RewardEventQueue::RING_CAPACITY);
+                let lamports = self
+                    .inner
+                    .rpc()
+                    .get_minimum_balance_for_rent_exemption(data_size)?;
+                solana_sdk::system_instruction::create_account(
+                    &self.inner.payer().pubkey(),
+                    &reward_event_q.pubkey(),
+                    lamports,
+                    data_size as u64,
+                    self.inner.program(),
+                )
+            };
+
+            let initialize_registrar_instr = {
+                let accounts = [
+                    AccountMeta::new(registrar_kp.pubkey(), false),
+                    AccountMeta::new_readonly(pool_mint, false),
+                    AccountMeta::new_readonly(mega_pool_mint, false),
+                    AccountMeta::new(reward_event_q.pubkey(), false),
+                    AccountMeta::new_readonly(solana_sdk::sysvar::rent::id(), false),
+                ];
+                serum_registry::instruction::initialize(
+                    *self.inner.program(),
+                    &accounts,
+                    registrar_authority,
+                    mint,
+                    mega_mint,
+                    nonce,
+                    withdrawal_timelock,
+                    deactivation_timelock,
+                    reward_activation_threshold,
+                    max_stake_per_entity,
+                    stake_rate,
+                    stake_rate_mega,
+                )
+            };
+
+            vec![
+                create_reward_event_q_instr,
+                create_registrar_acc_instr,
+                initialize_registrar_instr,
+            ]
+        };
+
+        let (recent_hash, _fee_calc) = self
+            .inner
+            .rpc()
+            .get_recent_blockhash()
+            .map_err(|e| InnerClientError::RawError(e.to_string()))?;
+        let tx = Transaction::new_signed_with_payer(
+            &ixs,
+            Some(&self.inner.payer().pubkey()),
+            &vec![self.inner.payer(), &reward_event_q, &registrar_kp],
+            recent_hash,
+        );
+        let sig = self
+            .inner
+            .rpc()
+            .send_and_confirm_transaction_with_spinner_and_config(
+                &tx,
+                self.inner.options().commitment,
+                self.inner.options().tx,
+            )
+            .map_err(InnerClientError::RpcError)?;
+
         Ok(InitializeResponse {
-            tx,
-            registrar,
-            reward_event_q,
+            tx: sig,
+            registrar: registrar_kp.pubkey(),
+            reward_event_q: reward_event_q.pubkey(),
             nonce,
-            pool_vault,
-            pool_vault_mega,
         })
     }
-
     pub fn create_entity(
         &self,
         req: CreateEntityRequest,
@@ -67,16 +165,79 @@ impl Client {
             image_url,
             meta_entity_program_id,
         } = req;
-        let (tx, entity) = inner::create_entity(
-            &self.inner,
-            registrar,
-            node_leader,
+        let entity_kp = Keypair::generate(&mut OsRng);
+        let create_acc_instr = {
+            let lamports = self
+                .inner
+                .rpc()
+                .get_minimum_balance_for_rent_exemption(*accounts::entity::SIZE as usize)
+                .map_err(InnerClientError::RpcError)?;
+            system_instruction::create_account(
+                &self.inner.payer().pubkey(),
+                &entity_kp.pubkey(),
+                lamports,
+                *accounts::entity::SIZE,
+                self.inner.program(),
+            )
+        };
+
+        let accounts = [
+            AccountMeta::new(entity_kp.pubkey(), false),
+            AccountMeta::new_readonly(node_leader.pubkey(), true),
+            AccountMeta::new_readonly(registrar, false),
+            AccountMeta::new_readonly(solana_sdk::sysvar::rent::ID, false),
+        ];
+
+        let metadata = Keypair::generate(&mut OsRng);
+        let mqueue = Keypair::generate(&mut OsRng);
+        let create_entity_instr = serum_registry::instruction::create_entity(
+            *self.inner.program(),
+            &accounts,
+            metadata.pubkey(),
+        );
+
+        let create_md_instrs = create_metadata_instructions(
+            self.rpc(),
+            &self.inner.payer().pubkey(),
+            &metadata,
+            &mqueue,
+            &meta_entity_program_id,
+            &entity_kp.pubkey(),
             name,
             about,
             image_url,
-            meta_entity_program_id,
-        )?;
-        Ok(CreateEntityResponse { tx, entity })
+        );
+        let mut instructions = create_md_instrs;
+        instructions.extend_from_slice(&[create_acc_instr, create_entity_instr]);
+
+        let signers = vec![
+            node_leader,
+            &metadata,
+            &mqueue,
+            &entity_kp,
+            self.inner.payer(),
+        ];
+        let (recent_hash, _fee_calc) = self.rpc().get_recent_blockhash()?;
+
+        let tx = Transaction::new_signed_with_payer(
+            &instructions,
+            Some(&self.inner.payer().pubkey()),
+            &signers,
+            recent_hash,
+        );
+
+        self.inner
+            .rpc()
+            .send_and_confirm_transaction_with_spinner_and_config(
+                &tx,
+                self.inner.options().commitment,
+                self.inner.options().tx,
+            )
+            .map_err(ClientError::RpcError)
+            .map(|sig| CreateEntityResponse {
+                tx: sig,
+                entity: entity_kp.pubkey(),
+            })
     }
 
     pub fn update_entity(
@@ -118,23 +279,29 @@ impl Client {
         let vault_authority = self.vault_authority(&registrar)?;
         let r = self.registrar(&registrar)?;
 
-        let pool_token = Keypair::generate(&mut OsRng);
-        let mega_pool_token = Keypair::generate(&mut OsRng);
+        let BalanceAccounts {
+            spt,
+            spt_mega,
+            vault,
+            vault_mega,
+            vault_stake,
+            vault_stake_mega,
+            vault_pw,
+            vault_pw_mega,
+            ..
+        } = self.create_member_accounts(&r, vault_authority)?;
 
-        let create_pool_token_instrs = rpc::create_token_account_instructions(
-            self.inner.rpc(),
-            pool_token.pubkey(),
-            &r.pool_mint,
-            &vault_authority,
-            self.inner.payer(),
-        )?;
-        let create_mega_pool_token_instrs = rpc::create_token_account_instructions(
-            self.inner.rpc(),
-            mega_pool_token.pubkey(),
-            &r.pool_mint_mega,
-            &vault_authority,
-            self.inner.payer(),
-        )?;
+        let BalanceAccounts {
+            spt: locked_spt,
+            spt_mega: locked_spt_mega,
+            vault: locked_vault,
+            vault_mega: locked_vault_mega,
+            vault_stake: locked_vault_stake,
+            vault_stake_mega: locked_vault_stake_mega,
+            vault_pw: locked_vault_pw,
+            vault_pw_mega: locked_vault_pw_mega,
+            ..
+        } = self.create_member_accounts(&r, vault_authority)?;
 
         let member_kp = Keypair::generate(&mut OsRng);
         let create_acc_instr = {
@@ -158,28 +325,38 @@ impl Client {
             AccountMeta::new(entity, false),
             AccountMeta::new_readonly(registrar, false),
             AccountMeta::new_readonly(vault_authority, false),
-            AccountMeta::new_readonly(pool_token.pubkey(), false),
-            AccountMeta::new_readonly(mega_pool_token.pubkey(), false),
             AccountMeta::new_readonly(spl_token::ID, false),
             AccountMeta::new_readonly(solana_sdk::sysvar::rent::ID, false),
+            // Main.
+            AccountMeta::new_readonly(beneficiary.pubkey(), false),
+            AccountMeta::new(spt.pubkey(), false),
+            AccountMeta::new(spt_mega.pubkey(), false),
+            AccountMeta::new_readonly(vault.pubkey(), false),
+            AccountMeta::new_readonly(vault_mega.pubkey(), false),
+            AccountMeta::new_readonly(vault_stake.pubkey(), false),
+            AccountMeta::new_readonly(vault_stake_mega.pubkey(), false),
+            AccountMeta::new_readonly(vault_pw.pubkey(), false),
+            AccountMeta::new_readonly(vault_pw_mega.pubkey(), false),
+            // Locked.
+            AccountMeta::new_readonly(delegate, false),
+            AccountMeta::new(locked_spt.pubkey(), false),
+            AccountMeta::new(locked_spt_mega.pubkey(), false),
+            AccountMeta::new_readonly(locked_vault.pubkey(), false),
+            AccountMeta::new_readonly(locked_vault_mega.pubkey(), false),
+            AccountMeta::new_readonly(locked_vault_stake.pubkey(), false),
+            AccountMeta::new_readonly(locked_vault_stake_mega.pubkey(), false),
+            AccountMeta::new_readonly(locked_vault_pw.pubkey(), false),
+            AccountMeta::new_readonly(locked_vault_pw_mega.pubkey(), false),
         ];
 
         let member_instr =
-            serum_registry::instruction::create_member(*self.inner.program(), &accounts, delegate);
+            serum_registry::instruction::create_member(*self.inner.program(), &accounts);
 
         let mut instructions = vec![];
-        instructions.extend_from_slice(&create_pool_token_instrs);
-        instructions.extend_from_slice(&create_mega_pool_token_instrs);
         instructions.extend_from_slice(&[create_acc_instr, member_instr]);
 
-        let signers = vec![
-            self.inner.payer(),
-            &member_kp,
-            beneficiary,
-            &pool_token,
-            &mega_pool_token,
-        ];
-        let (recent_hash, _fee_calc) = self.inner.rpc().get_recent_blockhash()?;
+        let signers = vec![self.inner.payer(), &member_kp, beneficiary];
+        let (recent_hash, _fee_calc) = self.rpc().get_recent_blockhash()?;
 
         let tx = Transaction::new_signed_with_payer(
             &instructions,
@@ -202,6 +379,141 @@ impl Client {
             })
     }
 
+    fn create_member_accounts(
+        &self,
+        r: &Registrar,
+        vault_authority: Pubkey,
+    ) -> Result<BalanceAccounts, ClientError> {
+        let spt = Keypair::generate(&mut OsRng);
+        let spt_mega = Keypair::generate(&mut OsRng);
+        let vault = Keypair::generate(&mut OsRng);
+        let vault_mega = Keypair::generate(&mut OsRng);
+        let vault_stake = Keypair::generate(&mut OsRng);
+        let vault_stake_mega = Keypair::generate(&mut OsRng);
+        let vault_pw = Keypair::generate(&mut OsRng);
+        let vault_pw_mega = Keypair::generate(&mut OsRng);
+        let create_pool_token_ix = rpc::create_token_account_instructions(
+            self.rpc(),
+            spt.pubkey(),
+            &r.pool_mint,
+            &vault_authority,
+            self.inner.payer(),
+        )?;
+        let create_mega_pool_token_ix = rpc::create_token_account_instructions(
+            self.rpc(),
+            spt_mega.pubkey(),
+            &r.pool_mint_mega,
+            &vault_authority,
+            self.inner.payer(),
+        )?;
+        let create_vault_ix = rpc::create_token_account_instructions(
+            self.rpc(),
+            vault.pubkey(),
+            &r.mint,
+            &vault_authority,
+            self.inner.payer(),
+        )?;
+        let create_vault_mega_ix = rpc::create_token_account_instructions(
+            self.rpc(),
+            vault_mega.pubkey(),
+            &r.mega_mint,
+            &vault_authority,
+            self.inner.payer(),
+        )?;
+        let create_vault_stake_ix = rpc::create_token_account_instructions(
+            self.rpc(),
+            vault_stake.pubkey(),
+            &r.mint,
+            &vault_authority,
+            self.inner.payer(),
+        )?;
+        let create_vault_stake_mega_ix = rpc::create_token_account_instructions(
+            self.rpc(),
+            vault_stake_mega.pubkey(),
+            &r.mega_mint,
+            &vault_authority,
+            self.inner.payer(),
+        )?;
+        let create_vault_pw_ix = rpc::create_token_account_instructions(
+            self.rpc(),
+            vault_pw.pubkey(),
+            &r.mint,
+            &vault_authority,
+            self.inner.payer(),
+        )?;
+        let create_vault_pw_mega_ix = rpc::create_token_account_instructions(
+            self.rpc(),
+            vault_pw_mega.pubkey(),
+            &r.mega_mint,
+            &vault_authority,
+            self.inner.payer(),
+        )?;
+
+        let mut instructions0 = vec![];
+        instructions0.extend_from_slice(&create_pool_token_ix);
+        instructions0.extend_from_slice(&create_mega_pool_token_ix);
+        instructions0.extend_from_slice(&create_vault_ix);
+        instructions0.extend_from_slice(&create_vault_mega_ix);
+
+        let mut instructions1 = vec![];
+        instructions1.extend_from_slice(&create_vault_stake_ix);
+        instructions1.extend_from_slice(&create_vault_stake_mega_ix);
+        instructions1.extend_from_slice(&create_vault_pw_ix);
+        instructions1.extend_from_slice(&create_vault_pw_mega_ix);
+
+        let signers0 = vec![self.inner.payer(), &spt, &spt_mega, &vault, &vault_mega];
+        let signers1 = vec![
+            self.inner.payer(),
+            &vault_stake,
+            &vault_stake_mega,
+            &vault_pw,
+            &vault_pw_mega,
+        ];
+        let (recent_hash, _fee_calc) = self.rpc().get_recent_blockhash()?;
+
+        let tx0 = Transaction::new_signed_with_payer(
+            &instructions0,
+            Some(&self.inner.payer().pubkey()),
+            &signers0,
+            recent_hash,
+        );
+        let tx1 = Transaction::new_signed_with_payer(
+            &instructions1,
+            Some(&self.inner.payer().pubkey()),
+            &signers1,
+            recent_hash,
+        );
+
+        let _sig0 = self
+            .inner
+            .rpc()
+            .send_and_confirm_transaction_with_spinner_and_config(
+                &tx0,
+                self.inner.options().commitment,
+                self.inner.options().tx,
+            )
+            .map_err(ClientError::RpcError)?;
+        let _sig1 = self
+            .inner
+            .rpc()
+            .send_and_confirm_transaction_with_spinner_and_config(
+                &tx1,
+                self.inner.options().commitment,
+                self.inner.options().tx,
+            )
+            .map_err(ClientError::RpcError)?;
+        Ok(BalanceAccounts {
+            spt,
+            spt_mega,
+            vault,
+            vault_mega,
+            vault_stake,
+            vault_stake_mega,
+            vault_pw,
+            vault_pw_mega,
+        })
+    }
+
     pub fn deposit(&self, req: DepositRequest) -> Result<DepositResponse, ClientError> {
         let DepositRequest {
             member,
@@ -212,8 +524,9 @@ impl Client {
             registrar,
             amount,
         } = req;
-        let vault = self.vault_for(&registrar, &depositor)?;
-        let vault_acc = rpc::get_token_account::<TokenAccount>(self.inner.rpc(), &vault)?;
+
+        let vault = self.vault_for(&member, &depositor, false)?;
+        let vault_acc = rpc::get_token_account::<TokenAccount>(self.rpc(), &vault)?;
         let accounts = vec![
             // Whitelist relay interface,
             AccountMeta::new(depositor, false),
@@ -226,7 +539,6 @@ impl Client {
             AccountMeta::new_readonly(beneficiary.pubkey(), true),
             AccountMeta::new(entity, false),
             AccountMeta::new_readonly(registrar, false),
-            AccountMeta::new_readonly(solana_sdk::sysvar::clock::ID, false),
         ];
 
         let signers = [self.payer(), beneficiary, depositor_authority];
@@ -247,8 +559,8 @@ impl Client {
             registrar,
             amount,
         } = req;
-        let vault = self.vault_for(&registrar, &depositor)?;
-        let vault_acc = rpc::get_token_account::<TokenAccount>(self.inner.rpc(), &vault)?;
+        let vault = self.vault_for(&member, &depositor, false)?;
+        let vault_acc = rpc::get_token_account::<TokenAccount>(self.rpc(), &vault)?;
         let accounts = vec![
             // Whitelist relay interface.
             AccountMeta::new(depositor, false),
@@ -261,7 +573,6 @@ impl Client {
             AccountMeta::new_readonly(beneficiary.pubkey(), true),
             AccountMeta::new(entity, false),
             AccountMeta::new_readonly(registrar, false),
-            AccountMeta::new_readonly(solana_sdk::sysvar::clock::ID, false),
         ];
         let signers = [self.payer(), beneficiary];
 
@@ -280,24 +591,33 @@ impl Client {
             registrar,
             pool_token_amount,
             mega, // TODO: remove.
+            balance_id,
         } = req;
         let r = self.registrar(&registrar)?;
-        let (vault, pool_vault, pool_mint) = {
-            if mega {
-                (r.mega_vault, r.pool_vault_mega, r.pool_mint_mega)
-            } else {
-                (r.vault, r.pool_vault, r.pool_mint)
-            }
+        let m = self.member(&member)?;
+        let b = m
+            .balances
+            .iter()
+            .filter(|b| b.owner == balance_id)
+            .collect::<Vec<&BalanceSandbox>>();
+        let balances = b.first().unwrap();
+
+        let (pool_mint, spt, vault, vault_stake) = match mega {
+            false => (
+                r.pool_mint,
+                balances.spt,
+                balances.vault,
+                balances.vault_stake,
+            ),
+            true => (
+                r.pool_mint_mega,
+                balances.spt_mega,
+                balances.vault_mega,
+                balances.vault_stake_mega,
+            ),
         };
+
         let vault_authority = self.vault_authority(&registrar)?;
-        let m_acc = self.member(&member)?;
-        let spt = {
-            if mega {
-                m_acc.spt_mega
-            } else {
-                m_acc.spt
-            }
-        };
 
         let accounts = vec![
             AccountMeta::new(member, false),
@@ -306,7 +626,7 @@ impl Client {
             AccountMeta::new_readonly(registrar, false),
             AccountMeta::new(vault, false),
             AccountMeta::new_readonly(vault_authority, false),
-            AccountMeta::new(pool_vault, false),
+            AccountMeta::new(vault_stake, false),
             AccountMeta::new(pool_mint, false),
             AccountMeta::new(spt, false),
             AccountMeta::new_readonly(solana_sdk::sysvar::clock::ID, false),
@@ -315,9 +635,9 @@ impl Client {
 
         let signers = [self.payer(), beneficiary];
 
-        let tx = self
-            .inner
-            .stake_with_signers(&signers, &accounts, pool_token_amount)?;
+        let tx =
+            self.inner
+                .stake_with_signers(&signers, &accounts, pool_token_amount, balance_id)?;
 
         Ok(StakeResponse { tx })
     }
@@ -333,26 +653,34 @@ impl Client {
             beneficiary,
             spt_amount,
             mega, // TODO: remove.
+            balance_id,
         } = req;
         let pending_withdrawal = Keypair::generate(&mut OsRng);
 
         let r = self.registrar(&registrar)?;
-        let (vault, pool_vault, pool_mint) = {
-            if mega {
-                (r.mega_vault, r.pool_vault_mega, r.pool_mint_mega)
-            } else {
-                (r.vault, r.pool_vault, r.pool_mint)
-            }
+        let m = self.member(&member)?;
+        let b = m
+            .balances
+            .iter()
+            .filter(|b| b.owner == balance_id)
+            .collect::<Vec<&BalanceSandbox>>();
+        let balances = b.first().unwrap();
+
+        let (pool_mint, spt, vault_pw, vault_stake) = match mega {
+            false => (
+                r.pool_mint,
+                balances.spt,
+                balances.vault_pending_withdrawal,
+                balances.vault_stake,
+            ),
+            true => (
+                r.pool_mint_mega,
+                balances.spt_mega,
+                balances.vault_pending_withdrawal_mega,
+                balances.vault_stake_mega,
+            ),
         };
         let vault_authority = self.vault_authority(&registrar)?;
-        let m_acc = self.member(&member)?;
-        let spt = {
-            if mega {
-                m_acc.spt_mega
-            } else {
-                m_acc.spt
-            }
-        };
 
         let accs = vec![
             AccountMeta::new(pending_withdrawal.pubkey(), false),
@@ -361,9 +689,9 @@ impl Client {
             AccountMeta::new_readonly(beneficiary.pubkey(), true),
             AccountMeta::new(entity, false),
             AccountMeta::new_readonly(registrar, false),
-            AccountMeta::new(vault, false),
+            AccountMeta::new(vault_pw, false),
             AccountMeta::new_readonly(vault_authority, false),
-            AccountMeta::new(pool_vault, false),
+            AccountMeta::new(vault_stake, false),
             AccountMeta::new(pool_mint, false),
             AccountMeta::new(spt, false),
             AccountMeta::new_readonly(solana_sdk::sysvar::clock::ID, false),
@@ -389,6 +717,7 @@ impl Client {
                 *self.program(),
                 &accs,
                 spt_amount,
+                balance_id,
             );
             [
                 create_pending_withdrawal_instr,
@@ -433,11 +762,32 @@ impl Client {
             beneficiary,
             pending_withdrawal,
         } = req;
+        let m = self.member(&member)?;
+        let pw = self.pending_withdrawal(&pending_withdrawal)?;
+        let b = m
+            .balances
+            .iter()
+            .filter(|b| b.owner == pw.balance_id)
+            .collect::<Vec<&BalanceSandbox>>();
+        let balances = b.first().unwrap();
+
+        let mega = pw.pool == self.registrar(&registrar)?.mega_mint;
+        let (vault, vault_pw) = match mega {
+            false => (balances.vault, balances.vault_pending_withdrawal),
+            true => (balances.vault_mega, balances.vault_pending_withdrawal_mega),
+        };
+
+        let vault_authority = self.vault_authority(&registrar)?;
+
         let accs = vec![
             AccountMeta::new(pending_withdrawal, false),
             AccountMeta::new(member, false),
+            AccountMeta::new(vault, false),
+            AccountMeta::new(vault_pw, false),
+            AccountMeta::new(vault_authority, false),
             AccountMeta::new_readonly(beneficiary.pubkey(), true),
             AccountMeta::new(entity, false),
+            AccountMeta::new_readonly(spl_token::ID, false),
             AccountMeta::new_readonly(registrar, false),
             AccountMeta::new_readonly(solana_sdk::sysvar::clock::ID, false),
         ];
@@ -482,6 +832,7 @@ impl Client {
             beneficiary,
             registrar,
         } = req;
+        let m = self.member(&member)?;
         let accs = vec![
             AccountMeta::new(member, false),
             AccountMeta::new_readonly(beneficiary.pubkey(), true),
@@ -489,6 +840,13 @@ impl Client {
             AccountMeta::new(entity, false),
             AccountMeta::new(new_entity, false),
             AccountMeta::new_readonly(solana_sdk::sysvar::clock::ID, false),
+            AccountMeta::new_readonly(self.vault_authority(&registrar)?, false),
+            AccountMeta::new_readonly(m.balances[0].owner, false),
+            AccountMeta::new_readonly(m.balances[0].vault_stake, false),
+            AccountMeta::new_readonly(m.balances[0].vault_stake_mega, false),
+            AccountMeta::new_readonly(m.balances[1].owner, false),
+            AccountMeta::new_readonly(m.balances[1].vault_stake, false),
+            AccountMeta::new_readonly(m.balances[1].vault_stake_mega, false),
         ];
         let tx = self
             .inner
@@ -500,11 +858,11 @@ impl Client {
 // Account accessors.
 impl Client {
     pub fn registrar(&self, registrar: &Pubkey) -> Result<Registrar, ClientError> {
-        rpc::get_account::<Registrar>(self.inner.rpc(), registrar).map_err(Into::into)
+        rpc::get_account::<Registrar>(self.rpc(), registrar).map_err(Into::into)
     }
 
     pub fn entity(&self, entity: &Pubkey) -> Result<Entity, ClientError> {
-        rpc::get_account_unchecked::<Entity>(self.inner.rpc(), entity).map_err(Into::into)
+        rpc::get_account_unchecked::<Entity>(self.rpc(), entity).map_err(Into::into)
     }
     pub fn vault_authority(&self, registrar: &Pubkey) -> Result<Pubkey, ClientError> {
         let r = self.registrar(registrar)?;
@@ -512,43 +870,76 @@ impl Client {
             .map_err(|_| ClientError::Any(anyhow::anyhow!("invalid vault authority")))
     }
     pub fn member(&self, member: &Pubkey) -> Result<Member, ClientError> {
-        rpc::get_account::<Member>(self.inner.rpc(), &member).map_err(Into::into)
+        rpc::get_account::<Member>(self.rpc(), &member).map_err(Into::into)
     }
     pub fn member_seed() -> &'static str {
-        inner::member_seed()
+        "srm:registry:member"
     }
-    pub fn vault_for(&self, registrar: &Pubkey, depositor: &Pubkey) -> Result<Pubkey, ClientError> {
-        let depositor = rpc::get_token_account::<TokenAccount>(self.inner.rpc(), depositor)?;
 
-        let r = self.registrar(&registrar)?;
+    pub fn vault_for(
+        &self,
+        member: &Pubkey,
+        depositor: &Pubkey,
+        locked: bool, // todo use balance_id instead
+    ) -> Result<Pubkey, ClientError> {
+        let depositor = rpc::get_token_account::<TokenAccount>(self.rpc(), depositor)?;
+        let member = self.member(member)?;
+        let balances = match locked {
+            true => &member.balances[1],
+            false => &member.balances[0],
+        };
 
-        let vault = self.current_deposit_vault(registrar)?;
+        let vault = rpc::get_token_account::<TokenAccount>(self.rpc(), &balances.vault)?;
         if vault.mint == depositor.mint {
-            return Ok(r.vault);
+            return Ok(balances.vault);
         }
 
-        let mega_vault = self.current_deposit_mega_vault(registrar)?;
+        let mega_vault = rpc::get_token_account::<TokenAccount>(self.rpc(), &balances.vault_mega)?;
         if mega_vault.mint == depositor.mint {
-            return Ok(r.mega_vault);
+            return Ok(balances.vault_mega);
         }
         Err(ClientError::Any(anyhow::anyhow!("invalid depositor mint")))
     }
-    pub fn current_deposit_vault(&self, registrar: &Pubkey) -> Result<TokenAccount, ClientError> {
-        let r = self.registrar(registrar)?;
-        rpc::get_token_account::<TokenAccount>(self.inner.rpc(), &r.vault).map_err(Into::into)
+
+    pub fn current_deposit_vault(
+        &self,
+        member: &Pubkey,
+        locked: bool,
+    ) -> Result<TokenAccount, ClientError> {
+        let m = self.member(member)?;
+        let balances = match locked {
+            true => &m.balances[1],
+            false => &m.balances[0],
+        };
+        rpc::get_token_account::<TokenAccount>(self.rpc(), &balances.vault).map_err(Into::into)
     }
+
     pub fn current_deposit_mega_vault(
         &self,
-        registrar: &Pubkey,
+        member: &Pubkey,
+        locked: bool,
     ) -> Result<TokenAccount, ClientError> {
-        let r = self.registrar(registrar)?;
-        rpc::get_token_account::<TokenAccount>(self.inner.rpc(), &r.mega_vault).map_err(Into::into)
-    }
-    pub fn pool_token(&self, member: &Pubkey) -> Result<ProgramAccount<TokenAccount>, ClientError> {
         let m = self.member(member)?;
-        let account = rpc::get_token_account(self.inner.rpc(), &m.spt)?;
+        let balances = match locked {
+            true => &m.balances[1],
+            false => &m.balances[0],
+        };
+        rpc::get_token_account::<TokenAccount>(self.rpc(), &balances.vault_mega).map_err(Into::into)
+    }
+
+    pub fn pool_token(
+        &self,
+        member: &Pubkey,
+        locked: bool,
+    ) -> Result<ProgramAccount<TokenAccount>, ClientError> {
+        let m = self.member(member)?;
+        let balances = match locked {
+            true => &m.balances[1],
+            false => &m.balances[0],
+        };
+        let account = rpc::get_token_account(self.rpc(), &balances.spt)?;
         Ok(ProgramAccount {
-            public_key: m.spt_mega,
+            public_key: balances.spt_mega,
             account,
         })
     }
@@ -556,30 +947,64 @@ impl Client {
     pub fn mega_pool_token(
         &self,
         member: &Pubkey,
+        locked: bool,
     ) -> Result<ProgramAccount<TokenAccount>, ClientError> {
         let m = self.member(member)?;
-        let account = rpc::get_token_account(self.inner.rpc(), &m.spt_mega)?;
+        let balances = match locked {
+            true => &m.balances[1],
+            false => &m.balances[0],
+        };
+        let account = rpc::get_token_account(self.rpc(), &balances.spt_mega)?;
         Ok(ProgramAccount {
-            public_key: m.spt_mega,
+            public_key: balances.spt_mega,
             account,
         })
     }
-    pub fn stake_pool_asset_vault(&self, registrar: &Pubkey) -> Result<TokenAccount, ClientError> {
-        let r = self.registrar(registrar)?;
-        rpc::get_token_account::<TokenAccount>(self.inner.rpc(), &r.pool_vault).map_err(Into::into)
+
+    pub fn stake_pool_asset_vault(
+        &self,
+        member: &Pubkey,
+        locked: bool,
+    ) -> Result<TokenAccount, ClientError> {
+        let m = self.member(member)?;
+        let balances = match locked {
+            true => &m.balances[1],
+            false => &m.balances[0],
+        };
+        rpc::get_token_account::<TokenAccount>(self.rpc(), &balances.vault_stake)
+            .map_err(Into::into)
     }
 
-    pub fn stake_mega_pool_asset_vaults(
+    pub fn stake_mega_pool_asset_vault(
         &self,
-        registrar: &Pubkey,
+        member: &Pubkey,
+        locked: bool,
     ) -> Result<TokenAccount, ClientError> {
-        let r = self.registrar(registrar)?;
-        rpc::get_token_account::<TokenAccount>(self.inner.rpc(), &r.pool_vault_mega)
+        let m = self.member(member)?;
+        let balances = match locked {
+            true => &m.balances[1],
+            false => &m.balances[0],
+        };
+        rpc::get_token_account::<TokenAccount>(self.rpc(), &balances.vault_stake_mega)
+            .map_err(Into::into)
+    }
+
+    pub fn pending_withdrawal_vault(
+        &self,
+        member: &Pubkey,
+        locked: bool,
+    ) -> Result<TokenAccount, ClientError> {
+        let m = self.member(member)?;
+        let balances = match locked {
+            true => &m.balances[1],
+            false => &m.balances[0],
+        };
+        rpc::get_token_account::<TokenAccount>(self.rpc(), &balances.vault_pending_withdrawal)
             .map_err(Into::into)
     }
 
     pub fn pending_withdrawal(&self, pw: &Pubkey) -> Result<PendingWithdrawal, ClientError> {
-        rpc::get_account::<PendingWithdrawal>(self.inner.rpc(), pw).map_err(Into::into)
+        rpc::get_account::<PendingWithdrawal>(self.rpc(), pw).map_err(Into::into)
     }
 }
 
@@ -609,22 +1034,92 @@ impl ClientGen for Client {
     }
 }
 
+fn create_metadata_instructions(
+    client: &RpcClient,
+    payer: &Pubkey,
+    metadata: &Keypair,
+    mqueue: &Keypair,
+    program_id: &Pubkey,
+    entity: &Pubkey,
+    name: String,
+    about: String,
+    image_url: String,
+) -> Vec<Instruction> {
+    let md = serum_meta_entity::accounts::Metadata {
+        initialized: false,
+        entity: Pubkey::new_from_array([0; 32]),
+        authority: *payer,
+        name: name.clone(),
+        about: about.clone(),
+        image_url: image_url.clone(),
+        chat: Pubkey::new_from_array([0; 32]),
+    };
+    let metadata_size = md.size().unwrap();
+    let lamports = client
+        .get_minimum_balance_for_rent_exemption(metadata_size as usize)
+        .unwrap();
+    let create_metadata_instr = solana_sdk::system_instruction::create_account(
+        payer,
+        &metadata.pubkey(),
+        lamports,
+        metadata_size as u64,
+        program_id,
+    );
+
+    let mqueue_size = MQueue::buffer_size(MQueue::RING_CAPACITY);
+    let lamports = client
+        .get_minimum_balance_for_rent_exemption(mqueue_size)
+        .unwrap();
+    let create_mqueue_instr = solana_sdk::system_instruction::create_account(
+        payer,
+        &mqueue.pubkey(),
+        lamports,
+        mqueue_size as u64,
+        program_id,
+    );
+
+    let initialize_metadata_instr = {
+        let accounts = vec![AccountMeta::new(metadata.pubkey(), false)];
+        let instr = serum_meta_entity::instruction::MetaEntityInstruction::Initialize {
+            entity: *entity,
+            authority: *payer,
+            name,
+            about,
+            image_url,
+            chat: mqueue.pubkey(),
+        };
+        let mut data = vec![0u8; instr.size().unwrap() as usize];
+        serum_meta_entity::instruction::MetaEntityInstruction::pack(instr, &mut data).unwrap();
+        Instruction {
+            program_id: *program_id,
+            accounts,
+            data,
+        }
+    };
+
+    vec![
+        create_metadata_instr,
+        create_mqueue_instr,
+        initialize_metadata_instr,
+    ]
+}
+
 pub struct InitializeRequest {
     pub registrar_authority: Pubkey,
     pub withdrawal_timelock: i64,
     pub deactivation_timelock: i64,
     pub max_stake_per_entity: u64,
+    pub reward_activation_threshold: u64,
     pub mint: Pubkey,
     pub mega_mint: Pubkey,
-    pub reward_activation_threshold: u64,
+    pub stake_rate: u64,
+    pub stake_rate_mega: u64,
 }
 
 pub struct InitializeResponse {
     pub tx: Signature,
     pub registrar: Pubkey,
     pub reward_event_q: Pubkey,
-    pub pool_vault: Pubkey,
-    pub pool_vault_mega: Pubkey,
     pub nonce: u8,
 }
 
@@ -673,6 +1168,7 @@ pub struct StakeRequest<'a> {
     pub registrar: Pubkey,
     pub pool_token_amount: u64,
     pub mega: bool,
+    pub balance_id: Pubkey,
 }
 
 pub struct StakeResponse {
@@ -713,6 +1209,7 @@ pub struct StartStakeWithdrawalRequest<'a> {
     pub beneficiary: &'a Keypair,
     pub spt_amount: u64,
     pub mega: bool,
+    pub balance_id: Pubkey,
 }
 
 pub struct StartStakeWithdrawalResponse {
@@ -752,4 +1249,15 @@ pub enum ClientError {
     RpcError(#[from] solana_client::client_error::ClientError),
     #[error("Any error: {0}")]
     Any(#[from] anyhow::Error),
+}
+
+struct BalanceAccounts {
+    spt: Keypair,
+    spt_mega: Keypair,
+    vault: Keypair,
+    vault_mega: Keypair,
+    vault_stake: Keypair,
+    vault_stake_mega: Keypair,
+    vault_pw: Keypair,
+    vault_pw_mega: Keypair,
 }

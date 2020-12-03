@@ -76,6 +76,10 @@ pub enum RegistryErrorCode {
     InvalidPoolToken = 62,
     InvariantViolation = 63,
     InsufficientReward = 64,
+    InvalidBalanceSandbox = 65,
+    InvalidSpt = 66,
+    InvalidPendingWithdrawalVault = 67,
+    InvalidStakeVault = 68,
     Unknown = 1000,
 }
 

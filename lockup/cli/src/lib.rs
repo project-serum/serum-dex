@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use clap::Clap;
 use serum_lockup::accounts::WhitelistEntry;
 use serum_lockup_client::*;

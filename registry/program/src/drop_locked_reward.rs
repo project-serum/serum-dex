@@ -4,7 +4,7 @@ use serum_registry::access_control;
 use serum_registry::accounts::reward_queue::Ring;
 use serum_registry::accounts::{LockedRewardVendor, RewardEvent, RewardEventQueue};
 use serum_registry::error::{RegistryError, RegistryErrorCode};
-use solana_program::info;
+use solana_program::msg;
 use solana_sdk::account_info::next_account_info;
 use solana_sdk::account_info::AccountInfo;
 use solana_sdk::program_pack::Pack as TokenPack;
@@ -24,7 +24,7 @@ pub fn handler(
     period_count: u64,
     nonce: u8,
 ) -> Result<(), RegistryError> {
-    info!("handler: drop_locked_reward");
+    msg!("handler: drop_locked_reward");
 
     let acc_infos = &mut accounts.iter();
 
@@ -32,21 +32,19 @@ pub fn handler(
     let registrar_acc_info = next_account_info(acc_infos)?;
     let depositor_acc_info = next_account_info(acc_infos)?;
     let depositor_owner_acc_info = next_account_info(acc_infos)?;
-    let pool_vault_acc_info = next_account_info(acc_infos)?;
-    let pool_token_mint_acc_info = next_account_info(acc_infos)?;
+    let pool_mint_acc_info = next_account_info(acc_infos)?;
     let vendor_acc_info = next_account_info(acc_infos)?;
     let vendor_vault_acc_info = next_account_info(acc_infos)?;
     let token_program_acc_info = next_account_info(acc_infos)?;
     let clock_acc_info = next_account_info(acc_infos)?;
 
     let AccessControlResponse {
-        pool_token_mint,
+        pool_mint,
         ref clock,
     } = access_control(AccessControlRequest {
         program_id,
         registrar_acc_info,
-        pool_vault_acc_info,
-        pool_token_mint_acc_info,
+        pool_mint_acc_info,
         vendor_acc_info,
         vendor_vault_acc_info,
         clock_acc_info,
@@ -70,11 +68,11 @@ pub fn handler(
                 vendor_vault_acc_info,
                 reward_event_q_acc_info,
                 registrar_acc_info,
-                pool_vault_acc_info,
                 depositor_acc_info,
                 depositor_owner_acc_info,
                 token_program_acc_info,
-                pool_token_mint,
+                pool_mint,
+                pool_mint_acc_info,
                 clock,
                 period_count,
             })
@@ -86,13 +84,12 @@ pub fn handler(
 }
 
 fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, RegistryError> {
-    info!("access-control: drop_locked_reward");
+    msg!("access-control: drop_locked_reward");
 
     let AccessControlRequest {
         program_id,
         registrar_acc_info,
-        pool_vault_acc_info,
-        pool_token_mint_acc_info,
+        pool_mint_acc_info,
         vendor_acc_info,
         vendor_vault_acc_info,
         clock_acc_info,
@@ -109,27 +106,12 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
     //
     // Registrar.
     let registrar = access_control::registrar(registrar_acc_info, program_id)?;
-    if &registrar.pool_vault != pool_vault_acc_info.key
-        && &registrar.pool_vault_mega != pool_vault_acc_info.key
-    {
-        return Err(RegistryErrorCode::InvalidPoolAccounts)?;
-    }
     // Pool.
-    let pool_token_mint = access_control::mint(pool_token_mint_acc_info)?;
-    if registrar.pool_mint != *pool_token_mint_acc_info.key
-        && registrar.pool_mint_mega != *pool_token_mint_acc_info.key
+    let pool_mint = access_control::mint(pool_mint_acc_info)?;
+    if registrar.pool_mint != *pool_mint_acc_info.key
+        && registrar.pool_mint_mega != *pool_mint_acc_info.key
     {
         return Err(RegistryErrorCode::InvalidPoolTokenMint)?;
-    }
-    let is_mega = &registrar.pool_vault_mega == pool_vault_acc_info.key;
-    if is_mega {
-        if &registrar.pool_mint_mega != pool_token_mint_acc_info.key {
-            return Err(RegistryErrorCode::InvalidPoolTokenMint)?;
-        }
-    } else {
-        if &registrar.pool_mint != pool_token_mint_acc_info.key {
-            return Err(RegistryErrorCode::InvalidPoolTokenMint)?;
-        }
     }
     // Vault + nonce.
     let vendor_vault_authority = Pubkey::create_program_address(
@@ -154,19 +136,16 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
         return Err(RegistryErrorCode::InvalidExpiry)?;
     }
     // Must be dropping enough to give at least one token to everyone in pool.
-    if total < pool_token_mint.supply {
+    if total < pool_mint.supply {
         return Err(RegistryErrorCode::InsufficientReward)?;
     }
 
-    Ok(AccessControlResponse {
-        pool_token_mint,
-        clock,
-    })
+    Ok(AccessControlResponse { pool_mint, clock })
 }
 
 #[inline(always)]
 fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
-    info!("state-transition: drop_locked_reward");
+    msg!("state-transition: drop_locked_reward");
 
     let StateTransitionRequest {
         nonce,
@@ -178,11 +157,11 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
         vendor_vault_acc_info,
         reward_event_q_acc_info,
         registrar_acc_info,
-        pool_vault_acc_info,
         depositor_acc_info,
         depositor_owner_acc_info,
         token_program_acc_info,
-        pool_token_mint,
+        pool_mint,
+        pool_mint_acc_info,
         clock,
         period_count,
         end_ts,
@@ -198,7 +177,7 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
     let cursor = reward_event_q.head_cursor()?;
     reward_event_q.append(&RewardEvent::LockedAlloc {
         from: *depositor_owner_acc_info.key,
-        pool: *pool_vault_acc_info.key,
+        pool: *pool_mint_acc_info.key,
         total,
         vendor: *vendor_acc_info.key,
         mint,
@@ -219,8 +198,8 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
     vendor.registrar = *registrar_acc_info.key;
     vendor.vault = *vendor_vault_acc_info.key;
     vendor.nonce = nonce;
-    vendor.pool = *pool_vault_acc_info.key;
-    vendor.pool_token_supply = pool_token_mint.supply;
+    vendor.pool = *pool_mint_acc_info.key;
+    vendor.pool_token_supply = pool_mint.supply;
     vendor.reward_event_q_cursor = cursor;
     vendor.start_ts = clock.unix_timestamp;
     vendor.end_ts = end_ts;
@@ -235,8 +214,7 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
 struct AccessControlRequest<'a, 'b> {
     program_id: &'a Pubkey,
     registrar_acc_info: &'a AccountInfo<'b>,
-    pool_vault_acc_info: &'a AccountInfo<'b>,
-    pool_token_mint_acc_info: &'a AccountInfo<'b>,
+    pool_mint_acc_info: &'a AccountInfo<'b>,
     vendor_acc_info: &'a AccountInfo<'b>,
     vendor_vault_acc_info: &'a AccountInfo<'b>,
     clock_acc_info: &'a AccountInfo<'b>,
@@ -247,7 +225,7 @@ struct AccessControlRequest<'a, 'b> {
 }
 
 struct AccessControlResponse {
-    pool_token_mint: Mint,
+    pool_mint: Mint,
     clock: Clock,
 }
 
@@ -264,9 +242,9 @@ struct StateTransitionRequest<'a, 'b, 'c> {
     vendor_vault_acc_info: &'a AccountInfo<'b>,
     registrar_acc_info: &'a AccountInfo<'b>,
     reward_event_q_acc_info: &'a AccountInfo<'b>,
-    pool_vault_acc_info: &'a AccountInfo<'b>,
+    pool_mint_acc_info: &'a AccountInfo<'b>,
     depositor_acc_info: &'a AccountInfo<'b>,
     depositor_owner_acc_info: &'a AccountInfo<'b>,
     token_program_acc_info: &'a AccountInfo<'b>,
-    pool_token_mint: Mint,
+    pool_mint: Mint,
 }

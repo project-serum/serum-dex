@@ -263,7 +263,6 @@ impl Client {
             stake_beneficiary,
             vesting,
             safe,
-            is_mega, // TODO: remove.
         } = req;
         let relay_data = {
             let instr = RegistryInstruction::Deposit { amount };
@@ -284,16 +283,14 @@ impl Client {
             &registry_pid,
         )
         .map_err(|_| anyhow!("unable to create vault authority"))?;
-        let whitelist_program_vault = match is_mega {
-            false => r.vault,
-            true => r.mega_vault,
-        };
+        let v = self.vesting(&vesting)?;
+        let whitelist_program_vault = r_client.vault_for(&member, &v.vault, true)?;
+
         let relay_accounts = vec![
             AccountMeta::new(member, false),
             AccountMeta::new_readonly(stake_beneficiary.pubkey(), true),
             AccountMeta::new(entity, false),
             AccountMeta::new_readonly(registrar, false),
-            AccountMeta::new_readonly(solana_sdk::sysvar::clock::ID, false),
         ];
 
         let resp = self.whitelist_withdraw(WhitelistWithdrawRequest {
@@ -317,7 +314,6 @@ impl Client {
     ) -> Result<RegistryWithdrawResponse, ClientError> {
         let RegistryWithdrawRequest {
             amount,
-            is_mega, // TODO: remove.
             registry_pid,
             registrar,
             member,
@@ -346,16 +342,14 @@ impl Client {
             &registry_pid,
         )
         .map_err(|_| anyhow!("unable to create vault authority"))?;
-        let whitelist_program_vault = match is_mega {
-            false => r.vault,
-            true => r.mega_vault,
-        };
+        let v = self.vesting(&vesting)?;
+        let whitelist_program_vault = r_client.vault_for(&member, &v.vault, true)?;
+
         let relay_accounts = vec![
             AccountMeta::new(member, false),
             AccountMeta::new_readonly(stake_beneficiary.pubkey(), true),
             AccountMeta::new(entity, false),
             AccountMeta::new_readonly(registrar, false),
-            AccountMeta::new_readonly(solana_sdk::sysvar::clock::ID, false),
         ];
 
         let resp = self.whitelist_deposit(WhitelistDepositRequest {
@@ -582,7 +576,6 @@ pub struct RegistryDepositRequest<'a> {
     pub safe: Pubkey,
     pub beneficiary: &'a Keypair,
     pub stake_beneficiary: &'a Keypair,
-    pub is_mega: bool,
 }
 
 pub struct RegistryDepositResponse {
@@ -591,7 +584,6 @@ pub struct RegistryDepositResponse {
 
 pub struct RegistryWithdrawRequest<'a> {
     pub amount: u64,
-    pub is_mega: bool,
     pub registry_pid: Pubkey,
     pub registrar: Pubkey,
     pub member: Pubkey,

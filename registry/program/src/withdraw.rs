@@ -1,23 +1,18 @@
-use crate::common::entity::{with_entity, EntityContext};
-use serum_common::pack::Pack;
 use serum_common::program::invoke_token_transfer;
 use serum_registry::access_control;
-use serum_registry::accounts::{vault, Entity, Member, Registrar};
+use serum_registry::accounts::{vault, Registrar};
 use serum_registry::error::{RegistryError, RegistryErrorCode};
-use solana_program::info;
+use solana_program::msg;
 use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::pubkey::Pubkey;
-use solana_sdk::sysvar::clock::Clock;
-use spl_token::state::Account as TokenAccount;
 
 #[inline(never)]
 pub fn handler(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
     amount: u64,
-    delegate: bool,
 ) -> Result<(), RegistryError> {
-    info!("handler: withdraw");
+    msg!("handler: withdraw");
 
     let acc_infos = &mut accounts.iter();
 
@@ -25,79 +20,54 @@ pub fn handler(
     let depositor_acc_info = next_account_info(acc_infos)?;
     let depositor_authority_acc_info = next_account_info(acc_infos)?;
     let token_program_acc_info = next_account_info(acc_infos)?;
-    let vault_acc_info = next_account_info(acc_infos)?;
-    let vault_authority_acc_info = next_account_info(acc_infos)?;
+    let member_vault_acc_info = next_account_info(acc_infos)?;
+    let member_vault_authority_acc_info = next_account_info(acc_infos)?;
 
     // Program specfic.
     let member_acc_info = next_account_info(acc_infos)?;
     let beneficiary_acc_info = next_account_info(acc_infos)?;
     let entity_acc_info = next_account_info(acc_infos)?;
     let registrar_acc_info = next_account_info(acc_infos)?;
-    let clock_acc_info = next_account_info(acc_infos)?;
 
-    let ctx = EntityContext {
+    let AccessControlResponse { ref registrar } = access_control(AccessControlRequest {
+        member_vault_authority_acc_info,
+        depositor_acc_info,
+        member_acc_info,
+        beneficiary_acc_info,
         entity_acc_info,
-        registrar_acc_info,
-        clock_acc_info,
+        member_vault_acc_info,
         program_id,
-    };
-    with_entity(ctx, &mut |entity: &mut Entity,
-                           registrar: &Registrar,
-                           _: &Clock| {
-        let AccessControlResponse { ref depositor } = access_control(AccessControlRequest {
-            vault_authority_acc_info,
-            depositor_acc_info,
-            member_acc_info,
-            beneficiary_acc_info,
-            entity_acc_info,
-            vault_acc_info,
-            program_id,
-            registrar_acc_info,
-            registrar,
-            depositor_authority_acc_info,
-            amount,
-            delegate,
-        })?;
-        Member::unpack_mut(
-            &mut member_acc_info.try_borrow_mut_data()?,
-            &mut |member: &mut Member| {
-                state_transition(StateTransitionRequest {
-                    entity,
-                    member,
-                    amount,
-                    registrar: &registrar,
-                    registrar_acc_info,
-                    vault_acc_info,
-                    vault_authority_acc_info,
-                    depositor_acc_info,
-                    token_program_acc_info,
-                    depositor,
-                })
-                .map_err(Into::into)
-            },
-        )
-        .map_err(Into::into)
+        registrar_acc_info,
+        depositor_authority_acc_info,
+        amount,
+    })?;
+    state_transition(StateTransitionRequest {
+        amount,
+        registrar,
+        registrar_acc_info,
+        member_vault_acc_info,
+        member_vault_authority_acc_info,
+        depositor_acc_info,
+        token_program_acc_info,
     })?;
 
     Ok(())
 }
 
 fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, RegistryError> {
-    info!("access-control: withdraw");
+    msg!("access-control: withdraw");
 
     let AccessControlRequest {
-        vault_authority_acc_info,
+        member_vault_authority_acc_info,
         depositor_acc_info,
         member_acc_info,
         beneficiary_acc_info,
         entity_acc_info,
-        vault_acc_info,
+        member_vault_acc_info,
         registrar_acc_info,
-        registrar,
         depositor_authority_acc_info,
         program_id,
         amount,
-        delegate,
     } = req;
 
     // Authorization.
@@ -109,57 +79,52 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
     }
 
     // Account validation.
+    let registrar = access_control::registrar(registrar_acc_info, program_id)?;
+    let _depositor = access_control::token(depositor_acc_info, depositor_authority_acc_info.key)?;
     let member = access_control::member_join(
         member_acc_info,
         entity_acc_info,
         beneficiary_acc_info,
         program_id,
     )?;
-    let _vault = access_control::vault_authenticated(
-        vault_acc_info,
-        vault_authority_acc_info,
+    let (member_vault, _is_mega) = access_control::member_vault(
+        &member,
+        member_vault_acc_info,
+        member_vault_authority_acc_info,
         registrar_acc_info,
         &registrar,
         program_id,
+        depositor_authority_acc_info.key,
     )?;
 
     // Withdraw specific.
     //
-    // Authenticate the delegate boolean.
-    let depositor = access_control::token(depositor_acc_info, depositor_authority_acc_info.key)?;
-    if delegate != (depositor.owner == member.balances.delegate.owner) {
-        return Err(RegistryErrorCode::DepositorOwnerDelegateMismatch)?;
-    }
     // Do we have enough funds for the withdrawal?
-    let is_mega = registrar.is_mega(*vault_acc_info.key)?;
-    if !member.can_withdraw(amount, is_mega, depositor.owner)? {
+    if !member_vault.amount < amount {
         return Err(RegistryErrorCode::InsufficientBalance)?;
     }
 
-    Ok(AccessControlResponse { depositor })
+    Ok(AccessControlResponse { registrar })
 }
 
 fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
-    info!("state-transition: withdraw");
+    msg!("state-transition: withdraw");
 
     let StateTransitionRequest {
-        entity,
-        member,
         amount,
         registrar,
         registrar_acc_info,
-        vault_authority_acc_info,
+        member_vault_authority_acc_info,
         depositor_acc_info,
-        depositor,
-        vault_acc_info,
+        member_vault_acc_info,
         token_program_acc_info,
     } = req;
 
-    // Transfer funds from the program vault back to the original depositor.
+    // Transfer tokens out.
     invoke_token_transfer(
-        vault_acc_info,
+        member_vault_acc_info,
         depositor_acc_info,
-        vault_authority_acc_info,
+        member_vault_authority_acc_info,
         token_program_acc_info,
         &[&vault::signer_seeds(
             registrar_acc_info.key,
@@ -168,43 +133,32 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
         amount,
     )?;
 
-    let is_mega = registrar.is_mega(*vault_acc_info.key)?;
-    member.did_withdraw(amount, is_mega, depositor.owner);
-    entity.did_withdraw(amount, is_mega);
-
-    info!("state-transition: success");
-
     Ok(())
 }
 
-struct AccessControlRequest<'a, 'b, 'c> {
+struct AccessControlRequest<'a, 'b> {
     registrar_acc_info: &'a AccountInfo<'b>,
-    vault_authority_acc_info: &'a AccountInfo<'b>,
+    member_vault_authority_acc_info: &'a AccountInfo<'b>,
     depositor_acc_info: &'a AccountInfo<'b>,
     depositor_authority_acc_info: &'a AccountInfo<'b>,
     member_acc_info: &'a AccountInfo<'b>,
     beneficiary_acc_info: &'a AccountInfo<'b>,
     entity_acc_info: &'a AccountInfo<'b>,
-    vault_acc_info: &'a AccountInfo<'b>,
+    member_vault_acc_info: &'a AccountInfo<'b>,
     program_id: &'a Pubkey,
-    registrar: &'c Registrar,
     amount: u64,
-    delegate: bool,
 }
 
 struct AccessControlResponse {
-    depositor: TokenAccount,
+    registrar: Registrar,
 }
 
 struct StateTransitionRequest<'a, 'b, 'c> {
     registrar_acc_info: &'a AccountInfo<'b>,
-    vault_acc_info: &'a AccountInfo<'b>,
-    vault_authority_acc_info: &'a AccountInfo<'b>,
+    member_vault_acc_info: &'a AccountInfo<'b>,
+    member_vault_authority_acc_info: &'a AccountInfo<'b>,
     depositor_acc_info: &'a AccountInfo<'b>,
     token_program_acc_info: &'a AccountInfo<'b>,
-    entity: &'c mut Entity,
-    member: &'c mut Member,
     registrar: &'c Registrar,
-    depositor: &'c TokenAccount,
     amount: u64,
 }

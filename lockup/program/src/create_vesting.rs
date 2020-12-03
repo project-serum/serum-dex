@@ -3,7 +3,7 @@ use serum_common::pack::Pack;
 use serum_common::program::invoke_token_transfer;
 use serum_lockup::accounts::{vault, Vesting};
 use serum_lockup::error::{LockupError, LockupErrorCode};
-use solana_program::info;
+use solana_program::msg;
 use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::pubkey::Pubkey;
 use spl_token::state::Account as TokenAccount;
@@ -18,7 +18,7 @@ pub fn handler(
     deposit_amount: u64,
     nonce: u8,
 ) -> Result<(), LockupError> {
-    info!("handler: create_vesting");
+    msg!("handler: create_vesting");
 
     let acc_infos = &mut accounts.iter();
 
@@ -72,7 +72,7 @@ pub fn handler(
 }
 
 fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, LockupError> {
-    info!("access-control: create_vesting");
+    msg!("access-control: create_vesting");
 
     let AccessControlRequest {
         program_id,
@@ -151,7 +151,7 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Lo
 }
 
 fn state_transition(req: StateTransitionRequest) -> Result<(), LockupError> {
-    info!("state-transition: create_vesting");
+    msg!("state-transition: create_vesting");
 
     let StateTransitionRequest {
         clock_ts,

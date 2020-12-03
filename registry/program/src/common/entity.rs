@@ -31,7 +31,7 @@ where
         &mut entity_acc_info.try_borrow_mut_data()?,
         &mut |entity: &mut Entity| {
             let clock = access_control::clock(&clock_acc_info)?;
-            let registrar = access_control::registrar(&registrar_acc_info, program_id)?;
+            let registrar = access_control::registrar(registrar_acc_info, program_id)?;
             let _ = access_control::entity_check(
                 entity,
                 entity_acc_info,

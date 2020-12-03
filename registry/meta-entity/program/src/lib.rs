@@ -36,8 +36,8 @@ fn entry(program_id: &Pubkey, accounts: &[AccountInfo], instruction_data: &[u8])
             chat,
             image_url,
         } => update::handler(program_id, accounts, name, about, image_url, chat),
-        MetaEntityInstruction::SendMessage { data } => {
-            send_message::handler(program_id, accounts, data)
+        MetaEntityInstruction::SendMessage { msg } => {
+            send_message::handler(program_id, accounts, msg)
         }
     };
 

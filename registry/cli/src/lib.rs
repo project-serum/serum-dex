@@ -44,6 +44,10 @@ pub enum SubCommand {
         reward_activation_threshold: u64,
         #[clap(short, long)]
         max_stake_per_entity: u64,
+        #[clap(short, long)]
+        stake_rate: u64,
+        #[clap(short = 'b', long)]
+        stake_rate_mega: u64,
     },
     /// Creates and registers a delegated staked node entity.
     CreateEntity {
@@ -115,6 +119,8 @@ pub fn run(opts: Opts) -> Result<()> {
             deactivation_timelock,
             reward_activation_threshold,
             max_stake_per_entity,
+            stake_rate,
+            stake_rate_mega,
         } => init(
             ctx,
             registry_pid,
@@ -122,6 +128,8 @@ pub fn run(opts: Opts) -> Result<()> {
             deactivation_timelock,
             reward_activation_threshold,
             max_stake_per_entity,
+            stake_rate,
+            stake_rate_mega,
         ),
         SubCommand::CreateEntity {
             leader,
@@ -193,7 +201,7 @@ fn create_entity_cmd(
         .map_err(|_| anyhow!("Unable to read leader keypair file"))?;
 
     let client = ctx.connect::<Client>(registry_pid)?;
-    let CreateEntityResponse { tx, entity } = client.create_entity(CreateEntityRequest {
+    let CreateEntityResponse { entity, .. } = client.create_entity(CreateEntityRequest {
         node_leader: &leader_kp,
         registrar,
         name,
@@ -260,6 +268,8 @@ pub fn init(
     deactivation_timelock: i64,
     reward_activation_threshold: u64,
     max_stake_per_entity: u64,
+    stake_rate: u64,
+    stake_rate_mega: u64,
 ) -> Result<()> {
     let registry_pid = registry_pid.ok_or(anyhow!(
         "Please provide --pid when initializing a registrar"
@@ -281,6 +291,8 @@ pub fn init(
         mega_mint: ctx.msrm_mint,
         reward_activation_threshold,
         max_stake_per_entity,
+        stake_rate,
+        stake_rate_mega,
     })?;
 
     println!(

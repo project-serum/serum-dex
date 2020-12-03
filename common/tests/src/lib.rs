@@ -23,7 +23,7 @@ pub static TEST_CLUSTER: &str = "TEST_CLUSTER";
 pub fn genesis<T: ClientGen>() -> Genesis<T> {
     let client = client::<T>();
 
-    let spl_mint_decimals = 3;
+    let spl_mint_decimals = 6;
 
     // Initialize the SPL token representing SRM.
     let mint_authority = Keypair::from_bytes(&Keypair::to_bytes(client.payer().clone())).unwrap();

@@ -3,9 +3,9 @@ use serum_common::pack::Pack;
 use serum_common::program::{invoke_burn_tokens, invoke_token_transfer};
 use serum_registry::access_control;
 use serum_registry::accounts::vault;
-use serum_registry::accounts::{Entity, Member, PendingWithdrawal, Registrar};
+use serum_registry::accounts::{Entity, PendingWithdrawal, Registrar};
 use serum_registry::error::{RegistryError, RegistryErrorCode};
-use solana_program::info;
+use solana_program::msg;
 use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::sysvar::clock::Clock;
@@ -15,8 +15,9 @@ pub fn handler(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
     spt_amount: u64,
+    ref balance_id: Pubkey,
 ) -> Result<(), RegistryError> {
-    info!("handler: start_stake_withdrawal");
+    msg!("handler: start_stake_withdrawal");
 
     let acc_infos = &mut accounts.iter();
 
@@ -26,9 +27,9 @@ pub fn handler(
     let beneficiary_acc_info = next_account_info(acc_infos)?;
     let entity_acc_info = next_account_info(acc_infos)?;
     let registrar_acc_info = next_account_info(acc_infos)?;
-    let vault_acc_info = next_account_info(acc_infos)?;
-    let vault_authority_acc_info = next_account_info(acc_infos)?;
-    let pool_vault_acc_info = next_account_info(acc_infos)?;
+    let member_vault_pw_acc_info = next_account_info(acc_infos)?;
+    let member_vault_authority_acc_info = next_account_info(acc_infos)?;
+    let member_vault_stake_acc_info = next_account_info(acc_infos)?;
     let pool_mint_acc_info = next_account_info(acc_infos)?;
     let spt_acc_info = next_account_info(acc_infos)?;
     let clock_acc_info = next_account_info(acc_infos)?;
@@ -52,39 +53,35 @@ pub fn handler(
             entity_acc_info,
             rent_acc_info,
             program_id,
-            vault_acc_info,
-            vault_authority_acc_info,
-            pool_vault_acc_info,
+            member_vault_pw_acc_info,
+            member_vault_authority_acc_info,
+            member_vault_stake_acc_info,
             pool_mint_acc_info,
             spt_acc_info,
             registrar,
+            balance_id,
         })?;
         PendingWithdrawal::unpack_mut(
             &mut pending_withdrawal_acc_info.try_borrow_mut_data()?,
             &mut |pending_withdrawal: &mut PendingWithdrawal| {
-                Member::unpack_mut(
-                    &mut member_acc_info.try_borrow_mut_data()?,
-                    &mut |member: &mut Member| {
-                        state_transition(StateTransitionRequest {
-                            pending_withdrawal,
-                            registrar,
-                            member,
-                            entity,
-                            member_acc_info,
-                            clock,
-                            spt_amount,
-                            tok_program_acc_info,
-                            registrar_acc_info,
-                            vault_acc_info,
-                            vault_authority_acc_info,
-                            pool_vault_acc_info,
-                            pool_mint_acc_info,
-                            spt_acc_info,
-                            is_mega,
-                        })
-                        .map_err(Into::into)
-                    },
-                )
+                state_transition(StateTransitionRequest {
+                    pending_withdrawal,
+                    registrar,
+                    entity,
+                    member_acc_info,
+                    clock,
+                    spt_amount,
+                    tok_program_acc_info,
+                    registrar_acc_info,
+                    member_vault_pw_acc_info,
+                    member_vault_authority_acc_info,
+                    member_vault_stake_acc_info,
+                    pool_mint_acc_info,
+                    spt_acc_info,
+                    is_mega,
+                    balance_id,
+                })
+                .map_err(Into::into)
             },
         )
         .map_err(Into::into)
@@ -94,7 +91,7 @@ pub fn handler(
 }
 
 fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, RegistryError> {
-    info!("access-control: start_stake_withdrawal");
+    msg!("access-control: start_stake_withdrawal");
 
     let AccessControlRequest {
         registrar_acc_info,
@@ -104,12 +101,13 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
         entity_acc_info,
         rent_acc_info,
         program_id,
-        vault_acc_info,
-        vault_authority_acc_info,
-        pool_vault_acc_info,
+        member_vault_pw_acc_info,
+        member_vault_authority_acc_info,
+        member_vault_stake_acc_info,
         pool_mint_acc_info,
         spt_acc_info,
         registrar,
+        balance_id,
     } = req;
 
     // Beneficiary authorization.
@@ -118,24 +116,40 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
     }
 
     // Account validation.
-    let rent = access_control::rent(rent_acc_info)?;
     let member = access_control::member_join(
         member_acc_info,
         entity_acc_info,
         beneficiary_acc_info,
         program_id,
     )?;
-    let _vault = access_control::vault_authenticated(
-        vault_acc_info,
-        vault_authority_acc_info,
+    let (_member_vault, is_mega) = access_control::member_vault_pending_withdrawal(
+        &member,
+        member_vault_pw_acc_info,
+        member_vault_authority_acc_info,
         registrar_acc_info,
         registrar,
         program_id,
+        balance_id,
     )?;
-    let (_pool_vault, is_mega) = access_control::pool_vault(pool_vault_acc_info, &registrar)?;
+    let (_member_vault_stake, is_mega_stake) = access_control::member_vault_stake(
+        &member,
+        member_vault_stake_acc_info,
+        member_vault_authority_acc_info,
+        registrar_acc_info,
+        registrar,
+        program_id,
+        balance_id,
+    )?;
+    assert!(is_mega == is_mega_stake);
+    let _pool_token = access_control::member_pool_token(
+        &member,
+        spt_acc_info,
+        pool_mint_acc_info,
+        balance_id,
+        is_mega,
+    )?;
     let _pool_mint = access_control::pool_mint(pool_mint_acc_info, &registrar, is_mega)?;
-    let _pool_token =
-        access_control::pool_token(spt_acc_info, pool_mint_acc_info, &member, is_mega)?;
+    let rent = access_control::rent(rent_acc_info)?;
 
     // StartStakeWithdrawal specific.
     {
@@ -158,24 +172,24 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
 }
 
 fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
-    info!("state-transition: start_stake_withdrawal");
+    msg!("state-transition: start_stake_withdrawal");
 
     let StateTransitionRequest {
         pending_withdrawal,
         registrar,
         entity,
-        member,
         member_acc_info,
         clock,
         spt_amount,
-        vault_acc_info,
-        vault_authority_acc_info,
-        pool_vault_acc_info,
+        member_vault_pw_acc_info,
+        member_vault_authority_acc_info,
+        member_vault_stake_acc_info,
         pool_mint_acc_info,
         spt_acc_info,
         tok_program_acc_info,
         registrar_acc_info,
         is_mega,
+        balance_id,
     } = req;
 
     let signer_seeds = vault::signer_seeds(registrar_acc_info.key, &registrar.nonce);
@@ -184,24 +198,32 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
     invoke_burn_tokens(
         spt_acc_info,
         pool_mint_acc_info,
-        vault_authority_acc_info,
+        member_vault_authority_acc_info,
         tok_program_acc_info,
         &[&signer_seeds],
         spt_amount,
     )?;
 
-    // Transfer from pool vault to deposit vault.
+    // Convert from stake token units to srm/msrm units.
+    let token_amount = {
+        let rate = match is_mega {
+            false => registrar.stake_rate,
+            true => registrar.stake_rate_mega,
+        };
+        spt_amount.checked_mul(rate).unwrap()
+    };
+
+    // Transfer from stake vault to pending vault.
     invoke_token_transfer(
-        pool_vault_acc_info,
-        vault_acc_info,
-        vault_authority_acc_info,
+        member_vault_stake_acc_info,
+        member_vault_pw_acc_info,
+        member_vault_authority_acc_info,
         tok_program_acc_info,
         &[&signer_seeds],
-        spt_amount,
+        token_amount,
     )?;
 
     // Bookeeping.
-    member.spt_did_unstake_start(spt_amount, is_mega);
     entity.spt_did_unstake_start(spt_amount, is_mega);
 
     // Print pending withdrawal receipt.
@@ -210,8 +232,9 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
     pending_withdrawal.member = *member_acc_info.key;
     pending_withdrawal.start_ts = clock.unix_timestamp;
     pending_withdrawal.end_ts = clock.unix_timestamp + registrar.deactivation_timelock;
-    pending_withdrawal.spt_amount = spt_amount;
-    pending_withdrawal.pool = *pool_vault_acc_info.key;
+    pending_withdrawal.amount = token_amount;
+    pending_withdrawal.pool = *pool_mint_acc_info.key;
+    pending_withdrawal.balance_id = *balance_id;
 
     Ok(())
 }
@@ -223,13 +246,14 @@ struct AccessControlRequest<'a, 'b, 'c> {
     member_acc_info: &'a AccountInfo<'b>,
     entity_acc_info: &'a AccountInfo<'b>,
     rent_acc_info: &'a AccountInfo<'b>,
-    vault_acc_info: &'a AccountInfo<'b>,
-    vault_authority_acc_info: &'a AccountInfo<'b>,
-    pool_vault_acc_info: &'a AccountInfo<'b>,
+    member_vault_pw_acc_info: &'a AccountInfo<'b>,
+    member_vault_authority_acc_info: &'a AccountInfo<'b>,
+    member_vault_stake_acc_info: &'a AccountInfo<'b>,
     pool_mint_acc_info: &'a AccountInfo<'b>,
     spt_acc_info: &'a AccountInfo<'b>,
     program_id: &'a Pubkey,
     registrar: &'c Registrar,
+    balance_id: &'c Pubkey,
 }
 
 struct AccessControlResponse {
@@ -239,17 +263,17 @@ struct AccessControlResponse {
 struct StateTransitionRequest<'a, 'b, 'c> {
     member_acc_info: &'a AccountInfo<'b>,
     registrar_acc_info: &'a AccountInfo<'b>,
-    vault_acc_info: &'a AccountInfo<'b>,
-    vault_authority_acc_info: &'a AccountInfo<'b>,
+    member_vault_pw_acc_info: &'a AccountInfo<'b>,
+    member_vault_authority_acc_info: &'a AccountInfo<'b>,
     tok_program_acc_info: &'a AccountInfo<'b>,
-    pool_vault_acc_info: &'a AccountInfo<'b>,
+    member_vault_stake_acc_info: &'a AccountInfo<'b>,
     pool_mint_acc_info: &'a AccountInfo<'b>,
     spt_acc_info: &'a AccountInfo<'b>,
     pending_withdrawal: &'c mut PendingWithdrawal,
     entity: &'c mut Entity,
-    member: &'c mut Member,
     registrar: &'c Registrar,
     clock: &'c Clock,
     spt_amount: u64,
     is_mega: bool,
+    balance_id: &'c Pubkey,
 }

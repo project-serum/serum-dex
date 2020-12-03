@@ -1,7 +1,7 @@
 use crate::InitializeResponse;
 use serum_common::client::rpc;
 use serum_common::pack::Pack;
-use serum_lockup::accounts::{vault, Safe, Whitelist};
+use serum_lockup::accounts::{Safe, Whitelist};
 use serum_lockup::client::{Client as InnerClient, ClientError as InnerClientError};
 use solana_client_gen::prelude::*;
 use solana_client_gen::solana_sdk;

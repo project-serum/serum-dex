@@ -9,6 +9,15 @@
 
 CLUSTER=l
 #CLUSTER=devnet
+DEACTIVATION_TIMELOCK=60
+WITHDRAWAL_TIMELOCK=60
+# 100_000_000 million SRM (6 decimals)
+MAX_STAKE_PER_ENTITY=100000000000000
+# 1 SRM to stake.
+STAKE_RATE=1000000
+# 1 MSRM to stake.
+STAKE_RATE_MEGA=1
+REWARD_ACTIVATION_THRESHOLD=1
 
 main() {
     # First generate the genesis state, with the SRM/MSRM mints and
@@ -54,10 +63,12 @@ main() {
           --msrm-mint $msrm_mint \
           registry --pid $registry_pid \
           init \
-          --deactivation-timelock 60 \
-          --reward-activation-threshold 1 \
-          --withdrawal-timelock 60 \
-          --max-stake-per-entity 100000000)
+          --deactivation-timelock $DEACTIVATION_TIMELOCK \
+          --reward-activation-threshold $REWARD_ACTIVATION_THRESHOLD \
+          --withdrawal-timelock $WITHDRAWAL_TIMELOCK \
+          --max-stake-per-entity $MAX_STAKE_PER_ENTITY \
+					--stake-rate $STAKE_RATE \
+					--stake-rate-mega $STAKE_RATE_MEGA)
     local registrar=$(echo $rInit | jq .registrar -r)
 		local registrar_nonce=$(echo $rInit | jq .nonce -r)
 		local reward_q=$(echo $rInit | jq .rewardEventQueue -r)

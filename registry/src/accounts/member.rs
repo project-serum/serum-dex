@@ -1,5 +1,4 @@
-use crate::error::{RegistryError, RegistryErrorCode};
-use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
+use borsh::{BorshDeserialize, BorshSerialize};
 use serum_common::pack::*;
 use solana_client_gen::solana_sdk::pubkey::Pubkey;
 
@@ -10,7 +9,7 @@ lazy_static::lazy_static! {
                 .expect("Member has a fixed size");
 }
 
-#[derive(Default, Debug, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, BorshSerialize, BorshDeserialize)]
 pub struct Member {
     /// Set by the program on creation.
     pub initialized: bool,
@@ -20,226 +19,58 @@ pub struct Member {
     pub beneficiary: Pubkey,
     /// Entity providing membership.
     pub entity: Pubkey,
-    /// SRM, MSRM, and staking pool token balances.
-    pub balances: MemberBalances,
     /// Arbitrary metadata account owned by any program.
     pub metadata: Pubkey,
-    /// Staking pool token account.
-    pub spt: Pubkey,
-    /// Mega staking pool token account.
-    pub spt_mega: Pubkey,
+    /// Sets of balances owned by the Member. Two for now: main and locked.
+    pub balances: Vec<BalanceSandbox>,
     /// Next position in the rewards event queue to process.
     pub rewards_cursor: u32,
-    /// The clock timestamp of the last time this account staked/unstaked.
+    /// The clock timestamp of the last time this account staked or switched
+    /// entities.
+    // TODO: For v2 we should keep a queue tracking each time the member staked
+    //       or unstaked. Then reward vendors can deduce the amount members
+    //       had staked at time of reward. For now, we use the last_stake_ts
+    //       as an overly harsh mechanism for ensuring rewards are only
+    //       given to those that were staked at the right time.
     pub last_stake_ts: i64,
 }
 
-impl Member {
-    pub fn can_afford(&self, spt_amount: u64, mega: bool) -> bool {
-        if mega {
-            if self.balances.current_mega_deposit < spt_amount {
-                return false;
-            }
-        } else {
-            if self.balances.current_deposit < spt_amount {
-                return false;
-            }
-        }
-        true
-    }
-
-    pub fn can_withdraw(
-        &self,
-        amount: u64,
-        mega: bool,
-        owner: Pubkey,
-    ) -> Result<bool, RegistryError> {
-        let delegate = self.balances.delegate.owner == owner;
-
-        // In both cases, we need to be able to 1) cover the withdrawal
-        // with our *current* stake intent vault balances and also
-        // cover any future withdrawals needed to cover the cost basis
-        // of the delegate account. That is, all locked SRM/MSRM coming into the
-        // program must eventually go back.
-        if mega {
-            if amount > self.balances.current_mega_deposit {
-                return Err(RegistryErrorCode::InsufficientStakeIntentBalance)?;
-            }
-            if !delegate {
-                let remaining_msrm =
-                    self.balances.spt_mega_amount + self.balances.current_mega_deposit - amount;
-                if remaining_msrm < self.balances.delegate.mega_deposit {
-                    return Err(RegistryErrorCode::InsufficientBalance)?;
-                }
-            }
-        } else {
-            if amount > self.balances.current_deposit {
-                return Err(RegistryErrorCode::InsufficientStakeIntentBalance)?;
-            }
-            if !delegate {
-                let remaining_srm =
-                    self.balances.spt_amount + self.balances.current_deposit - amount;
-                if remaining_srm < self.balances.delegate.deposit {
-                    return Err(RegistryErrorCode::InsufficientBalance)?;
-                }
-            }
-        }
-
-        Ok(true)
-    }
-
-    pub fn stake_is_empty(&self) -> bool {
-        self.balances.spt_amount == 0 && self.balances.spt_mega_amount == 0
-    }
-
-    pub fn set_delegate(&mut self, delegate: Pubkey) {
-        assert!(self.balances.delegate.deposit == 0);
-        assert!(self.balances.delegate.mega_deposit == 0);
-        self.balances.delegate = OriginalDeposit::new(delegate);
-    }
-
-    pub fn did_deposit(&mut self, amount: u64, mega: bool, owner: Pubkey) {
-        if mega {
-            self.balances.current_mega_deposit += amount;
-        } else {
-            self.balances.current_deposit += amount;
-        }
-
-        let delegate = owner == self.balances.delegate.owner;
-        if delegate {
-            if mega {
-                self.balances.delegate.mega_deposit += amount;
-            } else {
-                self.balances.delegate.deposit += amount;
-            }
-        } else {
-            if mega {
-                self.balances.main.mega_deposit += amount;
-            } else {
-                self.balances.main.deposit += amount;
-            }
+impl Default for Member {
+    fn default() -> Member {
+        Member {
+            initialized: false,
+            registrar: Pubkey::new_from_array([0; 32]),
+            beneficiary: Pubkey::new_from_array([0; 32]),
+            entity: Pubkey::new_from_array([0; 32]),
+            metadata: Pubkey::new_from_array([0; 32]),
+            balances: vec![BalanceSandbox::default(), BalanceSandbox::default()],
+            rewards_cursor: 0,
+            last_stake_ts: 0,
         }
     }
+}
 
-    pub fn did_withdraw(&mut self, amount: u64, mega: bool, owner: Pubkey) {
-        if mega {
-            self.balances.current_mega_deposit -= amount;
-        } else {
-            self.balances.current_deposit -= amount;
-        }
-
-        let delegate = owner == self.balances.delegate.owner;
-        if delegate {
-            if mega {
-                self.balances.delegate.mega_deposit -= amount;
-            } else {
-                self.balances.delegate.deposit -= amount;
-            }
-        } else {
-            if mega {
-                self.balances.main.mega_deposit -= amount;
-            } else {
-                self.balances.main.deposit -= amount;
-            }
-        }
-    }
-
-    pub fn spt_did_stake(&mut self, amount: u64, mega: bool) -> Result<(), RegistryError> {
-        if mega {
-            self.balances.spt_mega_amount =
-                self.balances.spt_mega_amount.checked_add(amount).unwrap();
-            self.balances.current_mega_deposit = self
-                .balances
-                .current_mega_deposit
-                .checked_sub(amount)
-                .unwrap();
-        } else {
-            self.balances.spt_amount = self.balances.spt_amount.checked_add(amount).unwrap();
-            self.balances.current_deposit =
-                self.balances.current_deposit.checked_sub(amount).unwrap();
-        }
-
-        Ok(())
-    }
-
-    pub fn spt_did_unstake_start(&mut self, spt_amount: u64, mega: bool) {
-        if mega {
-            self.balances.spt_mega_amount = self
-                .balances
-                .spt_mega_amount
-                .checked_sub(spt_amount)
-                .unwrap();
-        } else {
-            self.balances.spt_amount = self.balances.spt_amount.checked_sub(spt_amount).unwrap();
-        }
-    }
-
-    pub fn spt_did_unstake_end(&mut self, amount: u64, is_mega: bool) {
-        if is_mega {
-            self.balances.current_mega_deposit += amount;
-        } else {
-            self.balances.current_deposit += amount;
-        }
-    }
+// BalanceSandbox defines isolated funds that can only be deposited/withdrawn
+// into the program if the `owner` signs off on the transaction.
+//
+// Once controlled by the program, the associated `Member` account's beneficiary
+// can send funds to/from any of the accounts within the sandbox, e.g., to
+// stake.
+#[derive(Default, Debug, BorshSerialize, BorshDeserialize)]
+pub struct BalanceSandbox {
+    pub owner: Pubkey,
+    // Staking pool token.
+    pub spt: Pubkey,
+    pub spt_mega: Pubkey,
+    // Free balance (deposit) vaults.
+    pub vault: Pubkey,
+    pub vault_mega: Pubkey,
+    // Stake vaults.
+    pub vault_stake: Pubkey,
+    pub vault_stake_mega: Pubkey,
+    // Pending withdrawal vaults.
+    pub vault_pending_withdrawal: Pubkey,
+    pub vault_pending_withdrawal_mega: Pubkey,
 }
 
 serum_common::packable!(Member);
-
-#[derive(Default, Debug, BorshSerialize, BorshDeserialize, BorshSchema)]
-pub struct MemberBalances {
-    // The amount of SPT tokens in the SRM pool.
-    pub spt_amount: u64,
-    // The amount of SPT tokens in the MSRM pool.
-    pub spt_mega_amount: u64,
-    // SRM in the current_deposit vault.
-    pub current_deposit: u64,
-    // MSRM in the current_deposit vault.
-    pub current_mega_deposit: u64,
-    // Original deposit.
-    pub main: OriginalDeposit,
-    // Original deposit from delegate.
-    pub delegate: OriginalDeposit,
-}
-
-impl MemberBalances {
-    pub fn new(beneficiary: Pubkey, delegate: Pubkey) -> Self {
-        Self {
-            spt_amount: 0,
-            spt_mega_amount: 0,
-            current_deposit: 0,
-            current_mega_deposit: 0,
-            main: OriginalDeposit::new(beneficiary),
-            delegate: OriginalDeposit::new(delegate),
-        }
-    }
-
-    pub fn stake_is_empty(&self) -> bool {
-        self.spt_amount + self.spt_mega_amount == 0
-    }
-}
-
-// OriginalDeposit tracks the amount of tokens originally deposited into a Member
-// account. These funds might be in either the deposit vault or the pool.
-//
-// It is used to track the amount of funds that must be returned to delegate
-// programs, e.g., the lockup program.
-#[derive(Default, Debug, BorshSerialize, BorshDeserialize, BorshSchema)]
-pub struct OriginalDeposit {
-    pub owner: Pubkey,
-    pub deposit: u64,
-    pub mega_deposit: u64,
-}
-
-impl OriginalDeposit {
-    pub fn new(owner: Pubkey) -> Self {
-        Self {
-            owner,
-            deposit: 0,
-            mega_deposit: 0,
-        }
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.deposit + self.mega_deposit == 0
-    }
-}

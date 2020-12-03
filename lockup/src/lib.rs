@@ -12,8 +12,6 @@ pub mod error;
 pub mod instruction {
     use super::*;
 
-    pub const TAG: u64 = 0x9c52b5632b5f74d2;
-
     #[derive(Debug, BorshSerialize, BorshDeserialize, BorshSchema)]
     pub enum LockupInstruction {
         /// Accounts:
