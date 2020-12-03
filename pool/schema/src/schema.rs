@@ -70,13 +70,20 @@ macro_rules! declare_tag {
     };
 }
 
+pub mod fee_owner {
+    use solana_sdk::declare_id;
+    declare_id!("DeqYsmBd9BnrbgUwQjVH4sQWK71dEgE6eoZFw3Rp4ftE");
+}
+
 declare_tag!(PoolStateTag, u64, 0x16a7874c7fb2301b);
 
 #[derive(Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub struct PoolState {
     pub tag: PoolStateTag,
 
+    /// Token mint account for the pool token.
     pub pool_token_mint: Address,
+    /// Mint and vaults for the assets in the pool.
     pub assets: Vec<AssetInfo>,
 
     /// Mint authority for the pool token and owner for the assets in the pool.
@@ -89,6 +96,9 @@ pub struct PoolState {
 
     /// User-friendly pool name.
     pub name: String,
+
+    /// Vault for fees collected by the pool. Mint is the pool token mint.
+    pub fee_vault: Address,
 
     /// Meaning depends on the pool implementation.
     pub admin_key: Option<Address>,
@@ -127,6 +137,7 @@ pub enum PoolRequestInner {
     /// - `[writable]` Pool token mint (`PoolState::pool_token_mint`)
     /// - `[writable]` Pool vault account for each of the N pool assets (`AssetInfo::vault_address`)
     /// - `[]` Pool vault authority (`PoolState::vault_signer`)
+    /// - `[]` Pool fee vault
     /// - `[]` Rent sysvar
     /// - `[]/[writable]` Any additional accounts needed to initialize the pool
     Initialize(InitializePoolRequest),
@@ -157,6 +168,8 @@ pub enum PoolRequestInner {
     /// - `[writable]` User pool token account
     /// - `[writable]` User account for each of the N pool assets
     /// - `[signer]` Authority for user accounts
+    /// - `[writable]` Pool fee vault
+    /// - `[writable]` Referrer fee vault (can be the same as the pool fee vault)
     /// - `[]` spl-token program
     /// - `[]/[writable]` Accounts in `PoolState::account_params`
     Execute(PoolAction),

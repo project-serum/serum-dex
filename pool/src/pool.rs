@@ -94,37 +94,8 @@ pub trait Pool {
         }
 
         // push out shares
-        {
-            let mint_pubkey = context.pool_token_mint.key;
-            let account_pubkey = user_accounts.pool_token_account.key;
-            let owner_pubkey = context.pool_authority.key;
-            let signer_pubkeys = &[];
+        context.mint_tokens(state, request)?;
 
-            let instruction = spl_token::instruction::mint_to(
-                &spl_token::ID,
-                mint_pubkey,
-                account_pubkey,
-                owner_pubkey,
-                signer_pubkeys,
-                request,
-            )?;
-
-            let account_infos = &[
-                user_accounts.pool_token_account.clone(),
-                context.pool_token_mint.clone(),
-                context.pool_authority.clone(),
-                spl_token_program.clone(),
-            ];
-
-            program::invoke_signed(
-                &instruction,
-                account_infos,
-                &[&[
-                    context.pool_account.key.as_ref(),
-                    &[state.vault_signer_nonce],
-                ]],
-            )?;
-        };
         Ok(())
     }
 
