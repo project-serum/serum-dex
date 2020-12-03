@@ -72,6 +72,10 @@ pub enum RegistryErrorCode {
     InvalidExpiry = 58,
     InvalidEndTs = 59,
     DepositorOwnerDelegateMismatch = 60,
+    InvalidMint = 61,
+    InvalidPoolToken = 62,
+    InvariantViolation = 63,
+    InsufficientReward = 64,
     Unknown = 1000,
 }
 

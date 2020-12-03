@@ -36,14 +36,6 @@ impl<'a> Ring<'a, RewardEvent> for RewardEventQueue<'a> {
 
 #[derive(Debug, BorshSerialize, BorshDeserialize)]
 pub enum RewardEvent {
-    // Rewards transferred directly to the pool's vault.
-    //
-    // Amounts must align with the pool's basket "quantity".
-    PoolDrop {
-        from: Pubkey,
-        totals: Vec<u64>,
-        pool: Pubkey,
-    },
     LockedAlloc {
         from: Pubkey,
         total: u64,

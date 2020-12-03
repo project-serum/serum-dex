@@ -10,7 +10,6 @@ members = [
     "registry",
     "registry/cli",
     "registry/client",
-    "registry/stake",
     "registry/meta-entity",
     "lockup",
     "lockup/cli",
@@ -28,7 +27,6 @@ exclude = [
     "retbuf",
     "registry/program",
     "registry/meta-entity/program",
-    "registry/stake/program",
     "retbuf",
     "lockup/program",
 ]

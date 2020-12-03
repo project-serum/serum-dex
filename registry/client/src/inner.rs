@@ -1,4 +1,3 @@
-use crate::{MEGA_POOL_STATE_SIZE, POOL_STATE_SIZE};
 use serum_common::client::rpc;
 use serum_common::pack::Pack;
 use serum_registry::accounts;
@@ -18,23 +17,8 @@ pub fn initialize(
     withdrawal_timelock: i64,
     deactivation_timelock_premium: i64,
     reward_activation_threshold: u64,
-    pool_program_id: &Pubkey,
-    pool_token_decimals: u8,
     max_stake_per_entity: u64,
-) -> Result<
-    (
-        Signature,
-        Signature,
-        Pubkey,
-        Pubkey,
-        u8,
-        Pubkey,
-        u8,
-        Pubkey,
-        u8,
-    ),
-    InnerClientError,
-> {
+) -> Result<(Signature, Pubkey, Pubkey, u8, Pubkey, Pubkey), InnerClientError> {
     let reward_event_q = Keypair::generate(&mut OsRng);
     let registrar_kp = Keypair::generate(&mut OsRng);
     let (registrar_vault_authority, nonce) =
@@ -56,16 +40,45 @@ pub fn initialize(
     )
     .map_err(|e| InnerClientError::RawError(e.to_string()))?;
 
-    let pool_state_kp = Keypair::generate(&mut OsRng);
-    let (pool_vault_authority, pool_vault_nonce) =
-        Pubkey::find_program_address(&[pool_state_kp.pubkey().as_ref()], pool_program_id);
+    let pool_vault = rpc::create_token_account(
+        client.rpc(),
+        mint,
+        &registrar_vault_authority,
+        client.payer(),
+    )
+    .map_err(|e| InnerClientError::RawError(e.to_string()))?
+    .pubkey();
+    let mega_pool_vault = rpc::create_token_account(
+        client.rpc(),
+        mega_mint,
+        &registrar_vault_authority,
+        client.payer(),
+    )
+    .map_err(|e| InnerClientError::RawError(e.to_string()))?
+    .pubkey();
+    let decimals = 6; // TODO: decide on this.
+    let pool_mint = rpc::new_mint(
+        client.rpc(),
+        client.payer(),
+        &registrar_vault_authority,
+        decimals,
+    )
+    .map_err(|e| InnerClientError::RawError(e.to_string()))?
+    .0
+    .pubkey();
 
-    let mega_pool_state_kp = Keypair::generate(&mut OsRng);
-    let (mega_pool_vault_authority, mega_pool_vault_nonce) =
-        Pubkey::find_program_address(&[mega_pool_state_kp.pubkey().as_ref()], pool_program_id);
+    let mega_pool_mint = rpc::new_mint(
+        client.rpc(),
+        client.payer(),
+        &registrar_vault_authority,
+        decimals,
+    )
+    .map_err(|e| InnerClientError::RawError(e.to_string()))?
+    .0
+    .pubkey();
 
     // Build the instructions.
-    let (create_instrs, init_instrs) = {
+    let ixs = {
         let create_registrar_acc_instr = {
             let lamports = client
                 .rpc()
@@ -79,96 +92,6 @@ pub fn initialize(
                 client.program(),
             )
         };
-        // Mint pool.
-
-        let create_pool_acc_instr = {
-            let lamports = client
-                .rpc()
-                .get_minimum_balance_for_rent_exemption(*POOL_STATE_SIZE as usize)
-                .map_err(InnerClientError::RpcError)?;
-            system_instruction::create_account(
-                &client.payer().pubkey(),
-                &pool_state_kp.pubkey(),
-                lamports,
-                *POOL_STATE_SIZE,
-                pool_program_id,
-            )
-        };
-        let create_mega_pool_acc_instr = {
-            let lamports = client
-                .rpc()
-                .get_minimum_balance_for_rent_exemption(*MEGA_POOL_STATE_SIZE as usize)
-                .map_err(InnerClientError::RpcError)?;
-            system_instruction::create_account(
-                &client.payer().pubkey(),
-                &mega_pool_state_kp.pubkey(),
-                lamports,
-                *MEGA_POOL_STATE_SIZE,
-                pool_program_id,
-            )
-        };
-        let initialize_pool_instr = {
-            let pool_asset_mint = mint;
-            let pool_asset_vault = rpc::create_token_account(
-                client.rpc(),
-                pool_asset_mint,
-                &pool_vault_authority,
-                client.payer(),
-            )
-            .map_err(|e| InnerClientError::RawError(e.to_string()))?;
-            let (pool_token_mint, _tx_sig) = rpc::new_mint(
-                client.rpc(),
-                client.payer(),
-                &pool_vault_authority,
-                pool_token_decimals,
-            )
-            .map_err(|e| InnerClientError::RawError(e.to_string()))?;
-            serum_stake::instruction::initialize(
-                pool_program_id,
-                &pool_state_kp.pubkey(),
-                &pool_token_mint.pubkey(),
-                vec![&pool_asset_vault.pubkey()],
-                &pool_vault_authority,
-                &registrar_vault_authority,
-                pool_vault_nonce,
-            )
-        };
-        // Mega pool has both SRM and MSRM in the basket.
-        let initialize_mega_pool_instr = {
-            let pool_asset_mint = mint;
-            let mega_pool_asset_mint = mega_mint;
-            let pool_asset_vault = rpc::create_token_account(
-                client.rpc(),
-                pool_asset_mint,
-                &mega_pool_vault_authority,
-                client.payer(),
-            )
-            .map_err(|e| InnerClientError::RawError(e.to_string()))?;
-            let mega_pool_asset_vault = rpc::create_token_account(
-                client.rpc(),
-                mega_pool_asset_mint,
-                &mega_pool_vault_authority,
-                client.payer(),
-            )
-            .map_err(|e| InnerClientError::RawError(e.to_string()))?;
-            let (mega_pool_token_mint, _tx_sig) = rpc::new_mint(
-                client.rpc(),
-                client.payer(),
-                &mega_pool_vault_authority,
-                pool_token_decimals,
-            )
-            .map_err(|e| InnerClientError::RawError(e.to_string()))?;
-            serum_stake::instruction::initialize(
-                pool_program_id,
-                &mega_pool_state_kp.pubkey(),
-                &mega_pool_token_mint.pubkey(),
-                vec![&pool_asset_vault.pubkey(), &mega_pool_asset_vault.pubkey()],
-                &mega_pool_vault_authority,
-                &registrar_vault_authority,
-                mega_pool_vault_nonce,
-            )
-        };
-
         let create_reward_event_q_instr = {
             let data_size = RewardEventQueue::buffer_size(RewardEventQueue::RING_CAPACITY);
             let lamports = client
@@ -186,11 +109,15 @@ pub fn initialize(
         let initialize_registrar_instr = {
             let accounts = [
                 AccountMeta::new(registrar_kp.pubkey(), false),
+                // Deposit vaults.
                 AccountMeta::new_readonly(srm_vault.pubkey(), false),
                 AccountMeta::new_readonly(msrm_vault.pubkey(), false),
-                AccountMeta::new_readonly(pool_state_kp.pubkey(), false),
-                AccountMeta::new_readonly(mega_pool_state_kp.pubkey(), false),
-                AccountMeta::new_readonly(*pool_program_id, false),
+                // Pool vaults.
+                AccountMeta::new_readonly(pool_vault, false),
+                AccountMeta::new_readonly(mega_pool_vault, false),
+                // Pool mints.
+                AccountMeta::new_readonly(pool_mint, false),
+                AccountMeta::new_readonly(mega_pool_mint, false),
                 AccountMeta::new(reward_event_q.pubkey(), false),
                 AccountMeta::new_readonly(solana_sdk::sysvar::rent::id(), false),
             ];
@@ -206,79 +133,38 @@ pub fn initialize(
             )
         };
 
-        (
-            vec![
-                create_reward_event_q_instr,
-                create_registrar_acc_instr,
-                create_pool_acc_instr,
-                create_mega_pool_acc_instr,
-            ],
-            vec![
-                initialize_pool_instr,
-                initialize_mega_pool_instr,
-                initialize_registrar_instr,
-            ],
-        )
+        vec![
+            create_reward_event_q_instr,
+            create_registrar_acc_instr,
+            initialize_registrar_instr,
+        ]
     };
-
-    // The transaction is too big, so we break it up into two.
-    //
-    // Technically this is not safe, since someone can claim the created
-    // accounts before they're initialized. However, the programs check for
-    // this and will reject initialization if so. Furthermore, we do a one
-    // time initialization so in practice it's not a problem. The worse,
-    // that can hapen is that someon steals our accounts, in which case we4
-    // lose the SOL required to create them, and then we retry the
-    // initialzation with new accounts.
 
     let (recent_hash, _fee_calc) = client
         .rpc()
         .get_recent_blockhash()
         .map_err(|e| InnerClientError::RawError(e.to_string()))?;
-    let tx_1 = Transaction::new_signed_with_payer(
-        &create_instrs,
+    let tx = Transaction::new_signed_with_payer(
+        &ixs,
         Some(&client.payer().pubkey()),
-        &vec![
-            client.payer(),
-            &reward_event_q,
-            &registrar_kp,
-            &pool_state_kp,
-            &mega_pool_state_kp,
-        ],
+        &vec![client.payer(), &reward_event_q, &registrar_kp],
         recent_hash,
     );
-    let tx_2 = Transaction::new_signed_with_payer(
-        &init_instrs,
-        Some(&client.payer().pubkey()),
-        &[client.payer()],
-        recent_hash,
-    );
-    let sig_1 = client
+    let sig = client
         .rpc()
         .send_and_confirm_transaction_with_spinner_and_config(
-            &tx_1,
-            client.options().commitment,
-            client.options().tx,
-        )
-        .map_err(InnerClientError::RpcError)?;
-    let sig_2 = client
-        .rpc()
-        .send_and_confirm_transaction_with_spinner_and_config(
-            &tx_2,
+            &tx,
             client.options().commitment,
             client.options().tx,
         )
         .map_err(InnerClientError::RpcError)?;
     Ok((
-        sig_1,
-        sig_2,
+        sig,
         registrar_kp.pubkey(),
         reward_event_q.pubkey(),
         nonce,
-        pool_state_kp.pubkey(),
-        pool_vault_nonce,
-        mega_pool_state_kp.pubkey(),
-        mega_pool_vault_nonce,
+        pool_vault,
+        mega_pool_vault,
     ))
 }
 

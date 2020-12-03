@@ -43,10 +43,6 @@ pub enum SubCommand {
         #[clap(short, long, default_value = "10_000_000")]
         reward_activation_threshold: u64,
         #[clap(short, long)]
-        pool_program_id: Pubkey,
-        #[clap(short = 'd', long)]
-        pool_token_decimals: u8,
-        #[clap(short, long)]
         max_stake_per_entity: u64,
     },
     /// Creates and registers a delegated staked node entity.
@@ -118,8 +114,6 @@ pub fn run(opts: Opts) -> Result<()> {
             withdrawal_timelock,
             deactivation_timelock,
             reward_activation_threshold,
-            pool_program_id,
-            pool_token_decimals,
             max_stake_per_entity,
         } => init(
             ctx,
@@ -127,8 +121,6 @@ pub fn run(opts: Opts) -> Result<()> {
             withdrawal_timelock,
             deactivation_timelock,
             reward_activation_threshold,
-            pool_program_id,
-            pool_token_decimals,
             max_stake_per_entity,
         ),
         SubCommand::CreateEntity {
@@ -267,8 +259,6 @@ pub fn init(
     withdrawal_timelock: i64,
     deactivation_timelock: i64,
     reward_activation_threshold: u64,
-    pool_program_id: Pubkey,
-    pool_token_decimals: u8,
     max_stake_per_entity: u64,
 ) -> Result<()> {
     let registry_pid = registry_pid.ok_or(anyhow!(
@@ -280,8 +270,6 @@ pub fn init(
     let registrar_authority = ctx.wallet()?.pubkey();
     let InitializeResponse {
         registrar,
-        pool,
-        mega_pool,
         reward_event_q,
         nonce,
         ..
@@ -292,8 +280,6 @@ pub fn init(
         mint: ctx.srm_mint,
         mega_mint: ctx.msrm_mint,
         reward_activation_threshold,
-        pool_program_id,
-        pool_token_decimals,
         max_stake_per_entity,
     })?;
 
@@ -302,8 +288,6 @@ pub fn init(
         serde_json::json!({
             "registrar": registrar.to_string(),
             "rewardEventQueue": reward_event_q.to_string(),
-            "pool": pool.to_string(),
-            "megaPool": mega_pool.to_string(),
             "nonce": nonce.to_string(),
         })
         .to_string()

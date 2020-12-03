@@ -263,7 +263,6 @@ impl Client {
             stake_beneficiary,
             vesting,
             safe,
-            pool_program_id,
             is_mega, // TODO: remove.
         } = req;
         let relay_data = {
@@ -289,15 +288,13 @@ impl Client {
             false => r.vault,
             true => r.mega_vault,
         };
-        let mut relay_accounts = vec![
+        let relay_accounts = vec![
             AccountMeta::new(member, false),
             AccountMeta::new_readonly(stake_beneficiary.pubkey(), true),
             AccountMeta::new(entity, false),
             AccountMeta::new_readonly(registrar, false),
             AccountMeta::new_readonly(solana_sdk::sysvar::clock::ID, false),
         ];
-        let (pool_accs, _) = r_client.common_pool_accounts(pool_program_id, registrar, false)?;
-        relay_accounts.extend_from_slice(&pool_accs);
 
         let resp = self.whitelist_withdraw(WhitelistWithdrawRequest {
             beneficiary,
@@ -329,7 +326,6 @@ impl Client {
             stake_beneficiary,
             vesting,
             safe,
-            pool_program_id,
         } = req;
         let relay_data = {
             let instr = RegistryInstruction::Withdraw { amount };
@@ -354,15 +350,13 @@ impl Client {
             false => r.vault,
             true => r.mega_vault,
         };
-        let mut relay_accounts = vec![
+        let relay_accounts = vec![
             AccountMeta::new(member, false),
             AccountMeta::new_readonly(stake_beneficiary.pubkey(), true),
             AccountMeta::new(entity, false),
             AccountMeta::new_readonly(registrar, false),
             AccountMeta::new_readonly(solana_sdk::sysvar::clock::ID, false),
         ];
-        let (pool_accs, _) = r_client.common_pool_accounts(pool_program_id, registrar, is_mega)?;
-        relay_accounts.extend_from_slice(&pool_accs);
 
         let resp = self.whitelist_deposit(WhitelistDepositRequest {
             beneficiary,
@@ -588,7 +582,6 @@ pub struct RegistryDepositRequest<'a> {
     pub safe: Pubkey,
     pub beneficiary: &'a Keypair,
     pub stake_beneficiary: &'a Keypair,
-    pub pool_program_id: Pubkey,
     pub is_mega: bool,
 }
 
@@ -607,7 +600,6 @@ pub struct RegistryWithdrawRequest<'a> {
     pub safe: Pubkey,
     pub beneficiary: &'a Keypair,
     pub stake_beneficiary: &'a Keypair,
-    pub pool_program_id: Pubkey,
 }
 
 pub struct RegistryWithdrawResponse {

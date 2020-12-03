@@ -1,5 +1,4 @@
 use crate::common::entity::{with_entity, EntityContext};
-use crate::common::pool::{pool_check, Pool, PoolConfig};
 use serum_common::pack::Pack;
 use serum_common::program::invoke_token_transfer;
 use serum_registry::access_control;
@@ -36,14 +35,11 @@ pub fn handler(
     let registrar_acc_info = next_account_info(acc_infos)?;
     let clock_acc_info = next_account_info(acc_infos)?;
 
-    let pool = &Pool::parse_accounts(acc_infos, PoolConfig::GetBasket)?;
-
     let ctx = EntityContext {
         entity_acc_info,
         registrar_acc_info,
         clock_acc_info,
         program_id,
-        prices: pool.prices(),
     };
     with_entity(ctx, &mut |entity: &mut Entity,
                            registrar: &Registrar,
@@ -60,7 +56,6 @@ pub fn handler(
             registrar,
             depositor_authority_acc_info,
             amount,
-            pool,
             delegate,
         })?;
         Member::unpack_mut(
@@ -102,7 +97,6 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
         depositor_authority_acc_info,
         program_id,
         amount,
-        pool,
         delegate,
     } = req;
 
@@ -128,7 +122,6 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
         &registrar,
         program_id,
     )?;
-    pool_check(program_id, pool, registrar_acc_info, &registrar, &member)?;
 
     // Withdraw specific.
     //
@@ -139,7 +132,7 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
     }
     // Do we have enough funds for the withdrawal?
     let is_mega = registrar.is_mega(*vault_acc_info.key)?;
-    if !member.can_withdraw(&pool.prices(), amount, is_mega, depositor.owner)? {
+    if !member.can_withdraw(amount, is_mega, depositor.owner)? {
         return Err(RegistryErrorCode::InsufficientBalance)?;
     }
 
@@ -194,7 +187,6 @@ struct AccessControlRequest<'a, 'b, 'c> {
     entity_acc_info: &'a AccountInfo<'b>,
     vault_acc_info: &'a AccountInfo<'b>,
     program_id: &'a Pubkey,
-    pool: &'c Pool<'a, 'b>,
     registrar: &'c Registrar,
     amount: u64,
     delegate: bool,

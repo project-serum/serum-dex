@@ -10,9 +10,6 @@ lazy_static::lazy_static! {
                 .expect("Vesting has a fixed size");
 }
 
-/// PendingWithdrawal accounts are created to initiate a withdrawal.
-/// Once the `end_ts` passes, the PendingWithdrawal can be burned in exchange
-/// for the specified withdrawal amount.
 #[derive(Debug, Default, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub struct PendingWithdrawal {
     pub initialized: bool,
@@ -28,16 +25,6 @@ pub struct PendingWithdrawal {
     pub end_ts: i64,
     /// The number of staking pool tokens redeemed.
     pub spt_amount: u64,
-    /// Payment to be sent to the member account's main owner.
-    pub payment: PendingPayment,
-}
-
-#[derive(Debug, Default, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
-pub struct PendingPayment {
-    /// The amount of the underlying asset to be received (SRM).
-    pub asset_amount: u64,
-    /// The amount of the underlying mega asset to be received (MSRM).
-    pub mega_asset_amount: u64,
 }
 
 serum_common::packable!(PendingWithdrawal);

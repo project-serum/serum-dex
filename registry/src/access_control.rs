@@ -1,7 +1,7 @@
 use crate::accounts::reward_queue::Ring;
 use crate::accounts::{
-    vault, Entity, Generation, LockedRewardVendor, Member, PendingWithdrawal, Registrar,
-    RewardEventQueue, UnlockedRewardVendor,
+    vault, Entity, LockedRewardVendor, Member, PendingWithdrawal, Registrar, RewardEventQueue,
+    UnlockedRewardVendor,
 };
 use crate::error::{RegistryError, RegistryErrorCode};
 use serum_common::pack::*;
@@ -120,6 +120,30 @@ pub fn member_account(
     Ok(m)
 }
 
+pub fn member_belongs_to(
+    acc_info: &AccountInfo,
+    registrar_acc_info: &AccountInfo,
+    entity_acc_info: &AccountInfo,
+    program_id: &Pubkey,
+) -> Result<Member, RegistryError> {
+    if acc_info.owner != program_id {
+        return Err(RegistryErrorCode::InvalidOwner)?;
+    }
+
+    let m = Member::unpack(&acc_info.try_borrow_data()?)?;
+    if !m.initialized {
+        return Err(RegistryErrorCode::NotInitialized)?;
+    }
+    if &m.registrar != registrar_acc_info.key {
+        return Err(RegistryErrorCode::MemberRegistrarMismatch)?;
+    }
+    if &m.entity != entity_acc_info.key {
+        return Err(RegistryErrorCode::MemberEntityMismatch)?;
+    }
+
+    Ok(m)
+}
+
 pub fn member_join(
     acc_info: &AccountInfo,
     entity: &AccountInfo,
@@ -173,45 +197,65 @@ pub fn reward_event_q<'a, 'b, 'c>(
     Ok(q)
 }
 
-pub fn generation(
-    generation_acc_info: &AccountInfo,
-    entity_acc_info: &AccountInfo,
-    member: &Member,
-    program_id: &Pubkey,
-) -> Result<Generation, RegistryError> {
-    let g = Generation::unpack(&generation_acc_info.try_borrow_data()?)?;
-    generation_check(
-        program_id,
-        &g,
-        generation_acc_info,
-        entity_acc_info,
-        member.generation,
-    )?;
+pub fn pool_vault(
+    pool_vault_acc_info: &AccountInfo,
+    registrar: &Registrar,
+) -> Result<(TokenAccount, bool), RegistryError> {
+    let v = token_account(pool_vault_acc_info)?;
 
-    Ok(g)
+    if pool_vault_acc_info.key != &registrar.pool_vault
+        && pool_vault_acc_info.key != &registrar.pool_vault_mega
+    {
+        return Err(RegistryErrorCode::InvalidVault)?;
+    }
+
+    let is_mega = pool_vault_acc_info.key == &registrar.pool_vault_mega;
+
+    Ok((v, is_mega))
 }
 
-pub fn generation_check(
-    program_id: &Pubkey,
-    g: &Generation,
-    generation_acc_info: &AccountInfo,
-    entity_acc_info: &AccountInfo,
-    expected_generation: u64,
-) -> Result<(), RegistryError> {
-    if generation_acc_info.owner != program_id {
-        return Err(RegistryErrorCode::InvalidOwner)?;
-    }
-    if !g.initialized {
-        return Err(RegistryErrorCode::NotInitialized)?;
-    }
-    if g.generation != expected_generation {
-        return Err(RegistryErrorCode::InvalidGenerationNumber)?;
-    }
-    if &g.entity != entity_acc_info.key {
-        return Err(RegistryErrorCode::GenerationEntityMismatch)?;
+pub fn pool_mint(
+    pool_mint_acc_info: &AccountInfo,
+    registrar: &Registrar,
+    is_mega: bool,
+) -> Result<Mint, RegistryError> {
+    if is_mega {
+        if pool_mint_acc_info.key != &registrar.pool_mint_mega {
+            return Err(RegistryErrorCode::InvalidPoolTokenMint)?;
+        }
+    } else {
+        if pool_mint_acc_info.key != &registrar.pool_mint {
+            return Err(RegistryErrorCode::InvalidPoolTokenMint)?;
+        }
     }
 
-    Ok(())
+    let mint = mint(pool_mint_acc_info)?;
+
+    Ok(mint)
+}
+
+pub fn pool_token(
+    pool_token_acc_info: &AccountInfo,
+    pool_mint_acc_info: &AccountInfo,
+    member: &Member,
+    is_mega: bool,
+) -> Result<TokenAccount, RegistryError> {
+    if is_mega {
+        if &member.spt_mega != pool_token_acc_info.key {
+            return Err(RegistryErrorCode::InvalidPoolToken)?;
+        }
+    } else {
+        if &member.spt != pool_token_acc_info.key {
+            return Err(RegistryErrorCode::InvalidPoolToken)?;
+        }
+    }
+
+    let token = token_account(pool_token_acc_info)?;
+    if &token.mint != pool_mint_acc_info.key {
+        return Err(RegistryErrorCode::InvalidPoolTokenMint)?;
+    }
+
+    Ok(token)
 }
 
 pub fn vault_authenticated(
@@ -330,16 +374,20 @@ pub fn unlocked_reward_vendor(
 }
 
 pub fn token(acc_info: &AccountInfo, authority: &Pubkey) -> Result<TokenAccount, RegistryError> {
+    let token = token_account(acc_info)?;
+    if token.owner != *authority {
+        return Err(RegistryErrorCode::InvalidOwner)?;
+    }
+    Ok(token)
+}
+
+pub fn token_account(acc_info: &AccountInfo) -> Result<TokenAccount, RegistryError> {
     if *acc_info.owner != spl_token::ID {
         return Err(RegistryErrorCode::InvalidAccountOwner)?;
     }
-
     let token = TokenAccount::unpack(&acc_info.try_borrow_data()?)?;
     if token.state != spl_token::state::AccountState::Initialized {
         return Err(RegistryErrorCode::NotInitialized)?;
-    }
-    if token.owner != *authority {
-        return Err(RegistryErrorCode::InvalidOwner)?;
     }
     Ok(token)
 }

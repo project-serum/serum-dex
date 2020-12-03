@@ -1,7 +1,5 @@
-use borsh::BorshDeserialize;
 use serum_common::pack::Pack;
 use serum_common::program::invoke_token_transfer;
-use serum_pool_schema::PoolState;
 use serum_registry::access_control;
 use serum_registry::accounts::reward_queue::Ring;
 use serum_registry::accounts::{LockedRewardVendor, RewardEvent, RewardEventQueue};
@@ -34,7 +32,7 @@ pub fn handler(
     let registrar_acc_info = next_account_info(acc_infos)?;
     let depositor_acc_info = next_account_info(acc_infos)?;
     let depositor_owner_acc_info = next_account_info(acc_infos)?;
-    let pool_acc_info = next_account_info(acc_infos)?;
+    let pool_vault_acc_info = next_account_info(acc_infos)?;
     let pool_token_mint_acc_info = next_account_info(acc_infos)?;
     let vendor_acc_info = next_account_info(acc_infos)?;
     let vendor_vault_acc_info = next_account_info(acc_infos)?;
@@ -47,7 +45,7 @@ pub fn handler(
     } = access_control(AccessControlRequest {
         program_id,
         registrar_acc_info,
-        pool_acc_info,
+        pool_vault_acc_info,
         pool_token_mint_acc_info,
         vendor_acc_info,
         vendor_vault_acc_info,
@@ -55,6 +53,7 @@ pub fn handler(
         expiry_ts,
         end_ts,
         nonce,
+        total,
     })?;
 
     LockedRewardVendor::unpack_mut(
@@ -71,7 +70,7 @@ pub fn handler(
                 vendor_vault_acc_info,
                 reward_event_q_acc_info,
                 registrar_acc_info,
-                pool_acc_info,
+                pool_vault_acc_info,
                 depositor_acc_info,
                 depositor_owner_acc_info,
                 token_program_acc_info,
@@ -92,7 +91,7 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
     let AccessControlRequest {
         program_id,
         registrar_acc_info,
-        pool_acc_info,
+        pool_vault_acc_info,
         pool_token_mint_acc_info,
         vendor_acc_info,
         vendor_vault_acc_info,
@@ -100,6 +99,7 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
         expiry_ts,
         end_ts,
         nonce,
+        total,
     } = req;
 
     // Authorization: none.
@@ -109,18 +109,27 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
     //
     // Registrar.
     let registrar = access_control::registrar(registrar_acc_info, program_id)?;
-    if &registrar.pool != pool_acc_info.key && &registrar.mega_pool != pool_acc_info.key {
+    if &registrar.pool_vault != pool_vault_acc_info.key
+        && &registrar.pool_vault_mega != pool_vault_acc_info.key
+    {
         return Err(RegistryErrorCode::InvalidPoolAccounts)?;
     }
     // Pool.
-    let data = pool_acc_info.try_borrow_data()?;
-    let mut data: &[u8] = *data;
-    let pool =
-        PoolState::deserialize(&mut data).map_err(|_| RegistryErrorCode::WrongSerialization)?;
-    let pt_address: Pubkey = pool.pool_token_mint.into();
     let pool_token_mint = access_control::mint(pool_token_mint_acc_info)?;
-    if pt_address != *pool_token_mint_acc_info.key {
+    if registrar.pool_mint != *pool_token_mint_acc_info.key
+        && registrar.pool_mint_mega != *pool_token_mint_acc_info.key
+    {
         return Err(RegistryErrorCode::InvalidPoolTokenMint)?;
+    }
+    let is_mega = &registrar.pool_vault_mega == pool_vault_acc_info.key;
+    if is_mega {
+        if &registrar.pool_mint_mega != pool_token_mint_acc_info.key {
+            return Err(RegistryErrorCode::InvalidPoolTokenMint)?;
+        }
+    } else {
+        if &registrar.pool_mint != pool_token_mint_acc_info.key {
+            return Err(RegistryErrorCode::InvalidPoolTokenMint)?;
+        }
     }
     // Vault + nonce.
     let vendor_vault_authority = Pubkey::create_program_address(
@@ -144,8 +153,10 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
     if clock.unix_timestamp >= expiry_ts {
         return Err(RegistryErrorCode::InvalidExpiry)?;
     }
-
-    // TODO: enforce a *minimum* reward drop to prevent flooding the queue.
+    // Must be dropping enough to give at least one token to everyone in pool.
+    if total < pool_token_mint.supply {
+        return Err(RegistryErrorCode::InsufficientReward)?;
+    }
 
     Ok(AccessControlResponse {
         pool_token_mint,
@@ -167,7 +178,7 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
         vendor_vault_acc_info,
         reward_event_q_acc_info,
         registrar_acc_info,
-        pool_acc_info,
+        pool_vault_acc_info,
         depositor_acc_info,
         depositor_owner_acc_info,
         token_program_acc_info,
@@ -187,7 +198,7 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
     let cursor = reward_event_q.head_cursor()?;
     reward_event_q.append(&RewardEvent::LockedAlloc {
         from: *depositor_owner_acc_info.key,
-        pool: *pool_acc_info.key,
+        pool: *pool_vault_acc_info.key,
         total,
         vendor: *vendor_acc_info.key,
         mint,
@@ -208,7 +219,7 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
     vendor.registrar = *registrar_acc_info.key;
     vendor.vault = *vendor_vault_acc_info.key;
     vendor.nonce = nonce;
-    vendor.pool = *pool_acc_info.key;
+    vendor.pool = *pool_vault_acc_info.key;
     vendor.pool_token_supply = pool_token_mint.supply;
     vendor.reward_event_q_cursor = cursor;
     vendor.start_ts = clock.unix_timestamp;
@@ -224,7 +235,7 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
 struct AccessControlRequest<'a, 'b> {
     program_id: &'a Pubkey,
     registrar_acc_info: &'a AccountInfo<'b>,
-    pool_acc_info: &'a AccountInfo<'b>,
+    pool_vault_acc_info: &'a AccountInfo<'b>,
     pool_token_mint_acc_info: &'a AccountInfo<'b>,
     vendor_acc_info: &'a AccountInfo<'b>,
     vendor_vault_acc_info: &'a AccountInfo<'b>,
@@ -232,6 +243,7 @@ struct AccessControlRequest<'a, 'b> {
     expiry_ts: i64,
     end_ts: i64,
     nonce: u8,
+    total: u64,
 }
 
 struct AccessControlResponse {
@@ -252,7 +264,7 @@ struct StateTransitionRequest<'a, 'b, 'c> {
     vendor_vault_acc_info: &'a AccountInfo<'b>,
     registrar_acc_info: &'a AccountInfo<'b>,
     reward_event_q_acc_info: &'a AccountInfo<'b>,
-    pool_acc_info: &'a AccountInfo<'b>,
+    pool_vault_acc_info: &'a AccountInfo<'b>,
     depositor_acc_info: &'a AccountInfo<'b>,
     depositor_owner_acc_info: &'a AccountInfo<'b>,
     token_program_acc_info: &'a AccountInfo<'b>,

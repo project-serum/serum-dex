@@ -1,4 +1,3 @@
-use crate::accounts::entity::PoolPrices;
 use crate::error::{RegistryError, RegistryErrorCode};
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serum_common::pack::*;
@@ -21,15 +20,8 @@ pub struct Member {
     pub beneficiary: Pubkey,
     /// Entity providing membership.
     pub entity: Pubkey,
-    /// The entity's activation counter to which the Member stake belongs.
-    pub generation: u64,
     /// SRM, MSRM, and staking pool token balances.
     pub balances: MemberBalances,
-    /// The *last* stake context used when creating a staking pool token.
-    /// This is used as a fallback mechanism, to mark the price of a staking
-    /// pool token when a withdrawal on an inactive entity happens *and*
-    /// no `Generation` is provided to the stake withdrawal instruction.
-    pub last_active_prices: PoolPrices,
     /// Arbitrary metadata account owned by any program.
     pub metadata: Pubkey,
     /// Staking pool token account.
@@ -43,37 +35,26 @@ pub struct Member {
 }
 
 impl Member {
-    pub fn can_afford(
-        &self,
-        prices: &PoolPrices,
-        spt_amount: u64,
-        mega: bool,
-    ) -> Result<bool, RegistryError> {
-        let purchase_price = prices.basket_quantities(spt_amount, mega)?;
-
-        if self.balances.current_deposit < purchase_price[0] {
-            return Err(RegistryErrorCode::InsufficientStakeIntentBalance)?;
-        }
+    pub fn can_afford(&self, spt_amount: u64, mega: bool) -> bool {
         if mega {
-            if self.balances.current_mega_deposit < purchase_price[1] {
-                return Err(RegistryErrorCode::InsufficientStakeIntentBalance)?;
+            if self.balances.current_mega_deposit < spt_amount {
+                return false;
+            }
+        } else {
+            if self.balances.current_deposit < spt_amount {
+                return false;
             }
         }
-        Ok(true)
+        true
     }
 
     pub fn can_withdraw(
         &self,
-        prices: &PoolPrices,
         amount: u64,
         mega: bool,
         owner: Pubkey,
     ) -> Result<bool, RegistryError> {
         let delegate = self.balances.delegate.owner == owner;
-
-        // Current valuation of our staking tokens for both pools.
-        let basket = prices.basket_quantities(self.balances.spt_amount, false)?;
-        let mega_basket = prices.basket_quantities(self.balances.spt_mega_amount, true)?;
 
         // In both cases, we need to be able to 1) cover the withdrawal
         // with our *current* stake intent vault balances and also
@@ -85,7 +66,8 @@ impl Member {
                 return Err(RegistryErrorCode::InsufficientStakeIntentBalance)?;
             }
             if !delegate {
-                let remaining_msrm = mega_basket[1] + self.balances.current_mega_deposit - amount;
+                let remaining_msrm =
+                    self.balances.spt_mega_amount + self.balances.current_mega_deposit - amount;
                 if remaining_msrm < self.balances.delegate.mega_deposit {
                     return Err(RegistryErrorCode::InsufficientBalance)?;
                 }
@@ -96,7 +78,7 @@ impl Member {
             }
             if !delegate {
                 let remaining_srm =
-                    basket[0] + mega_basket[0] + self.balances.current_deposit - amount;
+                    self.balances.spt_amount + self.balances.current_deposit - amount;
                 if remaining_srm < self.balances.delegate.deposit {
                     return Err(RegistryErrorCode::InsufficientBalance)?;
                 }
@@ -162,52 +144,41 @@ impl Member {
         }
     }
 
-    pub fn spt_did_create(
-        &mut self,
-        prices: &PoolPrices,
-        amount: u64,
-        mega: bool,
-    ) -> Result<(), RegistryError> {
+    pub fn spt_did_stake(&mut self, amount: u64, mega: bool) -> Result<(), RegistryError> {
         if mega {
-            self.balances.spt_mega_amount += amount;
-
-            let basket = prices.basket_quantities(amount, mega)?;
-            self.balances.current_deposit -= basket[0];
-            self.balances.current_mega_deposit -= basket[1];
-
-            // Only modify the prices of the basket the member is creating.
-            self.last_active_prices.mega_basket = prices.mega_basket.clone();
+            self.balances.spt_mega_amount =
+                self.balances.spt_mega_amount.checked_add(amount).unwrap();
+            self.balances.current_mega_deposit = self
+                .balances
+                .current_mega_deposit
+                .checked_sub(amount)
+                .unwrap();
         } else {
-            self.balances.spt_amount += amount;
-
-            let basket = prices.basket_quantities(amount, mega)?;
-            self.balances.current_deposit -= basket[0];
-
-            // Only modify the prices of the basket the member is creating.
-            self.last_active_prices.basket = prices.basket.clone();
+            self.balances.spt_amount = self.balances.spt_amount.checked_add(amount).unwrap();
+            self.balances.current_deposit =
+                self.balances.current_deposit.checked_sub(amount).unwrap();
         }
 
         Ok(())
     }
 
-    pub fn spt_did_redeem_start(&mut self, spt_amount: u64, mega: bool) {
+    pub fn spt_did_unstake_start(&mut self, spt_amount: u64, mega: bool) {
         if mega {
-            self.balances.spt_mega_amount -= spt_amount;
+            self.balances.spt_mega_amount = self
+                .balances
+                .spt_mega_amount
+                .checked_sub(spt_amount)
+                .unwrap();
         } else {
-            self.balances.spt_amount -= spt_amount;
+            self.balances.spt_amount = self.balances.spt_amount.checked_sub(spt_amount).unwrap();
         }
     }
 
-    pub fn spt_did_redeem_end(&mut self, asset_amount: u64, mega_asset_amount: u64) {
-        self.balances.current_deposit += asset_amount;
-        self.balances.current_mega_deposit += mega_asset_amount;
-    }
-
-    pub fn slash(&mut self, spt_amount: u64, mega: bool) {
-        if mega {
-            self.balances.spt_mega_amount -= spt_amount;
+    pub fn spt_did_unstake_end(&mut self, amount: u64, is_mega: bool) {
+        if is_mega {
+            self.balances.current_mega_deposit += amount;
         } else {
-            self.balances.spt_amount -= spt_amount;
+            self.balances.current_deposit += amount;
         }
     }
 }

@@ -1,12 +1,9 @@
 use crate::common::entity::{with_entity, EntityContext};
-use crate::common::pool::{pool_check, Pool, PoolConfig};
 use serum_common::pack::Pack;
-use serum_common::program::invoke_token_transfer;
+use serum_common::program::{invoke_burn_tokens, invoke_token_transfer};
 use serum_registry::access_control;
-use serum_registry::accounts::entity::{EntityState, PoolPrices};
-use serum_registry::accounts::pending_withdrawal::PendingPayment;
 use serum_registry::accounts::vault;
-use serum_registry::accounts::{Entity, Generation, Member, PendingWithdrawal, Registrar};
+use serum_registry::accounts::{Entity, Member, PendingWithdrawal, Registrar};
 use serum_registry::error::{RegistryError, RegistryErrorCode};
 use solana_program::info;
 use solana_sdk::account_info::{next_account_info, AccountInfo};
@@ -29,48 +26,25 @@ pub fn handler(
     let beneficiary_acc_info = next_account_info(acc_infos)?;
     let entity_acc_info = next_account_info(acc_infos)?;
     let registrar_acc_info = next_account_info(acc_infos)?;
+    let vault_acc_info = next_account_info(acc_infos)?;
     let vault_authority_acc_info = next_account_info(acc_infos)?;
-
-    let tok_program_acc_info = next_account_info(acc_infos)?;
+    let pool_vault_acc_info = next_account_info(acc_infos)?;
+    let pool_mint_acc_info = next_account_info(acc_infos)?;
+    let spt_acc_info = next_account_info(acc_infos)?;
     let clock_acc_info = next_account_info(acc_infos)?;
+    let tok_program_acc_info = next_account_info(acc_infos)?;
     let rent_acc_info = next_account_info(acc_infos)?;
-
-    let ref pool = Pool::parse_accounts(
-        acc_infos,
-        PoolConfig::Execute {
-            registrar_acc_info,
-            token_program_acc_info: tok_program_acc_info,
-            is_create: false,
-        },
-    )?;
-
-    // Prior initialization of the Generation account is optional.
-    let generation_acc_info = acc_infos.next();
-
-    let vault_acc_info = pool
-        .registry_vault_acc_infos
-        .as_ref()
-        .expect("transact config")[0];
-    let mega_vault_acc_info = match pool.is_mega() {
-        false => None,
-        true => Some(
-            pool.registry_vault_acc_infos
-                .as_ref()
-                .expect("transact config")[1],
-        ),
-    };
 
     let ctx = EntityContext {
         entity_acc_info,
         registrar_acc_info,
         clock_acc_info,
         program_id,
-        prices: pool.prices(),
     };
     with_entity(ctx, &mut |entity: &mut Entity,
                            registrar: &Registrar,
                            clock: &Clock| {
-        let AccessControlResponse { ref generation } = access_control(AccessControlRequest {
+        let AccessControlResponse { is_mega } = access_control(AccessControlRequest {
             pending_withdrawal_acc_info,
             beneficiary_acc_info,
             registrar_acc_info,
@@ -79,11 +53,11 @@ pub fn handler(
             rent_acc_info,
             program_id,
             vault_acc_info,
-            mega_vault_acc_info,
             vault_authority_acc_info,
-            generation_acc_info,
+            pool_vault_acc_info,
+            pool_mint_acc_info,
+            spt_acc_info,
             registrar,
-            pool,
         })?;
         PendingWithdrawal::unpack_mut(
             &mut pending_withdrawal_acc_info.try_borrow_mut_data()?,
@@ -99,13 +73,14 @@ pub fn handler(
                             member_acc_info,
                             clock,
                             spt_amount,
-                            pool,
-                            vault_acc_info,
-                            mega_vault_acc_info,
-                            vault_authority_acc_info,
                             tok_program_acc_info,
                             registrar_acc_info,
-                            generation,
+                            vault_acc_info,
+                            vault_authority_acc_info,
+                            pool_vault_acc_info,
+                            pool_mint_acc_info,
+                            spt_acc_info,
+                            is_mega,
                         })
                         .map_err(Into::into)
                     },
@@ -130,11 +105,11 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
         rent_acc_info,
         program_id,
         vault_acc_info,
-        mega_vault_acc_info,
         vault_authority_acc_info,
+        pool_vault_acc_info,
+        pool_mint_acc_info,
+        spt_acc_info,
         registrar,
-        pool,
-        generation_acc_info,
     } = req;
 
     // Beneficiary authorization.
@@ -150,14 +125,6 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
         beneficiary_acc_info,
         program_id,
     )?;
-    let generation = generation_acc_info
-        .map(|generation_acc_info| {
-            access_control::generation(generation_acc_info, entity_acc_info, &member, program_id)
-        })
-        // Swap the option and result positions.
-        .map_or(Ok(None), |res| res.map(Some))?;
-
-    pool_check(program_id, pool, registrar_acc_info, registrar, &member)?;
     let _vault = access_control::vault_authenticated(
         vault_acc_info,
         vault_authority_acc_info,
@@ -165,15 +132,10 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
         registrar,
         program_id,
     )?;
-    if let Some(mega_vault_acc_info) = mega_vault_acc_info {
-        let _mega_vault = access_control::vault_authenticated(
-            mega_vault_acc_info,
-            vault_authority_acc_info,
-            registrar_acc_info,
-            registrar,
-            program_id,
-        )?;
-    }
+    let (_pool_vault, is_mega) = access_control::pool_vault(pool_vault_acc_info, &registrar)?;
+    let _pool_mint = access_control::pool_mint(pool_mint_acc_info, &registrar, is_mega)?;
+    let _pool_token =
+        access_control::pool_token(spt_acc_info, pool_mint_acc_info, &member, is_mega)?;
 
     // StartStakeWithdrawal specific.
     {
@@ -188,13 +150,11 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
             pending_withdrawal_acc_info.lamports(),
             pending_withdrawal_acc_info.try_data_len()?,
         ) {
-            // TODO: this doesn't actually need to be rent exempt, since the account
-            //       only needs to live during the pending withdrawal window.
             return Err(RegistryErrorCode::NotRentExempt)?;
         }
     }
 
-    Ok(AccessControlResponse { generation })
+    Ok(AccessControlResponse { is_mega })
 }
 
 fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
@@ -208,128 +168,52 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
         member_acc_info,
         clock,
         spt_amount,
-        pool,
         vault_acc_info,
-        mega_vault_acc_info,
         vault_authority_acc_info,
+        pool_vault_acc_info,
+        pool_mint_acc_info,
+        spt_acc_info,
         tok_program_acc_info,
         registrar_acc_info,
-        generation,
+        is_mega,
     } = req;
 
-    // Redeem the `spt_amount` tokens for the underlying basket, transferring
-    // the assets into this program's vaults.
-    pool.redeem(spt_amount)?;
+    let signer_seeds = vault::signer_seeds(registrar_acc_info.key, &registrar.nonce);
 
-    // The amounts that were transferred from `pool.redeem`.
-    let mut asset_amounts = pool
-        .prices()
-        .basket_quantities(spt_amount, pool.is_mega())?;
-
-    // Inactive entities don't receive rewards while inactive, so return the
-    // excess amounts back into the pool.
-    if entity.state == EntityState::Inactive {
-        // TODO: consider alternatives to returning funds back into pool, e.g.,
-        //       a separate vault/community-fund.
-        asset_amounts = pool_return_forfeited_assets(
-            pool,
-            match generation.as_ref() {
-                None => &member.last_active_prices,
-                Some(g) => &g.last_active_prices,
-            },
-            asset_amounts,
-            vault_acc_info,
-            mega_vault_acc_info,
-            vault_authority_acc_info,
-            tok_program_acc_info,
-            registrar_acc_info,
-            registrar,
-            spt_amount,
-        )?;
-    }
-
-    // Bookeeping.
-    member.spt_did_redeem_start(spt_amount, pool.is_mega());
-    entity.spt_did_redeem_start(spt_amount, pool.is_mega());
-
-    // Print the pending withdrawal receipt.
-    {
-        pending_withdrawal.initialized = true;
-        pending_withdrawal.burned = false;
-        pending_withdrawal.member = *member_acc_info.key;
-        pending_withdrawal.start_ts = clock.unix_timestamp;
-        pending_withdrawal.end_ts = clock.unix_timestamp + registrar.deactivation_timelock();
-        pending_withdrawal.spt_amount = spt_amount;
-        pending_withdrawal.pool = *pool.pool_acc_info.key;
-        pending_withdrawal.payment = PendingPayment {
-            asset_amount: asset_amounts[0],
-            mega_asset_amount: match pool.is_mega() {
-                true => asset_amounts[1],
-                false => 0,
-            },
-        };
-    }
-
-    Ok(())
-}
-
-// Returns the basket amount the staker should get when withdrawing from an
-// inactive node entity.
-//
-// If the node is inactive, mark the price of the staking pool token
-// to the price at the last time this member staked. Transfer any excess
-// tokens back into the pool (i.e., when marking to the current price).
-fn pool_return_forfeited_assets<'a, 'b, 'c>(
-    pool: &'c Pool<'a, 'b>,
-    prices: &'c PoolPrices,
-    current_asset_amounts: Vec<u64>,
-    vault_acc_info: &'a AccountInfo<'b>,
-    mega_vault_acc_info: Option<&'a AccountInfo<'b>>,
-    vault_authority_acc_info: &'a AccountInfo<'b>,
-    tok_program_acc_info: &'a AccountInfo<'b>,
-    registrar_acc_info: &'a AccountInfo<'b>,
-    registrar: &'c Registrar,
-    spt_amount: u64,
-) -> Result<Vec<u64>, RegistryError> {
-    // The basket amounts the user will receive upon withdrawal.
-    let marked_asset_amounts = prices.basket_quantities(spt_amount, pool.is_mega())?;
-    assert!(current_asset_amounts.len() == marked_asset_amounts.len());
-    assert!(current_asset_amounts.len() == 2);
-
-    // The basket amounts to return to the pool.
-    let excess_asset_amounts: Vec<u64> = current_asset_amounts
-        .iter()
-        .zip(marked_asset_amounts.iter())
-        .map(|(current, marked)| current - marked)
-        .collect();
-    assert!(pool.pool_asset_vault_acc_infos.len() == 2);
-
-    // Transfer the excess SRM and MSRM back to the pool.
-    invoke_token_transfer(
-        vault_acc_info,
-        pool.pool_asset_vault_acc_infos[0], // SRM.
+    // Burn pool tokens.
+    invoke_burn_tokens(
+        spt_acc_info,
+        pool_mint_acc_info,
         vault_authority_acc_info,
         tok_program_acc_info,
-        &[&vault::signer_seeds(
-            registrar_acc_info.key,
-            &registrar.nonce,
-        )],
-        excess_asset_amounts[0],
+        &[&signer_seeds],
+        spt_amount,
     )?;
-    if pool.pool_asset_vault_acc_infos.len() == 2 {
-        invoke_token_transfer(
-            mega_vault_acc_info.expect("mega specified"),
-            pool.pool_asset_vault_acc_infos[1], // MSRM.
-            vault_authority_acc_info,
-            tok_program_acc_info,
-            &[&vault::signer_seeds(
-                registrar_acc_info.key,
-                &registrar.nonce,
-            )],
-            excess_asset_amounts[1],
-        )?;
-    }
-    Ok(marked_asset_amounts)
+
+    // Transfer from pool vault to deposit vault.
+    invoke_token_transfer(
+        pool_vault_acc_info,
+        vault_acc_info,
+        vault_authority_acc_info,
+        tok_program_acc_info,
+        &[&signer_seeds],
+        spt_amount,
+    )?;
+
+    // Bookeeping.
+    member.spt_did_unstake_start(spt_amount, is_mega);
+    entity.spt_did_unstake_start(spt_amount, is_mega);
+
+    // Print pending withdrawal receipt.
+    pending_withdrawal.initialized = true;
+    pending_withdrawal.burned = false;
+    pending_withdrawal.member = *member_acc_info.key;
+    pending_withdrawal.start_ts = clock.unix_timestamp;
+    pending_withdrawal.end_ts = clock.unix_timestamp + registrar.deactivation_timelock;
+    pending_withdrawal.spt_amount = spt_amount;
+    pending_withdrawal.pool = *pool_vault_acc_info.key;
+
+    Ok(())
 }
 
 struct AccessControlRequest<'a, 'b, 'c> {
@@ -340,31 +224,32 @@ struct AccessControlRequest<'a, 'b, 'c> {
     entity_acc_info: &'a AccountInfo<'b>,
     rent_acc_info: &'a AccountInfo<'b>,
     vault_acc_info: &'a AccountInfo<'b>,
-    mega_vault_acc_info: Option<&'a AccountInfo<'b>>,
     vault_authority_acc_info: &'a AccountInfo<'b>,
-    generation_acc_info: Option<&'a AccountInfo<'b>>,
+    pool_vault_acc_info: &'a AccountInfo<'b>,
+    pool_mint_acc_info: &'a AccountInfo<'b>,
+    spt_acc_info: &'a AccountInfo<'b>,
     program_id: &'a Pubkey,
     registrar: &'c Registrar,
-    pool: &'c Pool<'a, 'b>,
 }
 
 struct AccessControlResponse {
-    generation: Option<Generation>,
+    is_mega: bool,
 }
 
 struct StateTransitionRequest<'a, 'b, 'c> {
     member_acc_info: &'a AccountInfo<'b>,
     registrar_acc_info: &'a AccountInfo<'b>,
     vault_acc_info: &'a AccountInfo<'b>,
-    mega_vault_acc_info: Option<&'a AccountInfo<'b>>,
     vault_authority_acc_info: &'a AccountInfo<'b>,
     tok_program_acc_info: &'a AccountInfo<'b>,
+    pool_vault_acc_info: &'a AccountInfo<'b>,
+    pool_mint_acc_info: &'a AccountInfo<'b>,
+    spt_acc_info: &'a AccountInfo<'b>,
     pending_withdrawal: &'c mut PendingWithdrawal,
-    pool: &'c Pool<'a, 'b>,
     entity: &'c mut Entity,
     member: &'c mut Member,
     registrar: &'c Registrar,
     clock: &'c Clock,
-    generation: &'c Option<Generation>,
     spt_amount: u64,
+    is_mega: bool,
 }

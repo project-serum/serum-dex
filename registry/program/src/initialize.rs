@@ -23,11 +23,15 @@ pub fn handler(
     let acc_infos = &mut accounts.iter();
 
     let registrar_acc_info = next_account_info(acc_infos)?;
+    // Deposit vaults.
     let vault_acc_info = next_account_info(acc_infos)?;
     let mega_vault_acc_info = next_account_info(acc_infos)?;
-    let pool_acc_info = next_account_info(acc_infos)?;
-    let mega_pool_acc_info = next_account_info(acc_infos)?;
-    let pool_program_acc_info = next_account_info(acc_infos)?;
+    // Pool Vaults.
+    let pool_vault_acc_info = next_account_info(acc_infos)?;
+    let pool_vault_mega_acc_info = next_account_info(acc_infos)?;
+    // Pool mints.
+    let pool_mint_acc_info = next_account_info(acc_infos)?;
+    let pool_mint_mega_acc_info = next_account_info(acc_infos)?;
     let reward_event_q_acc_info = next_account_info(acc_infos)?;
     let rent_acc_info = next_account_info(acc_infos)?;
 
@@ -36,6 +40,10 @@ pub fn handler(
         rent_acc_info,
         vault_acc_info,
         mega_vault_acc_info,
+        pool_vault_acc_info,
+        pool_vault_mega_acc_info,
+        pool_mint_acc_info,
+        pool_mint_mega_acc_info,
         program_id,
         nonce,
         reward_event_q_acc_info,
@@ -49,14 +57,15 @@ pub fn handler(
                 authority,
                 vault_acc_info,
                 mega_vault_acc_info,
+                pool_vault_acc_info,
+                pool_vault_mega_acc_info,
+                pool_mint_acc_info,
+                pool_mint_mega_acc_info,
                 withdrawal_timelock,
                 nonce,
                 deactivation_timelock,
                 reward_activation_threshold,
                 max_stake_per_entity,
-                pool_program_acc_info, // Not validated.
-                pool_acc_info,         // Not validated.
-                mega_pool_acc_info,    // Not validated.
                 reward_event_q_acc_info,
                 registrar_acc_info,
             })
@@ -73,9 +82,13 @@ fn access_control(req: AccessControlRequest) -> Result<(), RegistryError> {
     let AccessControlRequest {
         registrar_acc_info,
         rent_acc_info,
-        program_id,
         vault_acc_info,
         mega_vault_acc_info,
+        pool_vault_acc_info,
+        pool_vault_mega_acc_info,
+        pool_mint_acc_info,
+        pool_mint_mega_acc_info,
+        program_id,
         nonce,
         reward_event_q_acc_info,
     } = req;
@@ -101,6 +114,8 @@ fn access_control(req: AccessControlRequest) -> Result<(), RegistryError> {
             return Err(RegistryErrorCode::AlreadyInitialized)?;
         }
     }
+
+    // TODO: validate all pool vaults.
 
     // Vaults (initialized but not yet on the Registrar).
     access_control::vault_init(vault_acc_info, registrar_acc_info, &rent, nonce, program_id)?;
@@ -134,9 +149,10 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
         nonce,
         deactivation_timelock,
         reward_activation_threshold,
-        pool_acc_info,
-        pool_program_acc_info,
-        mega_pool_acc_info,
+        pool_vault_acc_info,
+        pool_vault_mega_acc_info,
+        pool_mint_acc_info,
+        pool_mint_mega_acc_info,
         max_stake_per_entity,
         reward_event_q_acc_info,
         registrar_acc_info,
@@ -151,9 +167,10 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
     registrar.mega_vault = *mega_vault_acc_info.key;
     registrar.nonce = nonce;
     registrar.reward_activation_threshold = reward_activation_threshold;
-    registrar.pool = *pool_acc_info.key;
-    registrar.mega_pool = *mega_pool_acc_info.key;
-    registrar.pool_program_id = *pool_program_acc_info.key;
+    registrar.pool_vault = *pool_vault_acc_info.key;
+    registrar.pool_vault_mega = *pool_vault_mega_acc_info.key;
+    registrar.pool_mint = *pool_mint_acc_info.key;
+    registrar.pool_mint_mega = *pool_mint_mega_acc_info.key;
     registrar.reward_event_q = *reward_event_q_acc_info.key;
 
     let event_q = RewardEventQueue::from(reward_event_q_acc_info.data.clone());
@@ -168,6 +185,10 @@ struct AccessControlRequest<'a, 'b> {
     vault_acc_info: &'a AccountInfo<'b>,
     mega_vault_acc_info: &'a AccountInfo<'b>,
     reward_event_q_acc_info: &'a AccountInfo<'b>,
+    pool_vault_acc_info: &'a AccountInfo<'b>,
+    pool_vault_mega_acc_info: &'a AccountInfo<'b>,
+    pool_mint_acc_info: &'a AccountInfo<'b>,
+    pool_mint_mega_acc_info: &'a AccountInfo<'b>,
     program_id: &'a Pubkey,
     nonce: u8,
 }
@@ -175,11 +196,12 @@ struct AccessControlRequest<'a, 'b> {
 struct StateTransitionRequest<'a, 'b, 'c> {
     vault_acc_info: &'a AccountInfo<'b>,
     mega_vault_acc_info: &'a AccountInfo<'b>,
-    mega_pool_acc_info: &'a AccountInfo<'b>,
-    pool_acc_info: &'a AccountInfo<'b>,
-    pool_program_acc_info: &'a AccountInfo<'b>,
     reward_event_q_acc_info: &'a AccountInfo<'b>,
     registrar_acc_info: &'a AccountInfo<'b>,
+    pool_vault_acc_info: &'a AccountInfo<'b>,
+    pool_vault_mega_acc_info: &'a AccountInfo<'b>,
+    pool_mint_acc_info: &'a AccountInfo<'b>,
+    pool_mint_mega_acc_info: &'a AccountInfo<'b>,
     registrar: &'c mut Registrar,
     authority: Pubkey,
     reward_activation_threshold: u64,

@@ -3314,7 +3314,6 @@ dependencies = [
  "serum-common-tests",
  "serum-lockup",
  "serum-lockup-client",
- "serum-pool-schema",
  "serum-registry-client",
  "solana-client-gen",
  "spl-token 2.0.6",
@@ -3354,25 +3353,8 @@ dependencies = [
  "serum-meta-entity",
  "serum-pool-schema",
  "serum-registry",
- "serum-stake",
  "solana-client",
  "solana-client-gen",
- "spl-token 2.0.6",
- "thiserror",
-]
-
-[[package]]
-name = "serum-stake"
-version = "0.1.0"
-dependencies = [
- "arrayref",
- "borsh",
- "bytemuck",
- "num_enum",
- "serum-common",
- "serum-pool-schema",
- "solana-client-gen",
- "solana-sdk",
  "spl-token 2.0.6",
  "thiserror",
 ]

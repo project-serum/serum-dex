@@ -14,12 +14,9 @@ mod create_entity;
 mod create_member;
 mod deposit;
 mod drop_locked_reward;
-mod drop_pool_reward;
 mod drop_unlocked_reward;
 mod end_stake_withdrawal;
 mod initialize;
-mod mark_generation;
-mod slash;
 mod stake;
 mod start_stake_withdrawal;
 mod switch_entity;
@@ -93,7 +90,6 @@ fn entry(program_id: &Pubkey, accounts: &[AccountInfo], instruction_data: &[u8])
         RegistryInstruction::UpdateMember { delegate, metadata } => {
             update_member::handler(program_id, accounts, delegate, metadata)
         }
-        RegistryInstruction::SwitchEntity => switch_entity::handler(program_id, accounts),
         RegistryInstruction::Deposit { amount } => {
             deposit::handler(program_id, accounts, amount, is_locked)
         }
@@ -101,17 +97,13 @@ fn entry(program_id: &Pubkey, accounts: &[AccountInfo], instruction_data: &[u8])
             withdraw::handler(program_id, accounts, amount, is_locked)
         }
         RegistryInstruction::Stake { amount } => stake::handler(program_id, accounts, amount),
-        RegistryInstruction::MarkGeneration => mark_generation::handler(program_id, accounts),
         RegistryInstruction::StartStakeWithdrawal { amount } => {
             start_stake_withdrawal::handler(program_id, accounts, amount)
         }
         RegistryInstruction::EndStakeWithdrawal => {
             end_stake_withdrawal::handler(program_id, accounts)
         }
-        RegistryInstruction::Slash { amount } => slash::handler(program_id, accounts, amount),
-        RegistryInstruction::DropPoolReward { totals } => {
-            drop_pool_reward::handler(program_id, accounts, totals)
-        }
+        RegistryInstruction::SwitchEntity => switch_entity::handler(program_id, accounts),
         RegistryInstruction::DropLockedReward {
             total,
             end_ts,

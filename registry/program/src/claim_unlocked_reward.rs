@@ -1,7 +1,7 @@
 use serum_common::pack::Pack;
 use serum_common::program::invoke_token_transfer;
 use serum_registry::access_control;
-use serum_registry::accounts::{Member, Registrar, UnlockedRewardVendor};
+use serum_registry::accounts::{EntityState, Member, Registrar, UnlockedRewardVendor};
 use serum_registry::error::{RegistryError, RegistryErrorCode};
 use solana_program::info;
 use solana_sdk::account_info::{next_account_info, AccountInfo};
@@ -17,6 +17,7 @@ pub fn handler(
 
     let acc_infos = &mut accounts.iter();
 
+    let entity_acc_info = next_account_info(acc_infos)?;
     let member_acc_info = next_account_info(acc_infos)?;
     let registrar_acc_info = next_account_info(acc_infos)?;
     let vendor_acc_info = next_account_info(acc_infos)?;
@@ -31,8 +32,10 @@ pub fn handler(
     } = access_control(AccessControlRequest {
         program_id,
         registrar_acc_info,
+        entity_acc_info,
         member_acc_info,
         vendor_acc_info,
+        token_acc_info,
         cursor,
     })?;
 
@@ -65,18 +68,28 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
         program_id,
         cursor,
         registrar_acc_info,
+        entity_acc_info,
         member_acc_info,
         vendor_acc_info,
+        token_acc_info,
     } = req;
 
     // Authorization: none required. This operation is purely beneficial for
-    //                the member account.
+    //                the member account, the beneficiary of which must own
+    //                the destination token to which rewards are sent.
 
     // Account validation.
     let registrar = access_control::registrar(registrar_acc_info, program_id)?;
-    let member = access_control::member_account(&member_acc_info, registrar_acc_info, program_id)?;
+    let entity = access_control::entity(entity_acc_info, registrar_acc_info, program_id)?;
+    let member = access_control::member_belongs_to(
+        member_acc_info,
+        registrar_acc_info,
+        entity_acc_info,
+        program_id,
+    )?;
     let vendor =
         access_control::unlocked_reward_vendor(vendor_acc_info, registrar_acc_info, program_id)?;
+    let _token = access_control::token(token_acc_info, &member.beneficiary)?;
 
     // ClaimLockedReward specific.
     //
@@ -91,6 +104,10 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
     // Was the member staked at the time of reward?
     if member.last_stake_ts > vendor.start_ts {
         return Err(RegistryErrorCode::IneligibleReward)?;
+    }
+    // Is the entity active?
+    if entity.state == EntityState::Inactive {
+        return Err(RegistryErrorCode::EntityNotActivated)?;
     }
 
     Ok(AccessControlResponse { registrar, vendor })
@@ -114,7 +131,7 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
 
     // Transfer proportion of the reward to the user.
     let spt = {
-        if vendor.pool == registrar.pool {
+        if vendor.pool == registrar.pool_vault {
             member.balances.spt_amount
         } else {
             member.balances.spt_mega_amount
@@ -149,9 +166,11 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
 struct AccessControlRequest<'a, 'b> {
     program_id: &'a Pubkey,
     cursor: u32,
+    entity_acc_info: &'a AccountInfo<'b>,
     member_acc_info: &'a AccountInfo<'b>,
     registrar_acc_info: &'a AccountInfo<'b>,
     vendor_acc_info: &'a AccountInfo<'b>,
+    token_acc_info: &'a AccountInfo<'b>,
 }
 
 struct AccessControlResponse {

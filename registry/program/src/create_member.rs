@@ -30,11 +30,7 @@ pub fn handler(
     let token_program_acc_info = next_account_info(acc_infos)?;
     let rent_acc_info = next_account_info(acc_infos)?;
 
-    let AccessControlResponse {
-        registrar,
-        spt,
-        spt_mega,
-    } = access_control(AccessControlRequest {
+    let AccessControlResponse { registrar } = access_control(AccessControlRequest {
         beneficiary_acc_info,
         member_acc_info,
         entity_acc_info,
@@ -59,8 +55,6 @@ pub fn handler(
                 registry_signer_acc_info,
                 spt_acc_info,
                 spt_mega_acc_info,
-                spt,
-                spt_mega,
                 token_program_acc_info,
             })
             .map_err(Into::into)
@@ -121,6 +115,9 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
     if spt.owner != *registry_signer_acc_info.key {
         return Err(RegistryErrorCode::InvalidStakeTokenOwner)?;
     }
+    if spt.mint != registrar.pool_mint {
+        return Err(RegistryErrorCode::InvalidMint)?;
+    }
     let spt_mega = TokenAccount::unpack(&spt_mega_acc_info.try_borrow_data()?)?;
     if spt_mega.delegate != COption::None {
         return Err(RegistryErrorCode::SptDelegateAlreadySet)?;
@@ -128,12 +125,11 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
     if spt_mega.owner != *registry_signer_acc_info.key {
         return Err(RegistryErrorCode::InvalidStakeTokenOwner)?;
     }
+    if spt_mega.mint != registrar.pool_mint_mega {
+        return Err(RegistryErrorCode::InvalidMint)?;
+    }
 
-    Ok(AccessControlResponse {
-        registrar,
-        spt,
-        spt_mega,
-    })
+    Ok(AccessControlResponse { registrar })
 }
 
 fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
@@ -149,40 +145,32 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
         registry_signer_acc_info,
         spt_acc_info,
         spt_mega_acc_info,
-        spt,
-        spt_mega,
         token_program_acc_info,
     } = req;
 
-    // Approve the beneficiary as delegate on the staking tokens, if not already.
-    if spt.delegate == COption::None {
-        approve_delegate(
-            beneficiary_acc_info,
-            token_program_acc_info,
-            registrar_acc_info,
-            registrar,
-            registry_signer_acc_info,
-            spt_acc_info,
-        )?;
-    }
-    if spt_mega.delegate == COption::None {
-        approve_delegate(
-            beneficiary_acc_info,
-            token_program_acc_info,
-            registrar_acc_info,
-            registrar,
-            registry_signer_acc_info,
-            spt_mega_acc_info,
-        )?;
-    }
+    approve_delegate(
+        beneficiary_acc_info,
+        token_program_acc_info,
+        registrar_acc_info,
+        registrar,
+        registry_signer_acc_info,
+        spt_acc_info,
+    )?;
+
+    approve_delegate(
+        beneficiary_acc_info,
+        token_program_acc_info,
+        registrar_acc_info,
+        registrar,
+        registry_signer_acc_info,
+        spt_mega_acc_info,
+    )?;
 
     member.initialized = true;
     member.registrar = *registrar_acc_info.key;
     member.entity = *entity_acc_info.key;
     member.beneficiary = *beneficiary_acc_info.key;
-    member.generation = 0;
     member.balances = MemberBalances::new(*beneficiary_acc_info.key, delegate);
-    member.last_active_prices = Default::default();
     member.spt = *spt_acc_info.key;
     member.spt_mega = *spt_mega_acc_info.key;
 
@@ -237,8 +225,6 @@ struct AccessControlRequest<'a, 'b> {
 
 struct AccessControlResponse {
     registrar: Registrar,
-    spt: TokenAccount,
-    spt_mega: TokenAccount,
 }
 
 struct StateTransitionRequest<'a, 'b, 'c> {
@@ -250,8 +236,6 @@ struct StateTransitionRequest<'a, 'b, 'c> {
     registry_signer_acc_info: &'a AccountInfo<'b>,
     token_program_acc_info: &'a AccountInfo<'b>,
     registrar: &'c Registrar,
-    spt: TokenAccount,
-    spt_mega: TokenAccount,
     member: &'c mut Member,
     delegate: Pubkey,
 }

@@ -518,14 +518,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "serum-pool-schema"
-version = "0.1.0"
-dependencies = [
- "borsh 0.7.2 (git+https://github.com/project-serum/borsh?branch=serum)",
- "solana-sdk 1.4.13 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
 name = "serum-registry"
 version = "0.1.0"
 dependencies = [
@@ -533,7 +525,6 @@ dependencies = [
  "borsh 0.7.2 (git+https://github.com/project-serum/borsh?branch=serum)",
  "bytemuck 1.4.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "serum-common 0.1.0",
- "serum-pool-schema 0.1.0",
  "solana-client-gen 0.1.0",
  "spl-token 2.0.8 (registry+https://github.com/rust-lang/crates.io-index)",
  "thiserror 1.0.22 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -547,28 +538,10 @@ dependencies = [
  "borsh 0.7.2 (git+https://github.com/project-serum/borsh?branch=serum)",
  "serum-common 0.1.0",
  "serum-lockup 0.1.0",
- "serum-pool-schema 0.1.0",
  "serum-registry 0.1.0",
- "serum-stake 0.1.0",
  "solana-program 1.4.13 (registry+https://github.com/rust-lang/crates.io-index)",
  "solana-sdk 1.4.13 (registry+https://github.com/rust-lang/crates.io-index)",
  "spl-token 2.0.8 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
-name = "serum-stake"
-version = "0.1.0"
-dependencies = [
- "arrayref 0.3.6 (registry+https://github.com/rust-lang/crates.io-index)",
- "borsh 0.7.2 (git+https://github.com/project-serum/borsh?branch=serum)",
- "bytemuck 1.4.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "num_enum 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "serum-common 0.1.0",
- "serum-pool-schema 0.1.0",
- "solana-client-gen 0.1.0",
- "solana-sdk 1.4.13 (registry+https://github.com/rust-lang/crates.io-index)",
- "spl-token 2.0.8 (registry+https://github.com/rust-lang/crates.io-index)",
- "thiserror 1.0.22 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]

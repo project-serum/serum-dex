@@ -29,24 +29,23 @@ pub struct Registrar {
     /// Number of seconds it takes for an Entity to be "deactivated", from the
     /// moment it's SRM/MSRM amount drops below the required threshold.
     pub deactivation_timelock: i64,
+    ///
+    pub reward_event_q: Pubkey,
     /// Vault holding deposit tokens.
     pub vault: Pubkey,
     /// Vault holding deposit mega tokens.
     pub mega_vault: Pubkey,
     /// Address of the SRM staking pool.
-    pub pool: Pubkey,
+    pub pool_vault: Pubkey,
     /// Address of the MSRM staking pool.
-    pub mega_pool: Pubkey,
-    /// Program id of the pool.
-    pub pool_program_id: Pubkey,
+    pub pool_vault_mega: Pubkey,
     ///
-    pub reward_event_q: Pubkey,
+    pub pool_mint: Pubkey,
+    ///
+    pub pool_mint_mega: Pubkey,
 }
 
 impl Registrar {
-    pub fn deactivation_timelock(&self) -> i64 {
-        self.deactivation_timelock
-    }
     pub fn is_mega(&self, key: Pubkey) -> Result<bool, RegistryError> {
         if key == self.vault {
             Ok(false)

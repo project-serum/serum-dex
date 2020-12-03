@@ -96,7 +96,6 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
 
     entity.initialized = true;
     entity.registrar = *registrar_acc_info.key;
-    entity.generation = 0;
     entity.leader = *leader;
     entity.balances = Default::default();
     entity.state = EntityState::Inactive;

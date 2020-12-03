@@ -6,7 +6,6 @@ use serum_lockup_client::{
     Client as LockupClient, CreateVestingRequest, InitializeRequest as LockupInitializeRequest,
     RegistryDepositRequest, RegistryWithdrawRequest, WhitelistAddRequest,
 };
-use serum_registry::accounts::pending_withdrawal::PendingPayment;
 use serum_registry_client::*;
 use solana_client_gen::prelude::*;
 use solana_client_gen::solana_sdk::program_option::COption;
@@ -16,6 +15,10 @@ use spl_token::state::Account as TokenAccount;
 
 #[test]
 fn lifecycle() {
+    let meta_entity_program_id: Pubkey = std::env::var("TEST_META_ENTITY_PROGRAM_ID")
+        .unwrap()
+        .parse()
+        .unwrap();
     // First test initiailze.
     let genesis = serum_common_tests::genesis::<Client>();
 
@@ -37,19 +40,11 @@ fn lifecycle() {
     let reward_activation_threshold = 10;
     let max_stake_per_entity = 100_000_000;
     let registrar_authority = Keypair::generate(&mut OsRng);
-    let stake_pid: Pubkey = std::env::var("TEST_STAKE_PROGRAM_ID")
-        .unwrap()
-        .parse()
-        .unwrap();
-    let meta_entity_program_id: Pubkey = std::env::var("TEST_META_ENTITY_PROGRAM_ID")
-        .unwrap()
-        .parse()
-        .unwrap();
+
     let InitializeResponse {
         registrar,
         nonce,
-        pool_vault_signer_nonce,
-        pool,
+        pool_vault,
         ..
     } = client
         .initialize(InitializeRequest {
@@ -60,8 +55,6 @@ fn lifecycle() {
             mega_mint: msrm_mint.pubkey(),
             reward_activation_threshold,
             max_stake_per_entity,
-            pool_program_id: stake_pid,
-            pool_token_decimals: 3,
         })
         .unwrap();
     // Verify initialization.
@@ -93,15 +86,6 @@ fn lifecycle() {
                 entry: WhitelistEntry::new(*client.program(), Some(registrar), nonce),
             })
             .unwrap();
-        // Whitelist the two staking pools.
-        l_client
-            .whitelist_add(WhitelistAddRequest {
-                authority: l_client.payer(),
-                safe: init_resp.safe,
-                entry: WhitelistEntry::new(stake_pid, Some(pool), pool_vault_signer_nonce),
-            })
-            .unwrap();
-        // TODO: whitelist the msrm pool.
         // Create vesting.
         let current_ts = client
             .rpc()
@@ -194,7 +178,7 @@ fn lifecycle() {
         member
     };
 
-    // Stake intent.
+    // Deposit.
     let god_acc = rpc::get_token_account::<TokenAccount>(client.rpc(), &god.pubkey()).unwrap();
     let god_balance_before = god_acc.amount;
     let current_deposit_amount = 100;
@@ -208,7 +192,6 @@ fn lifecycle() {
                 depositor_authority: &god_owner,
                 registrar,
                 amount: current_deposit_amount,
-                pool_program_id: stake_pid,
             })
             .unwrap();
         let vault = client.current_deposit_vault(&registrar).unwrap();
@@ -217,7 +200,7 @@ fn lifecycle() {
         assert_eq!(god_acc.amount, god_balance_before - current_deposit_amount);
     }
 
-    // Stake intent withdrawal.
+    // Withdraw.
     {
         client
             .withdraw(WithdrawRequest {
@@ -227,7 +210,6 @@ fn lifecycle() {
                 depositor: god.pubkey(),
                 registrar,
                 amount: current_deposit_amount,
-                pool_program_id: stake_pid,
             })
             .unwrap();
         let vault = client.current_deposit_vault(&registrar).unwrap();
@@ -236,7 +218,7 @@ fn lifecycle() {
         assert_eq!(god_acc.amount, god_balance_before);
     }
 
-    // Stake intent from lockup.
+    // Deposit from lockup.
     let l_vault_amount = l_client.vault_for(&vesting).unwrap().amount;
     {
         l_client
@@ -251,7 +233,6 @@ fn lifecycle() {
                 stake_beneficiary: beneficiary,
                 vesting,
                 safe,
-                pool_program_id: stake_pid,
             })
             .unwrap();
         let vault = client.current_deposit_vault(&registrar).unwrap();
@@ -274,7 +255,6 @@ fn lifecycle() {
                 stake_beneficiary: beneficiary,
                 vesting,
                 safe,
-                pool_program_id: stake_pid,
             })
             .unwrap();
         let vault = client.current_deposit_vault(&registrar).unwrap();
@@ -294,7 +274,6 @@ fn lifecycle() {
                 depositor_authority: &god_owner,
                 registrar,
                 amount: 1,
-                pool_program_id: stake_pid,
             })
             .unwrap();
     }
@@ -308,7 +287,6 @@ fn lifecycle() {
                 member,
                 beneficiary,
                 pool_token_amount: 1,
-                pool_program_id: stake_pid,
                 mega: true,
             })
             .unwrap();
@@ -322,8 +300,7 @@ fn lifecycle() {
             user_pool_token_acc.delegate,
             COption::Some(beneficiary.pubkey()),
         );
-        let (srm_vault, msrm_vault) = client.stake_mega_pool_asset_vaults(&registrar).unwrap();
-        assert_eq!(srm_vault.amount, 0);
+        let msrm_vault = client.stake_mega_pool_asset_vaults(&registrar).unwrap();
         assert_eq!(msrm_vault.amount, 1);
     }
 
@@ -338,7 +315,6 @@ fn lifecycle() {
                 depositor_authority: &god_owner,
                 registrar,
                 amount: current_deposit_amount,
-                pool_program_id: stake_pid,
             })
             .unwrap();
     }
@@ -351,7 +327,6 @@ fn lifecycle() {
             member,
             beneficiary,
             pool_token_amount: current_deposit_amount,
-            pool_program_id: stake_pid,
             mega: false,
         })
         .unwrap();
@@ -366,8 +341,8 @@ fn lifecycle() {
         COption::Some(beneficiary.pubkey()),
     );
 
-    let pool_vault = client.stake_pool_asset_vault(&registrar).unwrap();
-    assert_eq!(pool_vault.amount, current_deposit_amount);
+    let pool_vault_acc = client.stake_pool_asset_vault(&registrar).unwrap();
+    assert_eq!(pool_vault_acc.amount, current_deposit_amount);
 
     let vault = client.current_deposit_vault(&registrar).unwrap();
     assert_eq!(vault.amount, 0);
@@ -385,7 +360,6 @@ fn lifecycle() {
                 beneficiary,
                 spt_amount: current_deposit_amount,
                 mega: false,
-                pool_program_id: stake_pid,
             })
             .unwrap();
 
@@ -399,8 +373,8 @@ fn lifecycle() {
         let user_pool_token = client.pool_token(&member).unwrap().account;
         assert_eq!(user_pool_token.amount, 0);
 
-        let pool_vault = client.stake_pool_asset_vault(&registrar).unwrap();
-        assert_eq!(pool_vault.amount, 0);
+        let pool_vault_acc = client.stake_pool_asset_vault(&registrar).unwrap();
+        assert_eq!(pool_vault_acc.amount, 0);
 
         // PendingWithdrawal.
         let pending_withdrawal_acc = client.pending_withdrawal(&pending_withdrawal).unwrap();
@@ -411,14 +385,7 @@ fn lifecycle() {
             pending_withdrawal_acc.start_ts + deactivation_timelock
         );
         assert_eq!(pending_withdrawal_acc.spt_amount, current_deposit_amount);
-        assert_eq!(pending_withdrawal_acc.pool, pool);
-        assert_eq!(
-            pending_withdrawal_acc.payment,
-            PendingPayment {
-                asset_amount: current_deposit_amount,
-                mega_asset_amount: 0,
-            }
-        );
+        assert_eq!(pending_withdrawal_acc.pool, pool_vault);
         pending_withdrawal
     };
 
@@ -462,7 +429,6 @@ fn lifecycle() {
                 depositor_authority: &god_owner,
                 registrar,
                 amount: 2,
-                pool_program_id: stake_pid,
             })
             .unwrap();
         client
@@ -473,7 +439,6 @@ fn lifecycle() {
                 depositor: token_account,
                 registrar,
                 amount: 1,
-                pool_program_id: stake_pid,
             })
             .unwrap();
         let token = rpc::get_token_account::<TokenAccount>(client.rpc(), &token_account).unwrap();
@@ -505,7 +470,6 @@ fn lifecycle() {
                 new_entity,
                 beneficiary,
                 registrar,
-                pool_program_id: stake_pid,
             })
             .unwrap();
 

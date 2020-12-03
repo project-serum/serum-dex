@@ -20,7 +20,7 @@ pub fn handler(program_id: &Pubkey, accounts: &[AccountInfo]) -> Result<(), Regi
     let registrar_acc_info = next_account_info(acc_infos)?;
     let clock_acc_info = next_account_info(acc_infos)?;
 
-    access_control(AccessControlRequest {
+    let AccessControlResponse { is_mega } = access_control(AccessControlRequest {
         registrar_acc_info,
         pending_withdrawal_acc_info,
         beneficiary_acc_info,
@@ -43,6 +43,7 @@ pub fn handler(program_id: &Pubkey, accounts: &[AccountInfo]) -> Result<(), Regi
                                 pending_withdrawal,
                                 entity,
                                 member,
+                                is_mega,
                             })
                             .map_err(Into::into)
                         },
@@ -56,7 +57,7 @@ pub fn handler(program_id: &Pubkey, accounts: &[AccountInfo]) -> Result<(), Regi
 }
 
 #[inline(always)]
-fn access_control(req: AccessControlRequest) -> Result<(), RegistryError> {
+fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, RegistryError> {
     info!("access-control: end_stake_withdrawal");
 
     let AccessControlRequest {
@@ -75,7 +76,7 @@ fn access_control(req: AccessControlRequest) -> Result<(), RegistryError> {
     }
 
     // Account validation.
-    let _registrar = access_control::registrar(registrar_acc_info, program_id)?;
+    let registrar = access_control::registrar(registrar_acc_info, program_id)?;
     let _entity = access_control::entity(entity_acc_info, registrar_acc_info, program_id)?;
     let _member = access_control::member_join(
         member_acc_info,
@@ -87,14 +88,22 @@ fn access_control(req: AccessControlRequest) -> Result<(), RegistryError> {
         access_control::pending_withdrawal(pending_withdrawal_acc_info, program_id)?;
     let clock = access_control::clock(clock_acc_info)?;
 
-    // EndStakeWithdrawal specific.
-    {
-        if clock.unix_timestamp < pending_withdrawal.end_ts {
-            return Err(RegistryErrorCode::WithdrawalTimelockNotPassed)?;
+    let is_mega = {
+        if pending_withdrawal.pool == registrar.pool_vault {
+            false
+        } else if pending_withdrawal.pool == registrar.pool_vault_mega {
+            true
+        } else {
+            return Err(RegistryErrorCode::InvariantViolation)?;
         }
+    };
+
+    // EndStakeWithdrawal specific.
+    if clock.unix_timestamp < pending_withdrawal.end_ts {
+        return Err(RegistryErrorCode::WithdrawalTimelockNotPassed)?;
     }
 
-    Ok(())
+    Ok(AccessControlResponse { is_mega })
 }
 
 fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
@@ -104,16 +113,11 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
         pending_withdrawal,
         entity,
         member,
+        is_mega,
     } = req;
 
-    member.spt_did_redeem_end(
-        pending_withdrawal.payment.asset_amount,
-        pending_withdrawal.payment.mega_asset_amount,
-    );
-    entity.spt_did_redeem_end(
-        pending_withdrawal.payment.asset_amount,
-        pending_withdrawal.payment.mega_asset_amount,
-    );
+    member.spt_did_unstake_end(pending_withdrawal.spt_amount, is_mega);
+    entity.spt_did_unstake_end(pending_withdrawal.spt_amount, is_mega);
     pending_withdrawal.burned = true;
 
     Ok(())
@@ -129,8 +133,13 @@ struct AccessControlRequest<'a, 'b> {
     program_id: &'a Pubkey,
 }
 
+struct AccessControlResponse {
+    is_mega: bool,
+}
+
 struct StateTransitionRequest<'a> {
     pending_withdrawal: &'a mut PendingWithdrawal,
     entity: &'a mut Entity,
     member: &'a mut Member,
+    is_mega: bool,
 }

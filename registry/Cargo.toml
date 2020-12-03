@@ -6,19 +6,18 @@ repository = "https://github.com/project-serum/serum-dex"
 edition = "2018"
 
 [features]
-program = ["solana-client-gen/program", "spl-token/program", "serum-common/program", "serum-pool-schema/program"]
-client = ["solana-client-gen/client", "spl-token/default", "serum-common/client", "lazy_static", "serum-pool-schema/default"]
+program = ["solana-client-gen/program", "spl-token/program", "serum-common/program"]
+client = ["solana-client-gen/client", "spl-token/default", "serum-common/client", "lazy_static"]
 test = []
 strict = []
 
 [dependencies]
-solana-client-gen = { path = "../solana-client-gen" }
-serum-common = { path = "../common" }
-spl-token = { version = "2.0.6", default-features = false }
 thiserror = "1.0.20"
 bytemuck = "1.4.0"
 arrayref = "0.3.6"
-serum-pool-schema = { path = "../pool/schema", default-features = false }
+spl-token = { version = "2.0.6", default-features = false }
+solana-client-gen = { path = "../solana-client-gen" }
+serum-common = { path = "../common" }
 
 # Forks.
 borsh = { git = "https://github.com/project-serum/borsh", branch = "serum" }

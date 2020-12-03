@@ -142,14 +142,6 @@ pub mod instruction {
         Stake { amount: u64 },
         /// Accounts:
         ///
-        /// 0. `[writable]` Generation.
-        /// 1. `[]`         Entity.
-        /// 2. `[]`         Registrar.
-        ///
-        /// ..              GetBasket pool accounts.
-        MarkGeneration,
-        /// Accounts:
-        ///
         /// 0. `[writable]  PendingWithdrawal.
         /// 1. `[writable]` Member.
         /// 2  `[signed]`   Benficiary.
@@ -174,21 +166,6 @@ pub mod instruction {
         /// 4. `[]`         Registrar.
         /// 5. `[]`         Clock.
         EndStakeWithdrawal,
-        /// Accounts:
-        ///
-        /// 0. `[signer]`   Registrar authority.
-        /// 1. `[]`         Registrar.
-        /// 2. `[writable]` Member being slashed.
-        /// 3. `[writable]` Entity.
-        /// 4. `[]`         Clock sysvar.
-        /// 5. `[]`         Token program.
-        ///
-        /// ..              Execute pool accounts.
-        Slash { amount: u64 },
-        /// Accounts: TODO
-        ///
-        ///
-        DropPoolReward { totals: Vec<u64> },
         /// Accounts: TODO
         ///
         ///

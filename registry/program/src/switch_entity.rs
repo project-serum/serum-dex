@@ -1,4 +1,3 @@
-use crate::common::pool::{pool_check, Pool, PoolConfig};
 use serum_common::pack::*;
 use serum_registry::access_control;
 use serum_registry::accounts::{Entity, Member, Registrar};
@@ -22,8 +21,6 @@ pub fn handler(program_id: &Pubkey, accounts: &[AccountInfo]) -> Result<(), Regi
     let new_entity_acc_info = next_account_info(acc_infos)?;
     let clock_acc_info = next_account_info(acc_infos)?;
 
-    let pool = &Pool::parse_accounts(acc_infos, PoolConfig::GetBasket)?;
-
     let AccessControlResponse { registrar, clock } = access_control(AccessControlRequest {
         member_acc_info,
         beneficiary_acc_info,
@@ -32,7 +29,6 @@ pub fn handler(program_id: &Pubkey, accounts: &[AccountInfo]) -> Result<(), Regi
         curr_entity_acc_info,
         new_entity_acc_info,
         clock_acc_info,
-        pool,
     })?;
 
     Member::unpack_mut(
@@ -49,7 +45,6 @@ pub fn handler(program_id: &Pubkey, accounts: &[AccountInfo]) -> Result<(), Regi
                                 curr_entity,
                                 new_entity,
                                 member,
-                                pool,
                                 registrar: &registrar,
                                 clock: &clock,
                             })
@@ -75,7 +70,6 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
         curr_entity_acc_info,
         new_entity_acc_info,
         clock_acc_info,
-        pool,
     } = req;
 
     // Beneficiary authorization.
@@ -86,7 +80,7 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
     // Account validation.
     let clock = access_control::clock(clock_acc_info)?;
     let registrar = access_control::registrar(registrar_acc_info, program_id)?;
-    let member = access_control::member_join(
+    let _member = access_control::member_join(
         member_acc_info,
         curr_entity_acc_info,
         beneficiary_acc_info,
@@ -95,7 +89,6 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
     let _curr_entity =
         access_control::entity(curr_entity_acc_info, registrar_acc_info, program_id)?;
     let _new_entity = access_control::entity(new_entity_acc_info, registrar_acc_info, program_id)?;
-    pool_check(program_id, pool, registrar_acc_info, &registrar, &member)?;
 
     Ok(AccessControlResponse { registrar, clock })
 }
@@ -109,7 +102,6 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
         mut member,
         curr_entity,
         new_entity,
-        pool,
         registrar,
         clock,
     } = req;
@@ -117,24 +109,22 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
     curr_entity.remove(member);
     new_entity.add(member);
 
-    curr_entity.transition_activation_if_needed(pool.prices(), registrar, clock);
-    new_entity.transition_activation_if_needed(pool.prices(), registrar, clock);
+    curr_entity.transition_activation_if_needed(registrar, clock);
+    new_entity.transition_activation_if_needed(registrar, clock);
 
-    // Generation may have changed after switching.
-    member.generation = new_entity.generation;
     member.entity = *new_entity_acc_info.key;
+    member.last_stake_ts = clock.unix_timestamp;
 
     Ok(())
 }
 
-struct AccessControlRequest<'a, 'b, 'c> {
+struct AccessControlRequest<'a, 'b> {
     member_acc_info: &'a AccountInfo<'b>,
     beneficiary_acc_info: &'a AccountInfo<'b>,
     registrar_acc_info: &'a AccountInfo<'b>,
     curr_entity_acc_info: &'a AccountInfo<'b>,
     new_entity_acc_info: &'a AccountInfo<'b>,
     clock_acc_info: &'a AccountInfo<'b>,
-    pool: &'c Pool<'a, 'b>,
     program_id: &'a Pubkey,
 }
 
@@ -149,6 +139,5 @@ struct StateTransitionRequest<'a, 'b, 'c> {
     curr_entity: &'c mut Entity,
     new_entity: &'c mut Entity,
     member: &'c mut Member,
-    pool: &'c Pool<'a, 'b>,
     clock: &'c Clock,
 }

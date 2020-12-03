@@ -1,5 +1,4 @@
 use crate::common::entity::{with_entity, EntityContext};
-use crate::common::pool::{pool_check, Pool, PoolConfig};
 use serum_common::pack::Pack;
 use serum_common::program::invoke_token_transfer;
 use serum_registry::access_control;
@@ -36,14 +35,11 @@ pub fn handler(
     let registrar_acc_info = next_account_info(acc_infos)?;
     let clock_acc_info = next_account_info(acc_infos)?;
 
-    let pool = &Pool::parse_accounts(acc_infos, PoolConfig::GetBasket)?;
-
     let ctx = EntityContext {
         registrar_acc_info,
         entity_acc_info,
         clock_acc_info,
         program_id,
-        prices: pool.prices(),
     };
     with_entity(ctx, &mut |entity: &mut Entity,
                            registrar: &Registrar,
@@ -59,7 +55,6 @@ pub fn handler(
             program_id,
             registrar_acc_info,
             registrar,
-            pool,
             delegate,
         })?;
 
@@ -100,7 +95,6 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
         registrar_acc_info,
         registrar,
         program_id,
-        pool,
         delegate,
     } = req;
 
@@ -126,7 +120,6 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
         registrar,
         program_id,
     )?;
-    pool_check(program_id, pool, registrar_acc_info, registrar, &member)?;
 
     // Deposit specific.
     //
@@ -182,7 +175,6 @@ struct AccessControlRequest<'a, 'b, 'c> {
     registrar_acc_info: &'a AccountInfo<'b>,
     vault_authority_acc_info: &'a AccountInfo<'b>,
     program_id: &'a Pubkey,
-    pool: &'c Pool<'a, 'b>,
     registrar: &'c Registrar,
     delegate: bool,
 }

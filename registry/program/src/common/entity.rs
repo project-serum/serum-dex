@@ -1,6 +1,5 @@
 use serum_common::pack::Pack;
 use serum_registry::access_control;
-use serum_registry::accounts::entity::PoolPrices;
 use serum_registry::accounts::{Entity, Registrar};
 use serum_registry::error::RegistryError;
 use solana_sdk::account_info::AccountInfo;
@@ -27,7 +26,6 @@ where
         registrar_acc_info,
         clock_acc_info,
         program_id,
-        prices,
     } = req;
     Entity::unpack_unchecked_mut(
         &mut entity_acc_info.try_borrow_mut_data()?,
@@ -41,9 +39,9 @@ where
                 program_id,
             )?;
 
-            entity.transition_activation_if_needed(&prices, &registrar, &clock);
+            entity.transition_activation_if_needed(&registrar, &clock);
             let r = f(entity, &registrar, &clock)?;
-            entity.transition_activation_if_needed(&prices, &registrar, &clock);
+            entity.transition_activation_if_needed(&registrar, &clock);
 
             Ok(r)
         },
@@ -56,11 +54,4 @@ pub struct EntityContext<'a, 'b> {
     pub registrar_acc_info: &'a AccountInfo<'b>,
     pub clock_acc_info: &'a AccountInfo<'b>,
     pub program_id: &'a Pubkey,
-    // Should use the redemption (not creation) price since it's conservative
-    // by rounding down instead of up.
-    //
-    // For the `stake` instruction, in practice, we use the creation price,
-    // since we hit the instruction limit, otherwise (lots of CPI between
-    // registry -> pool -> retbuf).
-    pub prices: &'a PoolPrices,
 }
