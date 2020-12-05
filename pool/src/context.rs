@@ -11,6 +11,7 @@ use solana_sdk::{account_info::AccountInfo, info, program_error::ProgramError, p
 use spl_token::state::{Account as TokenAccount, Mint};
 
 use serum_pool_schema::{Address, Basket, PoolRequestInner, PoolState};
+use std::cmp::max;
 
 pub struct PoolContext<'a, 'b> {
     pub program_id: &'a Pubkey,
@@ -31,10 +32,13 @@ pub struct PoolContext<'a, 'b> {
     /// Present for `GetBasket` requests.
     pub retbuf: Option<RetbufAccounts<'a, 'b>>,
 
-    /// Present for `Transact` requests.
+    /// Present for `Execute` requests.
     pub user_accounts: Option<UserAccounts<'a, 'b>>,
 
-    /// Present for `Transact` requests.
+    /// Present for `Execute` requests.
+    pub fee_accounts: Option<FeeAccounts<'a, 'b>>,
+
+    /// Present for `Execute` requests.
     pub spl_token_program: Option<&'a AccountInfo<'b>>,
 
     /// Accounts from `PoolState::account_params`. Present for `GetBasket` and `Transact` requests.
@@ -48,8 +52,11 @@ pub struct UserAccounts<'a, 'b> {
     pub pool_token_account: &'a AccountInfo<'b>,
     pub asset_accounts: &'a [AccountInfo<'b>],
     pub authority: &'a AccountInfo<'b>,
+}
 
-    pub pool_fee_account: &'a AccountInfo<'b>,
+pub struct FeeAccounts<'a, 'b> {
+    pub serum_fee_account: &'a AccountInfo<'b>,
+    pub initializer_fee_account: &'a AccountInfo<'b>,
     pub referrer_fee_account: &'a AccountInfo<'b>,
 }
 
@@ -69,7 +76,7 @@ impl<'a, 'b> PoolContext<'a, 'b> {
 
         let pool_account = next_account_info(accounts_iter)?;
         let pool_token_mint = next_account_info(accounts_iter)?;
-        let pool_vault_accounts = next_account_infos(accounts_iter, state.assets.len())?;
+        let pool_vault_accounts = crate::next_account_infos(accounts_iter, state.assets.len())?;
         let pool_authority = next_account_info(accounts_iter)?;
         let mut context = PoolContext {
             program_id,
@@ -80,6 +87,7 @@ impl<'a, 'b> PoolContext<'a, 'b> {
             rent: None,
             retbuf: None,
             user_accounts: None,
+            fee_accounts: None,
             spl_token_program: None,
             account_params: None,
             custom_accounts: &[],
@@ -104,33 +112,46 @@ impl<'a, 'b> PoolContext<'a, 'b> {
                 let retbuf_account = next_account_info(accounts_iter)?;
                 let retbuf_program = next_account_info(accounts_iter)?;
                 context.retbuf = Some(RetbufAccounts::new(retbuf_account, retbuf_program)?);
-                context.account_params = Some(next_account_infos(
+                context.account_params = Some(crate::next_account_infos(
                     accounts_iter,
                     state.account_params.len(),
                 )?);
             }
             PoolRequestInner::Execute(_) => {
                 let pool_token_account = next_account_info(accounts_iter)?;
-                let asset_accounts = next_account_infos(accounts_iter, state.assets.len())?;
+                let asset_accounts = crate::next_account_infos(accounts_iter, state.assets.len())?;
                 let authority = next_account_info(accounts_iter)?;
-                let pool_fee_account = next_account_info(accounts_iter)?;
+                let serum_fee_account = next_account_info(accounts_iter)?;
+                let initializer_fee_account = next_account_info(accounts_iter)?;
                 let referrer_fee_account = next_account_info(accounts_iter)?;
                 context.user_accounts = Some(UserAccounts::new(
                     state,
                     pool_token_account,
                     asset_accounts,
                     authority,
-                    pool_fee_account,
+                )?);
+                context.fee_accounts = Some(FeeAccounts::new(
+                    state,
+                    serum_fee_account,
+                    initializer_fee_account,
                     referrer_fee_account,
                 )?);
                 context.spl_token_program = Some(next_account_info(accounts_iter)?);
-                context.account_params = Some(next_account_infos(
+                context.account_params = Some(crate::next_account_infos(
                     accounts_iter,
                     state.account_params.len(),
                 )?);
             }
             PoolRequestInner::Initialize(_) => {
+                let serum_fee_account = next_account_info(accounts_iter)?;
+                let initializer_fee_account = next_account_info(accounts_iter)?;
                 let rent_sysvar_account = next_account_info(accounts_iter)?;
+                context.fee_accounts = Some(FeeAccounts::new(
+                    state,
+                    serum_fee_account,
+                    initializer_fee_account,
+                    serum_fee_account,
+                )?);
                 if rent_sysvar_account.key != &rent::ID {
                     info!("Incorrect rent sysvar account");
                     return Err(ProgramError::InvalidArgument);
@@ -169,25 +190,42 @@ impl<'a, 'b> UserAccounts<'a, 'b> {
         pool_token_account: &'a AccountInfo<'b>,
         asset_accounts: &'a [AccountInfo<'b>],
         authority: &'a AccountInfo<'b>,
-        pool_fee_account: &'a AccountInfo<'b>,
-        referrer_fee_account: &'a AccountInfo<'b>,
     ) -> Result<Self, ProgramError> {
         check_token_account(pool_token_account, state.pool_token_mint.as_ref(), None)?;
         for (asset_info, account) in state.assets.iter().zip(asset_accounts.iter()) {
             check_token_account(account, asset_info.mint.as_ref(), None)?;
         }
-        check_account_address(pool_fee_account, &state.fee_vault)?;
-        check_token_account(
-            pool_fee_account,
-            state.pool_token_mint.as_ref(),
-            Some(&serum_pool_schema::fee_owner::ID),
-        )?;
-        check_token_account(referrer_fee_account, state.pool_token_mint.as_ref(), None)?;
         Ok(UserAccounts {
             pool_token_account,
             asset_accounts,
             authority,
-            pool_fee_account,
+        })
+    }
+}
+
+impl<'a, 'b> FeeAccounts<'a, 'b> {
+    pub fn new(
+        state: &PoolState,
+        serum_fee_account: &'a AccountInfo<'b>,
+        initializer_fee_account: &'a AccountInfo<'b>,
+        referrer_fee_account: &'a AccountInfo<'b>,
+    ) -> Result<Self, ProgramError> {
+        check_account_address(serum_fee_account, &state.serum_fee_vault)?;
+        check_account_address(initializer_fee_account, &state.initializer_fee_vault)?;
+        check_token_account(
+            serum_fee_account,
+            state.pool_token_mint.as_ref(),
+            Some(&serum_pool_schema::fee_owner::ID),
+        )?;
+        check_token_account(
+            initializer_fee_account,
+            state.pool_token_mint.as_ref(),
+            None,
+        )?;
+        check_token_account(referrer_fee_account, state.pool_token_mint.as_ref(), None)?;
+        Ok(FeeAccounts {
+            serum_fee_account,
+            initializer_fee_account,
             referrer_fee_account,
         })
     }
@@ -216,6 +254,18 @@ impl<'a, 'b> RetbufAccounts<'a, 'b> {
         };
         program::invoke(&instruction, &[self.account.clone(), self.program.clone()])?;
         Ok(())
+    }
+}
+
+pub struct Fees {
+    pub serum_fee: u64,
+    pub initializer_fee: u64,
+    pub referrer_fee: u64,
+}
+
+impl Fees {
+    pub fn total_fee(&self) -> u64 {
+        self.serum_fee + self.initializer_fee + self.referrer_fee
     }
 }
 
@@ -301,27 +351,57 @@ impl<'a, 'b> PoolContext<'a, 'b> {
 
     /// Returns the (pool fee, referral fee) to charge for creating or redeeming
     /// pool tokens.
-    pub fn get_fee(&self, pool_tokens: u64) -> (u64, u64) {
+    pub fn get_fees(&self, state: &PoolState, pool_tokens: u64) -> Fees {
         if pool_tokens == 0 {
-            (0, 0)
+            Fees {
+                serum_fee: 0,
+                referrer_fee: 0,
+                initializer_fee: 0,
+            }
+        } else if state.fee_rate >= 1_000_000 {
+            // Shouldn't be possible
+            Fees {
+                serum_fee: pool_tokens,
+                referrer_fee: 0,
+                initializer_fee: 0,
+            }
         } else {
-            let total_fee = (pool_tokens - 1) / 5000 + 1;
-            let referral_fee = total_fee / 2;
-            let pool_fee = total_fee - referral_fee;
-            (pool_fee, referral_fee)
+            let total_fee =
+                (((pool_tokens as u128) * (state.fee_rate as u128) - 1) / 1_000_000 + 1) as u64;
+            assert!(total_fee <= pool_tokens);
+            let serum_fee = max(
+                total_fee.checked_mul(2).unwrap() / 5,
+                (pool_tokens - 1) / 10000 + 1,
+            );
+            let referrer_fee = serum_fee / 2;
+            let initializer_fee = total_fee
+                .checked_sub(serum_fee)
+                .unwrap()
+                .checked_sub(referrer_fee)
+                .unwrap();
+
+            Fees {
+                serum_fee,
+                referrer_fee,
+                initializer_fee,
+            }
         }
     }
 
-    /// Mints pool tokens to the requester.
+    /// Mints pool tokens to the requester for a creation request.
     ///
     /// Fees are deducted and sent to the fee account before the remainder is sent
     /// to the user.
     pub fn mint_tokens(&self, state: &PoolState, quantity: u64) -> Result<(), ProgramError> {
-        let (pool_fee, referral_fee) = self.get_fee(quantity);
-        let remainder = quantity - pool_fee - referral_fee;
+        let fees = self.get_fees(state, quantity);
+        let remainder = quantity - fees.total_fee();
 
         let user_accounts = self
             .user_accounts
+            .as_ref()
+            .ok_or(ProgramError::InvalidArgument)?;
+        let fee_accounts = self
+            .fee_accounts
             .as_ref()
             .ok_or(ProgramError::InvalidArgument)?;
         let spl_token_program = self
@@ -329,8 +409,9 @@ impl<'a, 'b> PoolContext<'a, 'b> {
             .ok_or(ProgramError::InvalidArgument)?;
 
         for (account, quantity) in &[
-            (user_accounts.pool_fee_account, pool_fee),
-            (user_accounts.referrer_fee_account, referral_fee),
+            (fee_accounts.serum_fee_account, fees.serum_fee),
+            (fee_accounts.initializer_fee_account, fees.initializer_fee),
+            (fee_accounts.referrer_fee_account, fees.referrer_fee),
             (user_accounts.pool_token_account, remainder),
         ] {
             let account = *account;
@@ -365,26 +446,89 @@ impl<'a, 'b> PoolContext<'a, 'b> {
         Ok(())
     }
 
-    pub(crate) fn collect_creation_fees(
+    /// Burns pool tokens from the requester for a redemption request.
+    ///
+    /// Fees are subtracted from the amount burned and sent to the fee addresses.
+    pub(crate) fn burn_and_collect_fees(
         &self,
         state: &PoolState,
         quantity: u64,
-    ) -> Result<(), ProgramError> {
-        Ok(())
-    }
-}
+    ) -> Result<u64, ProgramError> {
+        let fees = self.get_fees(state, quantity);
+        let burn_quantity = quantity - fees.total_fee();
 
-fn next_account_infos<'a, 'b: 'a>(
-    iter: &mut std::slice::Iter<'a, AccountInfo<'b>>,
-    count: usize,
-) -> Result<&'a [AccountInfo<'b>], ProgramError> {
-    let accounts = iter.as_slice();
-    if accounts.len() < count {
-        return Err(ProgramError::NotEnoughAccountKeys);
+        let user_accounts = self
+            .user_accounts
+            .as_ref()
+            .ok_or(ProgramError::InvalidArgument)?;
+        let fee_accounts = self
+            .fee_accounts
+            .as_ref()
+            .ok_or(ProgramError::InvalidArgument)?;
+        let spl_token_program = self
+            .spl_token_program
+            .ok_or(ProgramError::InvalidArgument)?;
+
+        for (account, quantity) in &[
+            (fee_accounts.serum_fee_account, fees.serum_fee),
+            (fee_accounts.initializer_fee_account, fees.initializer_fee),
+            (fee_accounts.referrer_fee_account, fees.referrer_fee),
+        ] {
+            let account = *account;
+            let quantity = *quantity;
+            if quantity > 0 {
+                let source_pubkey = user_accounts.pool_token_account.key;
+                let destination_pubkey = account.key;
+                let authority_pubkey = user_accounts.authority.key;
+                let signer_pubkeys = &[];
+
+                let instruction = spl_token::instruction::transfer(
+                    &spl_token::ID,
+                    source_pubkey,
+                    destination_pubkey,
+                    authority_pubkey,
+                    signer_pubkeys,
+                    quantity,
+                )?;
+
+                let account_infos = &[
+                    user_accounts.pool_token_account.clone(),
+                    account.clone(),
+                    user_accounts.authority.clone(),
+                    spl_token_program.clone(),
+                ];
+
+                program::invoke(&instruction, account_infos)?;
+            }
+        }
+
+        {
+            let mint_pubkey = self.pool_token_mint.key;
+            let account_pubkey = user_accounts.pool_token_account.key;
+            let authority_pubkey = user_accounts.authority.key;
+            let signer_pubkeys = &[];
+
+            let instruction = spl_token::instruction::burn(
+                &spl_token::ID,
+                account_pubkey,
+                mint_pubkey,
+                authority_pubkey,
+                signer_pubkeys,
+                burn_quantity,
+            )?;
+
+            let account_infos = &[
+                self.pool_token_mint.clone(),
+                user_accounts.pool_token_account.clone(),
+                user_accounts.authority.clone(),
+                spl_token_program.clone(),
+            ];
+
+            program::invoke(&instruction, account_infos)?;
+        }
+
+        Ok(burn_quantity)
     }
-    let (accounts, remaining) = accounts.split_at(count);
-    *iter = remaining.into_iter();
-    Ok(accounts)
 }
 
 fn check_account_address(account: &AccountInfo, address: &Address) -> Result<(), ProgramError> {

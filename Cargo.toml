@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "assert-owner",
     "solana-client-gen",
     "common",
     "common/tests",

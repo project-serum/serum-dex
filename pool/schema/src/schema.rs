@@ -97,8 +97,13 @@ pub struct PoolState {
     /// User-friendly pool name.
     pub name: String,
 
-    /// Vault for fees collected by the pool. Mint is the pool token mint.
-    pub fee_vault: Address,
+    /// Vault for fees collected by the pool for Serum. Mint is the pool token mint.
+    pub serum_fee_vault: Address,
+    /// Vault for fees collected by the pool for the pool initializer. Mint is the pool token mint.
+    pub initializer_fee_vault: Address,
+
+    /// Fee on creations and redemptions, per million tokens.
+    pub fee_rate: u32,
 
     /// Meaning depends on the pool implementation.
     pub admin_key: Option<Address>,
@@ -137,7 +142,8 @@ pub enum PoolRequestInner {
     /// - `[writable]` Pool token mint (`PoolState::pool_token_mint`)
     /// - `[writable]` Pool vault account for each of the N pool assets (`AssetInfo::vault_address`)
     /// - `[]` Pool vault authority (`PoolState::vault_signer`)
-    /// - `[]` Pool fee vault
+    /// - `[]` Serum fee vault
+    /// - `[]` Initializer fee vault
     /// - `[]` Rent sysvar
     /// - `[]/[writable]` Any additional accounts needed to initialize the pool
     Initialize(InitializePoolRequest),
@@ -168,8 +174,9 @@ pub enum PoolRequestInner {
     /// - `[writable]` User pool token account
     /// - `[writable]` User account for each of the N pool assets
     /// - `[signer]` Authority for user accounts
-    /// - `[writable]` Pool fee vault
-    /// - `[writable]` Referrer fee vault (can be the same as the pool fee vault)
+    /// - `[writable]` Serum fee vault
+    /// - `[writable]` Initializer fee vault
+    /// - `[writable]` Referrer fee vault
     /// - `[]` spl-token program
     /// - `[]/[writable]` Accounts in `PoolState::account_params`
     Execute(PoolAction),
@@ -180,6 +187,7 @@ pub struct InitializePoolRequest {
     pub vault_signer_nonce: u8,
     pub assets_length: u8,
     pub pool_name: String,
+    pub fee_rate: u32,
     pub custom_data: Vec<u8>,
 }
 
