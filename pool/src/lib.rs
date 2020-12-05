@@ -209,6 +209,14 @@ impl<'a, 'b, P: Pool> PoolProcessor<'a, 'b, P> {
             info!("Invalid pool authority");
             return Err(ProgramError::InvalidArgument);
         }
+        if state.fee_rate < 150 {
+            info!("Fee too low");
+            return Err(ProgramError::InvalidArgument);
+        }
+        if state.fee_rate >= 1_000_000 {
+            info!("Fee too high");
+            return Err(ProgramError::InvalidArgument);
+        }
         self.set_state(state)?;
         Ok(())
     }

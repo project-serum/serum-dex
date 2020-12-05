@@ -49,53 +49,8 @@ pub trait Pool {
         creation_size: u64,
     ) -> Result<(), ProgramError> {
         let basket = Self::get_creation_basket(context, state, creation_size)?;
-        let user_accounts = context
-            .user_accounts
-            .as_ref()
-            .ok_or(ProgramError::InvalidArgument)?;
-        let pool_vault_accounts = context.pool_vault_accounts;
-
-        let spl_token_program = context
-            .spl_token_program
-            .ok_or(ProgramError::InvalidArgument)?;
-
-        let zipped_iter = basket
-            .quantities
-            .iter()
-            .zip(user_accounts.asset_accounts.iter())
-            .zip(pool_vault_accounts.iter());
-
-        // pull in components
-        for ((&input_qty, user_asset_account), pool_vault_account) in zipped_iter {
-            let source_pubkey = user_asset_account.key;
-            let destination_pubkey = pool_vault_account.key;
-            let authority_pubkey = user_accounts.authority.key;
-            let signer_pubkeys = &[];
-
-            let instruction = spl_token::instruction::transfer(
-                &spl_token::ID,
-                source_pubkey,
-                destination_pubkey,
-                authority_pubkey,
-                signer_pubkeys,
-                input_qty
-                    .try_into()
-                    .or(Err(ProgramError::InvalidArgument))?,
-            )?;
-
-            let account_infos = &[
-                user_asset_account.clone(),
-                pool_vault_account.clone(),
-                user_accounts.authority.clone(),
-                spl_token_program.clone(),
-            ];
-
-            program::invoke(&instruction, account_infos)?;
-        }
-
-        // push out shares
+        context.transfer_basket_from_user(&basket)?;
         context.mint_tokens(state, creation_size)?;
-
         Ok(())
     }
 
@@ -104,58 +59,11 @@ pub trait Pool {
         state: &mut PoolState,
         redemption_size: u64,
     ) -> Result<(), ProgramError> {
-        let redemption_size = context.burn_and_collect_fees(state, redemption_size)?;
-
+        let fees = context.get_fees(state, redemption_size);
+        let redemption_size = redemption_size - fees.total_fee();
         let basket = Self::get_redemption_basket(context, state, redemption_size)?;
-
-        let user_accounts = context
-            .user_accounts
-            .as_ref()
-            .ok_or(ProgramError::InvalidArgument)?;
-        let pool_vault_accounts = context.pool_vault_accounts;
-        let spl_token_program = context
-            .spl_token_program
-            .ok_or(ProgramError::InvalidArgument)?;
-        let zipped_iter = basket
-            .quantities
-            .iter()
-            .zip(user_accounts.asset_accounts.iter())
-            .zip(pool_vault_accounts.iter());
-
-        // push out components
-        for ((&output_qty, user_asset_account), pool_vault_account) in zipped_iter {
-            let source_pubkey = pool_vault_account.key;
-            let destination_pubkey = user_asset_account.key;
-            let authority_pubkey = context.pool_authority.key;
-            let signer_pubkeys = &[];
-
-            let instruction = spl_token::instruction::transfer(
-                &spl_token::ID,
-                source_pubkey,
-                destination_pubkey,
-                authority_pubkey,
-                signer_pubkeys,
-                output_qty
-                    .try_into()
-                    .or(Err(ProgramError::InvalidArgument))?,
-            )?;
-
-            let account_infos = &[
-                user_asset_account.clone(),
-                pool_vault_account.clone(),
-                context.pool_authority.clone(),
-                spl_token_program.clone(),
-            ];
-
-            program::invoke_signed(
-                &instruction,
-                account_infos,
-                &[&[
-                    context.pool_account.key.as_ref(),
-                    &[state.vault_signer_nonce],
-                ]],
-            )?;
-        }
+        context.burn_tokens_and_collect_fees(redemption_size, fees)?;
+        context.transfer_basket_to_user(state, &basket)?;
         Ok(())
     }
 

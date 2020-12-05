@@ -358,13 +358,9 @@ impl<'a, 'b> PoolContext<'a, 'b> {
                 referrer_fee: 0,
                 initializer_fee: 0,
             }
-        } else if state.fee_rate >= 1_000_000 {
-            // Shouldn't be possible
-            Fees {
-                serum_fee: pool_tokens,
-                referrer_fee: 0,
-                initializer_fee: 0,
-            }
+        } else if state.fee_rate < 150 || state.fee_rate >= 1_000_000 {
+            info!("Invalid fee");
+            panic!();
         } else {
             let total_fee =
                 (((pool_tokens as u128) * (state.fee_rate as u128) - 1) / 1_000_000 + 1) as u64;
@@ -386,6 +382,53 @@ impl<'a, 'b> PoolContext<'a, 'b> {
                 initializer_fee,
             }
         }
+    }
+
+    /// Transfers basket tokens from the user to the pool.
+    pub fn transfer_basket_from_user(&self, basket: &Basket) -> Result<(), ProgramError> {
+        let user_accounts = self
+            .user_accounts
+            .as_ref()
+            .ok_or(ProgramError::InvalidArgument)?;
+        let pool_vault_accounts = self.pool_vault_accounts;
+        let spl_token_program = self
+            .spl_token_program
+            .ok_or(ProgramError::InvalidArgument)?;
+
+        let zipped_iter = basket
+            .quantities
+            .iter()
+            .zip(user_accounts.asset_accounts.iter())
+            .zip(pool_vault_accounts.iter());
+
+        for ((&input_qty, user_asset_account), pool_vault_account) in zipped_iter {
+            let source_pubkey = user_asset_account.key;
+            let destination_pubkey = pool_vault_account.key;
+            let authority_pubkey = user_accounts.authority.key;
+            let signer_pubkeys = &[];
+
+            let instruction = spl_token::instruction::transfer(
+                &spl_token::ID,
+                source_pubkey,
+                destination_pubkey,
+                authority_pubkey,
+                signer_pubkeys,
+                input_qty
+                    .try_into()
+                    .or(Err(ProgramError::InvalidArgument))?,
+            )?;
+
+            let account_infos = &[
+                user_asset_account.clone(),
+                pool_vault_account.clone(),
+                user_accounts.authority.clone(),
+                spl_token_program.clone(),
+            ];
+
+            program::invoke(&instruction, account_infos)?;
+        }
+
+        Ok(())
     }
 
     /// Mints pool tokens to the requester for a creation request.
@@ -447,16 +490,11 @@ impl<'a, 'b> PoolContext<'a, 'b> {
     }
 
     /// Burns pool tokens from the requester for a redemption request.
-    ///
-    /// Fees are subtracted from the amount burned and sent to the fee addresses.
-    pub(crate) fn burn_and_collect_fees(
+    pub(crate) fn burn_tokens_and_collect_fees(
         &self,
-        state: &PoolState,
-        quantity: u64,
-    ) -> Result<u64, ProgramError> {
-        let fees = self.get_fees(state, quantity);
-        let burn_quantity = quantity - fees.total_fee();
-
+        redemption_size: u64,
+        fees: Fees,
+    ) -> Result<(), ProgramError> {
         let user_accounts = self
             .user_accounts
             .as_ref()
@@ -514,7 +552,7 @@ impl<'a, 'b> PoolContext<'a, 'b> {
                 mint_pubkey,
                 authority_pubkey,
                 signer_pubkeys,
-                burn_quantity,
+                redemption_size,
             )?;
 
             let account_infos = &[
@@ -527,7 +565,62 @@ impl<'a, 'b> PoolContext<'a, 'b> {
             program::invoke(&instruction, account_infos)?;
         }
 
-        Ok(burn_quantity)
+        Ok(())
+    }
+
+    /// Transfers basket tokens from the pool to the user.
+    pub fn transfer_basket_to_user(
+        &self,
+        state: &PoolState,
+        basket: &Basket,
+    ) -> Result<(), ProgramError> {
+        let user_accounts = self
+            .user_accounts
+            .as_ref()
+            .ok_or(ProgramError::InvalidArgument)?;
+        let pool_vault_accounts = self.pool_vault_accounts;
+        let spl_token_program = self
+            .spl_token_program
+            .ok_or(ProgramError::InvalidArgument)?;
+
+        let zipped_iter = basket
+            .quantities
+            .iter()
+            .zip(user_accounts.asset_accounts.iter())
+            .zip(pool_vault_accounts.iter());
+
+        for ((&output_qty, user_asset_account), pool_vault_account) in zipped_iter {
+            let source_pubkey = pool_vault_account.key;
+            let destination_pubkey = user_asset_account.key;
+            let authority_pubkey = self.pool_authority.key;
+            let signer_pubkeys = &[];
+
+            let instruction = spl_token::instruction::transfer(
+                &spl_token::ID,
+                source_pubkey,
+                destination_pubkey,
+                authority_pubkey,
+                signer_pubkeys,
+                output_qty
+                    .try_into()
+                    .or(Err(ProgramError::InvalidArgument))?,
+            )?;
+
+            let account_infos = &[
+                user_asset_account.clone(),
+                pool_vault_account.clone(),
+                self.pool_authority.clone(),
+                spl_token_program.clone(),
+            ];
+
+            program::invoke_signed(
+                &instruction,
+                account_infos,
+                &[&[self.pool_account.key.as_ref(), &[state.vault_signer_nonce]]],
+            )?;
+        }
+
+        Ok(())
     }
 }
 
