@@ -1,5 +1,9 @@
 use std::convert::TryInto;
 
+use crate::next_account_infos;
+use serum_pool_schema::{
+    Address, Basket, PoolRequestInner, PoolState, FEE_RATE_DENOMINATOR, MIN_FEE_RATE,
+};
 use solana_sdk;
 use solana_sdk::account_info::next_account_info;
 use solana_sdk::instruction::{AccountMeta, Instruction};
@@ -9,10 +13,6 @@ use solana_sdk::program_pack::Pack;
 use solana_sdk::sysvar::{rent, Sysvar};
 use solana_sdk::{account_info::AccountInfo, info, program_error::ProgramError, pubkey::Pubkey};
 use spl_token::state::{Account as TokenAccount, Mint};
-
-use serum_pool_schema::{
-    Address, Basket, PoolRequestInner, PoolState, FEE_RATE_DENOMINATOR, MIN_FEE_RATE,
-};
 use std::cmp::max;
 
 pub struct PoolContext<'a, 'b> {
@@ -78,7 +78,7 @@ impl<'a, 'b> PoolContext<'a, 'b> {
 
         let pool_account = next_account_info(accounts_iter)?;
         let pool_token_mint = next_account_info(accounts_iter)?;
-        let pool_vault_accounts = crate::next_account_infos(accounts_iter, state.assets.len())?;
+        let pool_vault_accounts = next_account_infos(accounts_iter, state.assets.len())?;
         let pool_authority = next_account_info(accounts_iter)?;
         let mut context = PoolContext {
             program_id,
@@ -114,14 +114,14 @@ impl<'a, 'b> PoolContext<'a, 'b> {
                 let retbuf_account = next_account_info(accounts_iter)?;
                 let retbuf_program = next_account_info(accounts_iter)?;
                 context.retbuf = Some(RetbufAccounts::new(retbuf_account, retbuf_program)?);
-                context.account_params = Some(crate::next_account_infos(
+                context.account_params = Some(next_account_infos(
                     accounts_iter,
                     state.account_params.len(),
                 )?);
             }
             PoolRequestInner::Execute(_) => {
                 let pool_token_account = next_account_info(accounts_iter)?;
-                let asset_accounts = crate::next_account_infos(accounts_iter, state.assets.len())?;
+                let asset_accounts = next_account_infos(accounts_iter, state.assets.len())?;
                 let authority = next_account_info(accounts_iter)?;
                 let serum_fee_account = next_account_info(accounts_iter)?;
                 let initializer_fee_account = next_account_info(accounts_iter)?;
@@ -139,7 +139,7 @@ impl<'a, 'b> PoolContext<'a, 'b> {
                     referrer_fee_account,
                 )?);
                 context.spl_token_program = Some(next_account_info(accounts_iter)?);
-                context.account_params = Some(crate::next_account_infos(
+                context.account_params = Some(next_account_infos(
                     accounts_iter,
                     state.account_params.len(),
                 )?);
