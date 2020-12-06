@@ -125,6 +125,7 @@ pub struct ParamDesc {
 }
 
 pub const MIN_FEE_RATE: u32 = 150;
+pub const DEFAULT_FEE_RATE: u32 = 2500;
 pub const FEE_RATE_DENOMINATOR: u32 = 1_000_000;
 
 declare_tag!(PoolRequestTag, u64, 0x220a6cbdcd1cc4cf);

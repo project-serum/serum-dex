@@ -1,6 +1,8 @@
 use borsh::BorshSerialize;
 use serum_common::shared_mem;
-use serum_pool_schema::{InitializePoolRequest, PoolAction, PoolRequest, PoolRequestInner};
+use serum_pool_schema::{
+    InitializePoolRequest, PoolAction, PoolRequest, PoolRequestInner, DEFAULT_FEE_RATE,
+};
 use solana_client_gen::solana_sdk::instruction::{AccountMeta, Instruction};
 use solana_client_gen::solana_sdk::pubkey::Pubkey;
 use solana_client_gen::solana_sdk::sysvar;
@@ -39,7 +41,7 @@ pub fn initialize(
             vault_signer_nonce,
             assets_length,
             pool_name: "".to_string(),
-            fee_rate: 150,
+            fee_rate: DEFAULT_FEE_RATE,
             custom_data: vec![],
         }),
     };

@@ -30,9 +30,12 @@ lazy_static::lazy_static! {
         vault_signer: Pubkey::new_from_array([0; 32]).into(),
         vault_signer_nonce: 0,
         account_params: vec![],
+        serum_fee_vault: Pubkey::new_from_array([0; 32]).into(),
+        initializer_fee_vault: Pubkey::new_from_array([0; 32]).into(),
+        fee_rate: DEFAULT_FEE_RATE,
         admin_key: Some(Pubkey::new_from_array([0; 32]).into()),
         custom_state: vec![],
-                name: "".to_string(),
+        name: "".to_string(),
     }.try_to_vec().unwrap().len() as u64;
     pub static ref MEGA_POOL_STATE_SIZE: u64 = PoolState {
         tag: Default::default(),
@@ -50,6 +53,9 @@ lazy_static::lazy_static! {
         vault_signer: Pubkey::new_from_array([0; 32]).into(),
         vault_signer_nonce: 0,
         account_params: vec![],
+        serum_fee_vault: Pubkey::new_from_array([0; 32]).into(),
+        initializer_fee_vault: Pubkey::new_from_array([0; 32]).into(),
+        fee_rate: DEFAULT_FEE_RATE,
         admin_key: Some(Pubkey::new_from_array([0; 32]).into()),
         custom_state: vec![],
         name: "".to_string(),
