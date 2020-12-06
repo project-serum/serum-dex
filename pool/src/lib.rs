@@ -14,7 +14,10 @@ use solana_sdk::{
 };
 use spl_token::state::Account as TokenAccount;
 
-use serum_pool_schema::{AssetInfo, InitializePoolRequest, PoolAction, PoolRequest, PoolState};
+use serum_pool_schema::{
+    AssetInfo, InitializePoolRequest, PoolAction, PoolRequest, PoolState, FEE_RATE_DENOMINATOR,
+    MIN_FEE_RATE,
+};
 use serum_pool_schema::{PoolRequestInner, PoolRequestTag};
 
 pub use crate::context::PoolContext;
@@ -209,11 +212,11 @@ impl<'a, 'b, P: Pool> PoolProcessor<'a, 'b, P> {
             info!("Invalid pool authority");
             return Err(ProgramError::InvalidArgument);
         }
-        if state.fee_rate < 150 {
+        if state.fee_rate < MIN_FEE_RATE {
             info!("Fee too low");
             return Err(ProgramError::InvalidArgument);
         }
-        if state.fee_rate >= 1_000_000 {
+        if state.fee_rate >= FEE_RATE_DENOMINATOR {
             info!("Fee too high");
             return Err(ProgramError::InvalidArgument);
         }

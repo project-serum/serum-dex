@@ -124,6 +124,9 @@ pub struct ParamDesc {
     pub writable: bool,
 }
 
+pub const MIN_FEE_RATE: u32 = 150;
+pub const FEE_RATE_DENOMINATOR: u32 = 1_000_000;
+
 declare_tag!(PoolRequestTag, u64, 0x220a6cbdcd1cc4cf);
 
 #[derive(Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize, BorshSchema)]

@@ -59,7 +59,7 @@ pub trait Pool {
         state: &mut PoolState,
         redemption_size: u64,
     ) -> Result<(), ProgramError> {
-        let fees = context.get_fees(state, redemption_size);
+        let fees = context.get_fees(state, redemption_size)?;
         let redemption_size = redemption_size - fees.total_fee();
         let basket = Self::get_redemption_basket(context, state, redemption_size)?;
         context.burn_tokens_and_collect_fees(redemption_size, fees)?;

@@ -10,7 +10,9 @@ use solana_sdk::sysvar::{rent, Sysvar};
 use solana_sdk::{account_info::AccountInfo, info, program_error::ProgramError, pubkey::Pubkey};
 use spl_token::state::{Account as TokenAccount, Mint};
 
-use serum_pool_schema::{Address, Basket, PoolRequestInner, PoolState};
+use serum_pool_schema::{
+    Address, Basket, PoolRequestInner, PoolState, FEE_RATE_DENOMINATOR, MIN_FEE_RATE,
+};
 use std::cmp::max;
 
 pub struct PoolContext<'a, 'b> {
@@ -351,36 +353,47 @@ impl<'a, 'b> PoolContext<'a, 'b> {
 
     /// Returns the (pool fee, referral fee) to charge for creating or redeeming
     /// pool tokens.
-    pub fn get_fees(&self, state: &PoolState, pool_tokens: u64) -> Fees {
+    pub fn get_fees(&self, state: &PoolState, pool_tokens: u64) -> Result<Fees, ProgramError> {
         if pool_tokens == 0 {
-            Fees {
+            Ok(Fees {
                 serum_fee: 0,
                 referrer_fee: 0,
                 initializer_fee: 0,
-            }
-        } else if state.fee_rate < 150 || state.fee_rate >= 1_000_000 {
+            })
+        } else if state.fee_rate < MIN_FEE_RATE || state.fee_rate >= FEE_RATE_DENOMINATOR {
             info!("Invalid fee");
-            panic!();
+            Err(ProgramError::InvalidArgument)
         } else {
-            let total_fee =
-                (((pool_tokens as u128) * (state.fee_rate as u128) - 1) / 1_000_000 + 1) as u64;
+            let total_fee = (((pool_tokens as u128) * (state.fee_rate as u128) - 1)
+                / FEE_RATE_DENOMINATOR as u128
+                + 1) as u64;
             assert!(total_fee <= pool_tokens);
             let serum_fee = max(
                 total_fee.checked_mul(2).unwrap() / 5,
                 (pool_tokens - 1) / 10000 + 1,
             );
+            assert!(serum_fee <= total_fee);
             let referrer_fee = serum_fee / 2;
+            assert!(serum_fee.checked_add(referrer_fee).unwrap() <= total_fee);
             let initializer_fee = total_fee
                 .checked_sub(serum_fee)
                 .unwrap()
                 .checked_sub(referrer_fee)
                 .unwrap();
+            assert!(
+                serum_fee
+                    .checked_add(referrer_fee)
+                    .unwrap()
+                    .checked_add(initializer_fee)
+                    .unwrap()
+                    <= pool_tokens
+            );
 
-            Fees {
+            Ok(Fees {
                 serum_fee,
                 referrer_fee,
                 initializer_fee,
-            }
+            })
         }
     }
 
@@ -436,7 +449,7 @@ impl<'a, 'b> PoolContext<'a, 'b> {
     /// Fees are deducted and sent to the fee account before the remainder is sent
     /// to the user.
     pub fn mint_tokens(&self, state: &PoolState, quantity: u64) -> Result<(), ProgramError> {
-        let fees = self.get_fees(state, quantity);
+        let fees = self.get_fees(state, quantity)?;
         let remainder = quantity - fees.total_fee();
 
         let user_accounts = self
