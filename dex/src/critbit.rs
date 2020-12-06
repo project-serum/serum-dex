@@ -215,6 +215,14 @@ impl AnyNode {
     }
 
     #[inline]
+    pub fn as_leaf(&self) -> Option<&LeafNode> {
+        match self.case() {
+            Some(NodeRef::Leaf(leaf_ref)) => Some(leaf_ref),
+            _ => None,
+        }
+    }
+
+    #[inline]
     pub fn as_leaf_mut(&mut self) -> Option<&mut LeafNode> {
         match self.case_mut() {
             Some(NodeRefMut::Leaf(leaf_ref)) => Some(leaf_ref),
