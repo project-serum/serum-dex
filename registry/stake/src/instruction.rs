@@ -39,6 +39,7 @@ pub fn initialize(
             vault_signer_nonce,
             assets_length,
             pool_name: "".to_string(),
+            fee_rate: 150,
             custom_data: vec![],
         }),
     };
