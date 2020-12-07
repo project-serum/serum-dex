@@ -1,7 +1,5 @@
-use std::convert::TryInto;
-
-use solana_sdk::{
-    account_info::AccountInfo, entrypoint::ProgramResult, program, program_error::ProgramError,
+use solana_program::{
+    account_info::AccountInfo, entrypoint::ProgramResult, program_error::ProgramError,
     pubkey::Pubkey,
 };
 

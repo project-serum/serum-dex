@@ -1,15 +1,14 @@
-#![allow(dead_code)]
-
 use std::marker::PhantomData;
 use std::ops::DerefMut;
 
 use arrayref::array_ref;
 use borsh::{BorshDeserialize, BorshSerialize};
-pub use solana_sdk;
-use solana_sdk::program_option::COption;
-use solana_sdk::program_pack::Pack;
-use solana_sdk::{
-    account_info::AccountInfo, entrypoint::ProgramResult, info, program_error::ProgramError,
+pub use solana_program;
+use solana_program::account_info::next_account_info;
+use solana_program::program_option::COption;
+use solana_program::program_pack::Pack;
+use solana_program::{
+    account_info::AccountInfo, entrypoint::ProgramResult, msg, program_error::ProgramError,
     pubkey::Pubkey,
 };
 use spl_token::state::Account as TokenAccount;
@@ -22,7 +21,6 @@ use serum_pool_schema::{PoolRequestInner, PoolRequestTag};
 
 pub use crate::context::PoolContext;
 pub use crate::pool::Pool;
-use solana_sdk::account_info::next_account_info;
 
 pub mod context;
 pub mod pool;
@@ -32,12 +30,12 @@ type PoolResult<T> = Result<T, ProgramError>;
 #[macro_export]
 macro_rules! declare_pool_entrypoint {
     ($PoolImpl:ty) => {
-        solana_sdk::entrypoint!(entry);
+        solana_program::entrypoint!(entry);
         fn entry(
-            program_id: &$crate::solana_sdk::pubkey::Pubkey,
-            accounts: &[$crate::solana_sdk::account_info::AccountInfo],
+            program_id: &$crate::solana_program::pubkey::Pubkey,
+            accounts: &[$crate::solana_program::account_info::AccountInfo],
             instruction_data: &[u8],
-        ) -> solana_sdk::entrypoint::ProgramResult {
+        ) -> solana_program::entrypoint::ProgramResult {
             $crate::pool_entrypoint::<$PoolImpl>(program_id, accounts, instruction_data)
         }
     };
@@ -54,7 +52,7 @@ pub fn pool_entrypoint<P: pool::Pool>(
         if u64::from_le_bytes(*tag_bytes) == PoolRequestTag::TAG_VALUE {
             let request: PoolRequest =
                 BorshDeserialize::try_from_slice(instruction_data).map_err(|e| {
-                    info!(&e.to_string());
+                    msg!(&e.to_string());
                     ProgramError::InvalidInstructionData
                 })?;
             return PoolProcessor::<'_, '_, P> {
@@ -84,7 +82,7 @@ impl<'a, 'b, P: Pool> PoolProcessor<'a, 'b, P> {
         }
         let account = &self.accounts[0];
         if account.owner != self.program_id {
-            info!("Account not owned by pool program");
+            msg!("Account not owned by pool program");
             return Err(ProgramError::IncorrectProgramId);
         };
         let data = account.try_borrow_data()?;
@@ -96,7 +94,7 @@ impl<'a, 'b, P: Pool> PoolProcessor<'a, 'b, P> {
         let mut data: &[u8] = *data;
         Ok(Some(BorshDeserialize::deserialize(&mut data).map_err(
             |e| {
-                info!(&e.to_string());
+                msg!(&e.to_string());
                 ProgramError::InvalidAccountData
             },
         )?))
@@ -209,15 +207,15 @@ impl<'a, 'b, P: Pool> PoolProcessor<'a, 'b, P> {
 
         P::initialize_pool(&context, &mut state)?;
         if *context.pool_authority.key != context.derive_vault_authority(&state)? {
-            info!("Invalid pool authority");
+            msg!("Invalid pool authority");
             return Err(ProgramError::InvalidArgument);
         }
         if state.fee_rate < MIN_FEE_RATE {
-            info!("Fee too low");
+            msg!("Fee too low");
             return Err(ProgramError::InvalidArgument);
         }
         if state.fee_rate >= FEE_RATE_DENOMINATOR {
-            info!("Fee too high");
+            msg!("Fee too high");
             return Err(ProgramError::InvalidArgument);
         }
         self.set_state(state)?;
@@ -231,17 +229,17 @@ impl<'a, 'b, P: Pool> PoolProcessor<'a, 'b, P> {
     ) -> Result<(), ProgramError> {
         let token_account = TokenAccount::unpack(&account.try_borrow_data()?)?;
         if token_account.owner != serum_pool_schema::fee_owner::ID {
-            info!("Incorrect fee account owner");
+            msg!("Incorrect fee account owner");
             return Err(ProgramError::InvalidArgument);
         }
         if token_account.delegate.is_some() {
-            info!("Incorrect fee account delegate");
+            msg!("Incorrect fee account delegate");
             return Err(ProgramError::InvalidArgument);
         }
         if token_account.close_authority.is_some()
             && token_account.close_authority.as_ref() != COption::Some(state.vault_signer.as_ref())
         {
-            info!("Incorrect fee account close authority");
+            msg!("Incorrect fee account close authority");
             return Err(ProgramError::InvalidArgument);
         }
         Ok(())

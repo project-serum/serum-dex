@@ -4,14 +4,14 @@ use crate::next_account_infos;
 use serum_pool_schema::{
     Address, Basket, PoolRequestInner, PoolState, FEE_RATE_DENOMINATOR, MIN_FEE_RATE,
 };
-use solana_sdk;
-use solana_sdk::account_info::next_account_info;
-use solana_sdk::instruction::{AccountMeta, Instruction};
-use solana_sdk::program;
-use solana_sdk::program_option::COption;
-use solana_sdk::program_pack::Pack;
-use solana_sdk::sysvar::{rent, Sysvar};
-use solana_sdk::{account_info::AccountInfo, info, program_error::ProgramError, pubkey::Pubkey};
+use solana_program;
+use solana_program::account_info::next_account_info;
+use solana_program::instruction::{AccountMeta, Instruction};
+use solana_program::program;
+use solana_program::program_option::COption;
+use solana_program::program_pack::Pack;
+use solana_program::sysvar::{rent, Sysvar};
+use solana_program::{account_info::AccountInfo, msg, program_error::ProgramError, pubkey::Pubkey};
 use spl_token::state::{Account as TokenAccount, Mint};
 use std::cmp::{max, min};
 
@@ -155,11 +155,11 @@ impl<'a, 'b> PoolContext<'a, 'b> {
                     serum_fee_account,
                 )?);
                 if rent_sysvar_account.key != &rent::ID {
-                    info!("Incorrect rent sysvar account");
+                    msg!("Incorrect rent sysvar account");
                     return Err(ProgramError::InvalidArgument);
                 }
                 let rent = rent::Rent::from_account_info(rent_sysvar_account).map_err(|_| {
-                    info!("Failed to deserialize rent sysvar");
+                    msg!("Failed to deserialize rent sysvar");
                     ProgramError::InvalidArgument
                 })?;
                 context.rent = Some(rent);
@@ -168,7 +168,7 @@ impl<'a, 'b> PoolContext<'a, 'b> {
 
         if let Some(spl_token_program) = context.spl_token_program {
             if spl_token_program.key != &spl_token::ID {
-                info!("Incorrect spl-token program ID");
+                msg!("Incorrect spl-token program ID");
                 return Err(ProgramError::InvalidArgument);
             }
         }
@@ -239,7 +239,7 @@ impl<'a, 'b> RetbufAccounts<'a, 'b> {
         program: &'a AccountInfo<'b>,
     ) -> Result<Self, ProgramError> {
         if account.owner != program.key {
-            info!("Incorrect retbuf account owner");
+            msg!("Incorrect retbuf account owner");
             return Err(ProgramError::IncorrectProgramId);
         }
         Ok(RetbufAccounts { account, program })
@@ -248,7 +248,7 @@ impl<'a, 'b> RetbufAccounts<'a, 'b> {
     // data is a Vec whose first 8 bytes are the little-endian offset at which to
     // write the remaining bytes
     pub(crate) fn write_data(&self, data: Vec<u8>) -> Result<(), ProgramError> {
-        info!(&base64::encode(&data[8..]));
+        msg!(&base64::encode(&data[8..]));
         let instruction = Instruction {
             program_id: *self.program.key,
             accounts: vec![AccountMeta::new(*self.account.key, false)],
@@ -273,7 +273,7 @@ impl Fees {
 
     pub fn from_fee_rate_and_tokens(fee_rate: u32, tokens: u64) -> Result<Self, ProgramError> {
         if fee_rate < MIN_FEE_RATE || fee_rate >= FEE_RATE_DENOMINATOR {
-            info!("Invalid fee");
+            msg!("Invalid fee");
             Err(ProgramError::InvalidArgument)
         } else if tokens == 0 {
             Ok(Fees {
@@ -321,7 +321,7 @@ impl<'a, 'b> PoolContext<'a, 'b> {
         let seeds = &[self.pool_account.key.as_ref(), &[state.vault_signer_nonce]];
         Ok(
             Pubkey::create_program_address(seeds, self.program_id).map_err(|e| {
-                info!("Invalid vault signer nonce");
+                msg!("Invalid vault signer nonce");
                 e
             })?,
         )
@@ -329,7 +329,7 @@ impl<'a, 'b> PoolContext<'a, 'b> {
 
     pub fn check_rent_exemption(&self, account: &AccountInfo) -> Result<(), ProgramError> {
         let rent = self.rent.ok_or_else(|| {
-            info!("Rent parameters not present");
+            msg!("Rent parameters not present");
             ProgramError::InvalidArgument
         })?;
         let data_len = account.try_data_len()?;
@@ -337,7 +337,7 @@ impl<'a, 'b> PoolContext<'a, 'b> {
         if rent.is_exempt(lamports, data_len as usize) {
             Ok(())
         } else {
-            info!("Account is not rent exempt");
+            msg!("Account is not rent exempt");
             Err(ProgramError::InvalidArgument)
         }
     }
@@ -369,7 +369,7 @@ impl<'a, 'b> PoolContext<'a, 'b> {
     ) -> Result<Basket, ProgramError> {
         let total_pool_tokens = self.total_pool_tokens()?;
         if total_pool_tokens == 0 {
-            info!("Pool is empty");
+            msg!("Pool is empty");
             return Err(ProgramError::InvalidArgument);
         }
         let basket_quantities: Option<Vec<i64>> = self
@@ -390,7 +390,7 @@ impl<'a, 'b> PoolContext<'a, 'b> {
             .collect();
         Ok(Basket {
             quantities: basket_quantities.ok_or_else(|| {
-                info!("Per-share quantity doesn't fit into an i64");
+                msg!("Per-share quantity doesn't fit into an i64");
                 ProgramError::InvalidArgument
             })?,
         })
@@ -660,7 +660,7 @@ impl<'a, 'b> PoolContext<'a, 'b> {
 
 fn check_account_address(account: &AccountInfo, address: &Address) -> Result<(), ProgramError> {
     if account.key != address.as_ref() {
-        info!("Incorrect account address");
+        msg!("Incorrect account address");
         return Err(ProgramError::InvalidArgument);
     }
     Ok(())
@@ -668,12 +668,12 @@ fn check_account_address(account: &AccountInfo, address: &Address) -> Result<(),
 
 fn check_mint_minter(account: &AccountInfo, mint_authority: &Pubkey) -> Result<(), ProgramError> {
     if account.owner != &spl_token::ID {
-        info!("Account not owned by spl-token program");
+        msg!("Account not owned by spl-token program");
         return Err(ProgramError::IncorrectProgramId);
     }
     let mint = Mint::unpack(&account.try_borrow_data()?)?;
     if mint.mint_authority != COption::Some(*mint_authority) {
-        info!("Incorrect mint authority");
+        msg!("Incorrect mint authority");
         return Err(ProgramError::InvalidArgument);
     }
     Ok(())
@@ -685,18 +685,18 @@ fn check_token_account(
     authority: Option<&Pubkey>,
 ) -> Result<(), ProgramError> {
     if account.owner != &spl_token::ID {
-        info!("Account not owned by spl-token program");
+        msg!("Account not owned by spl-token program");
         return Err(ProgramError::IncorrectProgramId);
     }
     let token_account = TokenAccount::unpack(&account.try_borrow_data()?)?;
     if &token_account.mint != mint {
-        info!("Incorrect mint");
+        msg!("Incorrect mint");
         return Err(ProgramError::InvalidArgument);
     }
     if let Some(authority) = authority {
         if &token_account.owner != authority && token_account.delegate != COption::Some(*authority)
         {
-            info!("Incorrect spl-token account owner");
+            msg!("Incorrect spl-token account owner");
             return Err(ProgramError::InvalidArgument);
         }
     }

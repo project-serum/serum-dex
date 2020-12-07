@@ -3,7 +3,7 @@ use std::{io, io::Write};
 
 use borsh::schema::{Declaration, Definition};
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
-use solana_sdk::pubkey::Pubkey;
+use solana_program::pubkey::Pubkey;
 
 /// Wrapper around `solana_sdk::pubkey::Pubkey` so it can implement `BorshSerialize` etc.
 #[repr(transparent)]
@@ -71,7 +71,8 @@ macro_rules! declare_tag {
 }
 
 pub mod fee_owner {
-    use solana_sdk::declare_id;
+    use solana_program::declare_id;
+
     declare_id!("DeqYsmBd9BnrbgUwQjVH4sQWK71dEgE6eoZFw3Rp4ftE");
 }
 

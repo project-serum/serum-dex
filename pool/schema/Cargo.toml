@@ -5,12 +5,12 @@ authors = ["Sebastian Conybeare <sebastian@projectserum.com>"]
 edition = "2018"
 
 [features]
-program = ["solana-sdk/program"]
-default = ["solana-sdk/default"]
+program = []
+default = []
 
 [dependencies]
 borsh = { git = "https://github.com/project-serum/borsh", branch = "serum" }
-solana-sdk = { version = "1.3.9", default-features = false }
+solana-program = "1.4.14"
 
 [[bin]]
 name = "print-schema"
