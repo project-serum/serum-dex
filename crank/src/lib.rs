@@ -289,7 +289,10 @@ pub fn start(opts: Opts) -> Result<()> {
             port,
         } => {
             let client = opts.client();
-            let mut runtime = tokio::runtime::Builder::new().basic_scheduler().build().unwrap();
+            let mut runtime = tokio::runtime::Builder::new()
+                .basic_scheduler()
+                .build()
+                .unwrap();
             runtime
                 .block_on(read_queue_length_loop(client, dex_program_id, market, port))
                 .unwrap();
