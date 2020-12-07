@@ -1,8 +1,8 @@
 #![cfg_attr(feature = "strict", deny(warnings))]
 
 use serum_common::pack::Pack;
-use serum_rewards::error::{RewardsError, RewardsErrorCode};
-use serum_rewards::instruction::RewardsInstruction;
+use serum_registry_rewards::error::{RewardsError, RewardsErrorCode};
+use serum_registry_rewards::instruction::RewardsInstruction;
 use solana_program::info;
 use solana_sdk::account_info::AccountInfo;
 use solana_sdk::entrypoint::ProgramResult;
@@ -35,7 +35,6 @@ fn entry(program_id: &Pubkey, accounts: &[AccountInfo], instruction_data: &[u8])
             dex_program_id,
             authority,
             fee_rate,
-            e,
         ),
         RewardsInstruction::CrankRelay { instruction_data } => {
             crank_relay::handler(program_id, accounts, instruction_data)

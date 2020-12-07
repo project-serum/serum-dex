@@ -160,10 +160,7 @@ impl Client {
         let CreateEntityRequest {
             node_leader,
             registrar,
-            name,
-            about,
-            image_url,
-            meta_entity_program_id,
+            metadata,
         } = req;
         let entity_kp = Keypair::generate(&mut OsRng);
         let create_acc_instr = {
@@ -188,35 +185,40 @@ impl Client {
             AccountMeta::new_readonly(solana_sdk::sysvar::rent::ID, false),
         ];
 
-        let metadata = Keypair::generate(&mut OsRng);
+        let metadata_kp = Keypair::generate(&mut OsRng);
         let mqueue = Keypair::generate(&mut OsRng);
+
         let create_entity_instr = serum_registry::instruction::create_entity(
             *self.inner.program(),
             &accounts,
-            metadata.pubkey(),
+            metadata_kp.pubkey(),
         );
+        let mut instructions = vec![];
+        let mut signers = vec![self.payer(), node_leader, &entity_kp];
+        if let Some(metadata) = metadata {
+            let EntityMetadata {
+                name,
+                about,
+                image_url,
+                meta_entity_program_id,
+            } = metadata;
+            let create_md_instrs = create_metadata_instructions(
+                self.rpc(),
+                &self.inner.payer().pubkey(),
+                &metadata_kp,
+                &mqueue,
+                &meta_entity_program_id,
+                &entity_kp.pubkey(),
+                name,
+                about,
+                image_url,
+            );
+            instructions.extend_from_slice(&create_md_instrs);
+            signers.extend_from_slice(&[&metadata_kp, &mqueue])
+        }
 
-        let create_md_instrs = create_metadata_instructions(
-            self.rpc(),
-            &self.inner.payer().pubkey(),
-            &metadata,
-            &mqueue,
-            &meta_entity_program_id,
-            &entity_kp.pubkey(),
-            name,
-            about,
-            image_url,
-        );
-        let mut instructions = create_md_instrs;
         instructions.extend_from_slice(&[create_acc_instr, create_entity_instr]);
 
-        let signers = vec![
-            node_leader,
-            &metadata,
-            &mqueue,
-            &entity_kp,
-            self.inner.payer(),
-        ];
         let (recent_hash, _fee_calc) = self.rpc().get_recent_blockhash()?;
 
         let tx = Transaction::new_signed_with_payer(
@@ -1126,6 +1128,10 @@ pub struct InitializeResponse {
 pub struct CreateEntityRequest<'a> {
     pub node_leader: &'a Keypair,
     pub registrar: Pubkey,
+    pub metadata: Option<EntityMetadata>,
+}
+
+pub struct EntityMetadata {
     pub name: String,
     pub about: String,
     pub image_url: String,

@@ -6,7 +6,7 @@ repository = "https://github.com/project-serum/serum-dex"
 edition = "2018"
 
 [dependencies]
-serum-rewards = { path = "../", features = ["client"] }
+serum-registry-rewards = { path = "../", features = ["client"] }
 solana-client-gen = { path = "../../../solana-client-gen" }
 anyhow = "1.0.32"
 thiserror = "1.0.20"

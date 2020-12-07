@@ -1,5 +1,5 @@
-use serum_rewards::accounts;
-use serum_rewards::client::{Client as InnerClient, ClientError as InnerClientError};
+use serum_registry_rewards::accounts;
+use serum_registry_rewards::client::{Client as InnerClient, ClientError as InnerClientError};
 use solana_client_gen::prelude::*;
 use solana_client_gen::solana_sdk;
 use solana_client_gen::solana_sdk::instruction::AccountMeta;
@@ -12,6 +12,7 @@ pub fn initialize(
     reward_mint: Pubkey,
     dex_program_id: Pubkey,
     authority: Pubkey,
+    fee_rate: u64,
 ) -> Result<(Signature, Pubkey, u8), InnerClientError> {
     let instance_kp = Keypair::generate(&mut OsRng);
     let (instance_vault_authority, nonce) =
@@ -46,13 +47,14 @@ pub fn initialize(
         )
     };
 
-    let initialize_instr = serum_rewards::instruction::initialize(
+    let initialize_instr = serum_registry_rewards::instruction::initialize(
         *client.program(),
         &accounts,
         nonce,
         registry_program_id,
         dex_program_id,
         authority,
+        fee_rate,
     );
 
     let tx = {

@@ -1,6 +1,6 @@
 use serum_common::pack::Pack;
-use serum_rewards::accounts::{vault, Instance};
-use serum_rewards::error::{RewardsError, RewardsErrorCode};
+use serum_registry_rewards::accounts::{vault, Instance};
+use serum_registry_rewards::error::{RewardsError, RewardsErrorCode};
 use solana_sdk::account_info::AccountInfo;
 use solana_sdk::program_pack::Pack as TokenPack;
 use solana_sdk::pubkey::Pubkey;
@@ -10,17 +10,16 @@ use spl_token::state::Account as TokenAccount;
 
 pub fn governance(
     program_id: &Pubkey,
-    instance_acc_info: &AccountInfo,
     instance_authority_acc_info: &AccountInfo,
-) -> Result<Instance, RewardsError> {
+    instance: &Instance,
+) -> Result<(), RewardsError> {
     if !instance_authority_acc_info.is_signer {
         return Err(RewardsErrorCode::Unauthorized)?;
     }
-    let instance = instance(instance_acc_info, program_id)?;
     if instance.authority != *instance_authority_acc_info.key {
         return Err(RewardsErrorCode::Unauthorized)?;
     }
-    Ok(instance)
+    Ok(())
 }
 
 pub fn rent(acc_info: &AccountInfo) -> Result<Rent, RewardsError> {
@@ -70,10 +69,10 @@ pub fn vault_init(
 pub fn vault(
     acc_info: &AccountInfo,
     vault_authority_acc_info: &AccountInfo,
+    instance: &Instance,
     instance_acc_info: &AccountInfo,
     program_id: &Pubkey,
 ) -> Result<TokenAccount, RewardsError> {
-    let instance = instance(instance_acc_info, program_id)?;
     let vault = token(acc_info)?;
     if *acc_info.key != instance.vault {
         return Err(RewardsErrorCode::InvalidVault)?;

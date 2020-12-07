@@ -1,8 +1,8 @@
 use anyhow::anyhow;
 use serum_common::client::rpc;
-use serum_rewards::accounts::{vault, Instance};
-use serum_rewards::client::{Client as InnerClient, ClientError as InnerClientError};
-use serum_rewards::error::RewardsError;
+use serum_registry_rewards::accounts::{vault, Instance};
+use serum_registry_rewards::client::{Client as InnerClient, ClientError as InnerClientError};
+use serum_registry_rewards::error::RewardsError;
 use solana_client_gen::prelude::Signer;
 use solana_client_gen::prelude::*;
 use solana_client_gen::solana_sdk;
@@ -32,6 +32,7 @@ impl Client {
             req.reward_mint,
             req.dex_program_id,
             req.authority,
+            req.fee_rate,
         )?;
         Ok(InitializeResponse {
             tx,
@@ -174,6 +175,7 @@ pub struct InitializeRequest {
     pub reward_mint: Pubkey,
     pub dex_program_id: Pubkey,
     pub authority: Pubkey,
+    pub fee_rate: u64,
 }
 
 #[derive(Debug)]

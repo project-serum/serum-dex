@@ -3371,7 +3371,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "serum-rewards"
+name = "serum-registry-rewards"
 version = "0.1.0"
 dependencies = [
  "arrayref",
@@ -3385,7 +3385,7 @@ dependencies = [
  "serum-common-tests",
  "serum-registry",
  "serum-registry-client",
- "serum-rewards-client",
+ "serum-registry-rewards-client",
  "serum_dex",
  "solana-client-gen",
  "spl-token 2.0.6",
@@ -3393,12 +3393,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "serum-rewards-client"
+name = "serum-registry-rewards-client"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "serum-common",
- "serum-rewards",
+ "serum-registry-rewards",
  "solana-client",
  "solana-client-gen",
  "spl-token 2.0.6",

@@ -1,8 +1,8 @@
 use crate::access_control;
 use serum_common::pack::*;
-use serum_rewards::accounts::Instance;
-use serum_rewards::error::RewardsError;
-use solana_program::info;
+use serum_registry_rewards::accounts::Instance;
+use serum_registry_rewards::error::RewardsError;
+use solana_program::msg;
 use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::pubkey::Pubkey;
 use std::convert::Into;
@@ -12,7 +12,7 @@ pub fn handler(
     accounts: &[AccountInfo],
     new_authority: Pubkey,
 ) -> Result<(), RewardsError> {
-    info!("handler: set_authority");
+    msg!("handler: set_authority");
 
     let acc_infos = &mut accounts.iter();
 
@@ -40,7 +40,7 @@ pub fn handler(
 }
 
 fn access_control(req: AccessControlRequest) -> Result<(), RewardsError> {
-    info!("access-control: set_authority");
+    msg!("access-control: set_authority");
 
     let AccessControlRequest {
         program_id,
@@ -48,15 +48,14 @@ fn access_control(req: AccessControlRequest) -> Result<(), RewardsError> {
         instance_authority_acc_info,
     } = req;
 
-    let _ = access_control::governance(program_id, instance_acc_info, instance_authority_acc_info)?;
-
-    info!("access-control: success");
+    let instance = access_control::instance(instance_acc_info, program_id)?;
+    access_control::governance(program_id, instance_authority_acc_info, &instance)?;
 
     Ok(())
 }
 
 fn state_transition(req: StateTransitionRequest) -> Result<(), RewardsError> {
-    info!("state-transition: set_authority");
+    msg!("state-transition: set_authority");
 
     let StateTransitionRequest {
         instance,
@@ -64,8 +63,6 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), RewardsError> {
     } = req;
 
     instance.authority = new_authority;
-
-    info!("state-transition: success");
 
     Ok(())
 }
