@@ -31,6 +31,7 @@ pub enum RewardsErrorCode {
     InvalidEventQueue = 15,
     InvalidVault = 16,
     InvalidFeeRate = 17,
+    InvalidDEXInstruction = 18,
     Unknown = 1000,
 }
 

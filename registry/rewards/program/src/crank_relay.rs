@@ -42,6 +42,7 @@ pub fn handler(
         dex_program_acc_info,
         event_q_acc_info,
         program_id,
+        dex_instruction_data: &dex_instruction_data,
     })?;
 
     state_transition(StateTransitionRequest {
@@ -72,6 +73,7 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
         dex_program_acc_info,
         event_q_acc_info,
         program_id,
+        dex_instruction_data,
     } = req;
 
     // Entity leader authorization.
@@ -95,22 +97,33 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
         &instance.registry_program_id,
     )
     .map_err(|_| RewardsErrorCode::InvalidEntity)?;
-    let _ = access_control::vault(
+    let _v = access_control::vault(
         vault_acc_info,
         vault_authority_acc_info,
         &instance,
         instance_acc_info,
         program_id,
     )?;
-    if event_q_acc_info.owner != dex_program_acc_info.key {
-        return Err(RewardsErrorCode::InvalidEventQueueOwner)?;
-    }
 
     if entity.leader != *entity_leader_acc_info.key {
         return Err(RewardsErrorCode::InvalidLeader)?;
     }
     if entity.state != EntityState::Active {
         return Err(RewardsErrorCode::EntityNotActive)?;
+    }
+
+    if event_q_acc_info.owner != dex_program_acc_info.key {
+        return Err(RewardsErrorCode::InvalidEventQueueOwner)?;
+    }
+    let version = dex_instruction_data[0];
+    if version != 0 {
+        return Err(RewardsErrorCode::InvalidDEXInstruction)?;
+    }
+    let mut ix_discrim_bytes = [0u8; 4];
+    ix_discrim_bytes.copy_from_slice(&dex_instruction_data[1..5]);
+    let ix_discrim = u32::from_le_bytes(ix_discrim_bytes);
+    if ix_discrim != 3 {
+        return Err(RewardsErrorCode::InvalidDEXInstruction)?;
     }
 
     Ok(AccessControlResponse { instance })
@@ -200,6 +213,7 @@ struct AccessControlRequest<'a, 'b> {
     dex_program_acc_info: &'a AccountInfo<'b>,
     event_q_acc_info: &'a AccountInfo<'b>,
     program_id: &'a Pubkey,
+    dex_instruction_data: &'a [u8],
 }
 
 struct AccessControlResponse {
