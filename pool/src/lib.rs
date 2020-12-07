@@ -6,6 +6,7 @@ use std::ops::DerefMut;
 use arrayref::array_ref;
 use borsh::{BorshDeserialize, BorshSerialize};
 pub use solana_sdk;
+use solana_sdk::program_option::COption;
 use solana_sdk::program_pack::Pack;
 use solana_sdk::{
     account_info::AccountInfo, entrypoint::ProgramResult, info, program_error::ProgramError,
@@ -13,11 +14,15 @@ use solana_sdk::{
 };
 use spl_token::state::Account as TokenAccount;
 
-use serum_pool_schema::{AssetInfo, InitializePoolRequest, PoolAction, PoolRequest, PoolState};
+use serum_pool_schema::{
+    AssetInfo, InitializePoolRequest, PoolAction, PoolRequest, PoolState, FEE_RATE_DENOMINATOR,
+    MIN_FEE_RATE,
+};
 use serum_pool_schema::{PoolRequestInner, PoolRequestTag};
 
 pub use crate::context::PoolContext;
 pub use crate::pool::Pool;
+use solana_sdk::account_info::next_account_info;
 
 pub mod context;
 pub mod pool;
@@ -160,10 +165,18 @@ impl<'a, 'b, P: Pool> PoolProcessor<'a, 'b, P> {
     }
 
     fn initialize_pool(&self, request: &InitializePoolRequest) -> PoolResult<()> {
+        let accounts_iter = &mut self.accounts.into_iter();
+        let _pool_account = next_account_info(accounts_iter)?;
+        let pool_token_mint = next_account_info(accounts_iter)?;
+        let pool_vaults = next_account_infos(accounts_iter, request.assets_length as usize)?;
+        let vault_signer = next_account_info(accounts_iter)?;
+        let serum_fee_vault = next_account_info(accounts_iter)?;
+        let initializer_fee_vault = next_account_info(accounts_iter)?;
+
         let mut state = PoolState {
             tag: Default::default(),
-            pool_token_mint: self.accounts[1].key.into(),
-            assets: self.accounts[2..2 + request.assets_length as usize]
+            pool_token_mint: pool_token_mint.key.into(),
+            assets: pool_vaults
                 .iter()
                 .map(|account| {
                     let acc = TokenAccount::unpack(&account.try_borrow_data()?)?;
@@ -173,8 +186,11 @@ impl<'a, 'b, P: Pool> PoolProcessor<'a, 'b, P> {
                     })
                 })
                 .collect::<PoolResult<Vec<_>>>()?,
-            vault_signer: self.accounts[2 + request.assets_length as usize].key.into(),
+            vault_signer: vault_signer.key.into(),
             vault_signer_nonce: request.vault_signer_nonce,
+            serum_fee_vault: serum_fee_vault.key.into(),
+            initializer_fee_vault: initializer_fee_vault.key.into(),
+            fee_rate: request.fee_rate,
             account_params: vec![],
             name: request.pool_name.clone(),
             admin_key: None,
@@ -187,13 +203,47 @@ impl<'a, 'b, P: Pool> PoolProcessor<'a, 'b, P> {
         for vault_account in context.pool_vault_accounts {
             context.check_rent_exemption(vault_account)?;
         }
+        context.check_rent_exemption(serum_fee_vault)?;
+        self.check_serum_fee_account(&state, serum_fee_vault)?;
+        context.check_rent_exemption(initializer_fee_vault)?;
 
         P::initialize_pool(&context, &mut state)?;
         if *context.pool_authority.key != context.derive_vault_authority(&state)? {
             info!("Invalid pool authority");
             return Err(ProgramError::InvalidArgument);
         }
+        if state.fee_rate < MIN_FEE_RATE {
+            info!("Fee too low");
+            return Err(ProgramError::InvalidArgument);
+        }
+        if state.fee_rate >= FEE_RATE_DENOMINATOR {
+            info!("Fee too high");
+            return Err(ProgramError::InvalidArgument);
+        }
         self.set_state(state)?;
+        Ok(())
+    }
+
+    fn check_serum_fee_account(
+        &self,
+        state: &PoolState,
+        account: &AccountInfo,
+    ) -> Result<(), ProgramError> {
+        let token_account = TokenAccount::unpack(&account.try_borrow_data()?)?;
+        if token_account.owner != serum_pool_schema::fee_owner::ID {
+            info!("Incorrect fee account owner");
+            return Err(ProgramError::InvalidArgument);
+        }
+        if token_account.delegate.is_some() {
+            info!("Incorrect fee account delegate");
+            return Err(ProgramError::InvalidArgument);
+        }
+        if token_account.close_authority.is_some()
+            && token_account.close_authority.as_ref() != COption::Some(state.vault_signer.as_ref())
+        {
+            info!("Incorrect fee account close authority");
+            return Err(ProgramError::InvalidArgument);
+        }
         Ok(())
     }
 }
@@ -208,3 +258,16 @@ impl pool::Pool for FakePool {}
 #[cfg(feature = "program")]
 declare_pool_entrypoint!(FakePool);
 */
+
+fn next_account_infos<'a, 'b: 'a>(
+    iter: &mut std::slice::Iter<'a, AccountInfo<'b>>,
+    count: usize,
+) -> Result<&'a [AccountInfo<'b>], ProgramError> {
+    let accounts = iter.as_slice();
+    if accounts.len() < count {
+        return Err(ProgramError::NotEnoughAccountKeys);
+    }
+    let (accounts, remaining) = accounts.split_at(count);
+    *iter = remaining.into_iter();
+    Ok(accounts)
+}

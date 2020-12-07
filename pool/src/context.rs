@@ -1,5 +1,9 @@
 use std::convert::TryInto;
 
+use crate::next_account_infos;
+use serum_pool_schema::{
+    Address, Basket, PoolRequestInner, PoolState, FEE_RATE_DENOMINATOR, MIN_FEE_RATE,
+};
 use solana_sdk;
 use solana_sdk::account_info::next_account_info;
 use solana_sdk::instruction::{AccountMeta, Instruction};
@@ -9,8 +13,7 @@ use solana_sdk::program_pack::Pack;
 use solana_sdk::sysvar::{rent, Sysvar};
 use solana_sdk::{account_info::AccountInfo, info, program_error::ProgramError, pubkey::Pubkey};
 use spl_token::state::{Account as TokenAccount, Mint};
-
-use serum_pool_schema::{Address, Basket, PoolRequestInner, PoolState};
+use std::cmp::{max, min};
 
 pub struct PoolContext<'a, 'b> {
     pub program_id: &'a Pubkey,
@@ -31,10 +34,13 @@ pub struct PoolContext<'a, 'b> {
     /// Present for `GetBasket` requests.
     pub retbuf: Option<RetbufAccounts<'a, 'b>>,
 
-    /// Present for `Transact` requests.
+    /// Present for `Execute` requests.
     pub user_accounts: Option<UserAccounts<'a, 'b>>,
 
-    /// Present for `Transact` requests.
+    /// Present for `Execute` requests.
+    pub fee_accounts: Option<FeeAccounts<'a, 'b>>,
+
+    /// Present for `Execute` requests.
     pub spl_token_program: Option<&'a AccountInfo<'b>>,
 
     /// Accounts from `PoolState::account_params`. Present for `GetBasket` and `Transact` requests.
@@ -48,6 +54,12 @@ pub struct UserAccounts<'a, 'b> {
     pub pool_token_account: &'a AccountInfo<'b>,
     pub asset_accounts: &'a [AccountInfo<'b>],
     pub authority: &'a AccountInfo<'b>,
+}
+
+pub struct FeeAccounts<'a, 'b> {
+    pub serum_fee_account: &'a AccountInfo<'b>,
+    pub initializer_fee_account: &'a AccountInfo<'b>,
+    pub referrer_fee_account: &'a AccountInfo<'b>,
 }
 
 pub struct RetbufAccounts<'a, 'b> {
@@ -77,6 +89,7 @@ impl<'a, 'b> PoolContext<'a, 'b> {
             rent: None,
             retbuf: None,
             user_accounts: None,
+            fee_accounts: None,
             spl_token_program: None,
             account_params: None,
             custom_accounts: &[],
@@ -110,11 +123,20 @@ impl<'a, 'b> PoolContext<'a, 'b> {
                 let pool_token_account = next_account_info(accounts_iter)?;
                 let asset_accounts = next_account_infos(accounts_iter, state.assets.len())?;
                 let authority = next_account_info(accounts_iter)?;
+                let serum_fee_account = next_account_info(accounts_iter)?;
+                let initializer_fee_account = next_account_info(accounts_iter)?;
+                let referrer_fee_account = next_account_info(accounts_iter)?;
                 context.user_accounts = Some(UserAccounts::new(
                     state,
                     pool_token_account,
                     asset_accounts,
                     authority,
+                )?);
+                context.fee_accounts = Some(FeeAccounts::new(
+                    state,
+                    serum_fee_account,
+                    initializer_fee_account,
+                    referrer_fee_account,
                 )?);
                 context.spl_token_program = Some(next_account_info(accounts_iter)?);
                 context.account_params = Some(next_account_infos(
@@ -123,7 +145,15 @@ impl<'a, 'b> PoolContext<'a, 'b> {
                 )?);
             }
             PoolRequestInner::Initialize(_) => {
+                let serum_fee_account = next_account_info(accounts_iter)?;
+                let initializer_fee_account = next_account_info(accounts_iter)?;
                 let rent_sysvar_account = next_account_info(accounts_iter)?;
+                context.fee_accounts = Some(FeeAccounts::new(
+                    state,
+                    serum_fee_account,
+                    initializer_fee_account,
+                    serum_fee_account,
+                )?);
                 if rent_sysvar_account.key != &rent::ID {
                     info!("Incorrect rent sysvar account");
                     return Err(ProgramError::InvalidArgument);
@@ -175,6 +205,34 @@ impl<'a, 'b> UserAccounts<'a, 'b> {
     }
 }
 
+impl<'a, 'b> FeeAccounts<'a, 'b> {
+    pub fn new(
+        state: &PoolState,
+        serum_fee_account: &'a AccountInfo<'b>,
+        initializer_fee_account: &'a AccountInfo<'b>,
+        referrer_fee_account: &'a AccountInfo<'b>,
+    ) -> Result<Self, ProgramError> {
+        check_account_address(serum_fee_account, &state.serum_fee_vault)?;
+        check_account_address(initializer_fee_account, &state.initializer_fee_vault)?;
+        check_token_account(
+            serum_fee_account,
+            state.pool_token_mint.as_ref(),
+            Some(&serum_pool_schema::fee_owner::ID),
+        )?;
+        check_token_account(
+            initializer_fee_account,
+            state.pool_token_mint.as_ref(),
+            None,
+        )?;
+        check_token_account(referrer_fee_account, state.pool_token_mint.as_ref(), None)?;
+        Ok(FeeAccounts {
+            serum_fee_account,
+            initializer_fee_account,
+            referrer_fee_account,
+        })
+    }
+}
+
 impl<'a, 'b> RetbufAccounts<'a, 'b> {
     pub fn new(
         account: &'a AccountInfo<'b>,
@@ -198,6 +256,63 @@ impl<'a, 'b> RetbufAccounts<'a, 'b> {
         };
         program::invoke(&instruction, &[self.account.clone(), self.program.clone()])?;
         Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Fees {
+    pub serum_fee: u64,
+    pub initializer_fee: u64,
+    pub referrer_fee: u64,
+}
+
+impl Fees {
+    pub fn total_fee(&self) -> u64 {
+        self.serum_fee + self.initializer_fee + self.referrer_fee
+    }
+
+    pub fn from_fee_rate_and_tokens(fee_rate: u32, tokens: u64) -> Result<Self, ProgramError> {
+        if fee_rate < MIN_FEE_RATE || fee_rate >= FEE_RATE_DENOMINATOR {
+            info!("Invalid fee");
+            Err(ProgramError::InvalidArgument)
+        } else if tokens == 0 {
+            Ok(Fees {
+                serum_fee: 0,
+                referrer_fee: 0,
+                initializer_fee: 0,
+            })
+        } else {
+            let total_fee = (((tokens as u128) * (fee_rate as u128) - 1)
+                / FEE_RATE_DENOMINATOR as u128
+                + 1) as u64;
+            assert!(total_fee <= tokens);
+            let serum_fee = max(
+                total_fee.checked_mul(2).unwrap() / 5,
+                (tokens - 1) / 10000 + 1,
+            );
+            assert!(serum_fee <= total_fee);
+            let referrer_fee = min(serum_fee / 2, total_fee - serum_fee);
+            assert!(serum_fee.checked_add(referrer_fee).unwrap() <= total_fee);
+            let initializer_fee = total_fee
+                .checked_sub(serum_fee)
+                .unwrap()
+                .checked_sub(referrer_fee)
+                .unwrap();
+            assert!(
+                serum_fee
+                    .checked_add(referrer_fee)
+                    .unwrap()
+                    .checked_add(initializer_fee)
+                    .unwrap()
+                    <= tokens
+            );
+
+            Ok(Fees {
+                serum_fee,
+                referrer_fee,
+                initializer_fee,
+            })
+        }
     }
 }
 
@@ -245,6 +360,8 @@ impl<'a, 'b> PoolContext<'a, 'b> {
             .collect()
     }
 
+    /// Computes a basket by dividing the current contents of the pool vaults by the
+    /// number of outstanding pool tokens.
     pub fn get_simple_basket(
         &self,
         pool_tokens_requested: u64,
@@ -278,19 +395,267 @@ impl<'a, 'b> PoolContext<'a, 'b> {
             })?,
         })
     }
-}
 
-fn next_account_infos<'a, 'b: 'a>(
-    iter: &mut std::slice::Iter<'a, AccountInfo<'b>>,
-    count: usize,
-) -> Result<&'a [AccountInfo<'b>], ProgramError> {
-    let accounts = iter.as_slice();
-    if accounts.len() < count {
-        return Err(ProgramError::NotEnoughAccountKeys);
+    /// Computes the fees to charge for creating or redeeming pool tokens.
+    pub fn get_fees(&self, state: &PoolState, pool_tokens: u64) -> Result<Fees, ProgramError> {
+        let mut fees = Fees::from_fee_rate_and_tokens(state.fee_rate, pool_tokens)?;
+        if let Some(user_accounts) = &self.user_accounts {
+            let user_key = user_accounts.pool_token_account.key;
+            if let Some(fee_accounts) = &self.fee_accounts {
+                if fee_accounts.serum_fee_account.key == user_key {
+                    fees.serum_fee = 0;
+                    fees.initializer_fee = 0;
+                    fees.referrer_fee = 0;
+                }
+                if fee_accounts.initializer_fee_account.key == user_key {
+                    fees.initializer_fee = 0;
+                }
+                if fee_accounts.referrer_fee_account.key == user_key {
+                    fees.referrer_fee = 0;
+                }
+            }
+        }
+        Ok(fees)
     }
-    let (accounts, remaining) = accounts.split_at(count);
-    *iter = remaining.into_iter();
-    Ok(accounts)
+
+    /// Transfers basket tokens from the user to the pool.
+    pub fn transfer_basket_from_user(&self, basket: &Basket) -> Result<(), ProgramError> {
+        let user_accounts = self
+            .user_accounts
+            .as_ref()
+            .ok_or(ProgramError::InvalidArgument)?;
+        let pool_vault_accounts = self.pool_vault_accounts;
+        let spl_token_program = self
+            .spl_token_program
+            .ok_or(ProgramError::InvalidArgument)?;
+
+        let zipped_iter = basket
+            .quantities
+            .iter()
+            .zip(user_accounts.asset_accounts.iter())
+            .zip(pool_vault_accounts.iter());
+
+        for ((&input_qty, user_asset_account), pool_vault_account) in zipped_iter {
+            let source_pubkey = user_asset_account.key;
+            let destination_pubkey = pool_vault_account.key;
+            let authority_pubkey = user_accounts.authority.key;
+            let signer_pubkeys = &[];
+
+            let instruction = spl_token::instruction::transfer(
+                &spl_token::ID,
+                source_pubkey,
+                destination_pubkey,
+                authority_pubkey,
+                signer_pubkeys,
+                input_qty
+                    .try_into()
+                    .or(Err(ProgramError::InvalidArgument))?,
+            )?;
+
+            let account_infos = &[
+                user_asset_account.clone(),
+                pool_vault_account.clone(),
+                user_accounts.authority.clone(),
+                spl_token_program.clone(),
+            ];
+
+            program::invoke(&instruction, account_infos)?;
+        }
+
+        Ok(())
+    }
+
+    /// Mints pool tokens to the requester for a creation request.
+    ///
+    /// Fees are deducted and sent to the fee account before the remainder is sent
+    /// to the user.
+    pub fn mint_tokens(&self, state: &PoolState, quantity: u64) -> Result<(), ProgramError> {
+        let fees = self.get_fees(state, quantity)?;
+        let remainder = quantity - fees.total_fee();
+
+        let user_accounts = self
+            .user_accounts
+            .as_ref()
+            .ok_or(ProgramError::InvalidArgument)?;
+        let fee_accounts = self
+            .fee_accounts
+            .as_ref()
+            .ok_or(ProgramError::InvalidArgument)?;
+        let spl_token_program = self
+            .spl_token_program
+            .ok_or(ProgramError::InvalidArgument)?;
+
+        for (account, quantity) in &[
+            (fee_accounts.serum_fee_account, fees.serum_fee),
+            (fee_accounts.initializer_fee_account, fees.initializer_fee),
+            (fee_accounts.referrer_fee_account, fees.referrer_fee),
+            (user_accounts.pool_token_account, remainder),
+        ] {
+            let account = *account;
+            let quantity = *quantity;
+            if quantity > 0 {
+                let mint_pubkey = self.pool_token_mint.key;
+                let account_pubkey = account.key;
+                let owner_pubkey = self.pool_authority.key;
+                let signer_pubkeys = &[];
+                let instruction = spl_token::instruction::mint_to(
+                    &spl_token::ID,
+                    mint_pubkey,
+                    account_pubkey,
+                    owner_pubkey,
+                    signer_pubkeys,
+                    quantity,
+                )?;
+                let account_infos = &[
+                    account.clone(),
+                    self.pool_token_mint.clone(),
+                    self.pool_authority.clone(),
+                    spl_token_program.clone(),
+                ];
+                program::invoke_signed(
+                    &instruction,
+                    account_infos,
+                    &[&[self.pool_account.key.as_ref(), &[state.vault_signer_nonce]]],
+                )?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Burns pool tokens from the requester for a redemption request.
+    pub(crate) fn burn_tokens_and_collect_fees(
+        &self,
+        redemption_size: u64,
+        fees: Fees,
+    ) -> Result<(), ProgramError> {
+        let user_accounts = self
+            .user_accounts
+            .as_ref()
+            .ok_or(ProgramError::InvalidArgument)?;
+        let fee_accounts = self
+            .fee_accounts
+            .as_ref()
+            .ok_or(ProgramError::InvalidArgument)?;
+        let spl_token_program = self
+            .spl_token_program
+            .ok_or(ProgramError::InvalidArgument)?;
+
+        for (account, quantity) in &[
+            (fee_accounts.serum_fee_account, fees.serum_fee),
+            (fee_accounts.initializer_fee_account, fees.initializer_fee),
+            (fee_accounts.referrer_fee_account, fees.referrer_fee),
+        ] {
+            let account = *account;
+            let quantity = *quantity;
+            if quantity > 0 {
+                let source_pubkey = user_accounts.pool_token_account.key;
+                let destination_pubkey = account.key;
+                let authority_pubkey = user_accounts.authority.key;
+                let signer_pubkeys = &[];
+
+                let instruction = spl_token::instruction::transfer(
+                    &spl_token::ID,
+                    source_pubkey,
+                    destination_pubkey,
+                    authority_pubkey,
+                    signer_pubkeys,
+                    quantity,
+                )?;
+
+                let account_infos = &[
+                    user_accounts.pool_token_account.clone(),
+                    account.clone(),
+                    user_accounts.authority.clone(),
+                    spl_token_program.clone(),
+                ];
+
+                program::invoke(&instruction, account_infos)?;
+            }
+        }
+
+        {
+            let mint_pubkey = self.pool_token_mint.key;
+            let account_pubkey = user_accounts.pool_token_account.key;
+            let authority_pubkey = user_accounts.authority.key;
+            let signer_pubkeys = &[];
+
+            let instruction = spl_token::instruction::burn(
+                &spl_token::ID,
+                account_pubkey,
+                mint_pubkey,
+                authority_pubkey,
+                signer_pubkeys,
+                redemption_size,
+            )?;
+
+            let account_infos = &[
+                self.pool_token_mint.clone(),
+                user_accounts.pool_token_account.clone(),
+                user_accounts.authority.clone(),
+                spl_token_program.clone(),
+            ];
+
+            program::invoke(&instruction, account_infos)?;
+        }
+
+        Ok(())
+    }
+
+    /// Transfers basket tokens from the pool to the user.
+    pub fn transfer_basket_to_user(
+        &self,
+        state: &PoolState,
+        basket: &Basket,
+    ) -> Result<(), ProgramError> {
+        let user_accounts = self
+            .user_accounts
+            .as_ref()
+            .ok_or(ProgramError::InvalidArgument)?;
+        let pool_vault_accounts = self.pool_vault_accounts;
+        let spl_token_program = self
+            .spl_token_program
+            .ok_or(ProgramError::InvalidArgument)?;
+
+        let zipped_iter = basket
+            .quantities
+            .iter()
+            .zip(user_accounts.asset_accounts.iter())
+            .zip(pool_vault_accounts.iter());
+
+        for ((&output_qty, user_asset_account), pool_vault_account) in zipped_iter {
+            let source_pubkey = pool_vault_account.key;
+            let destination_pubkey = user_asset_account.key;
+            let authority_pubkey = self.pool_authority.key;
+            let signer_pubkeys = &[];
+
+            let instruction = spl_token::instruction::transfer(
+                &spl_token::ID,
+                source_pubkey,
+                destination_pubkey,
+                authority_pubkey,
+                signer_pubkeys,
+                output_qty
+                    .try_into()
+                    .or(Err(ProgramError::InvalidArgument))?,
+            )?;
+
+            let account_infos = &[
+                user_asset_account.clone(),
+                pool_vault_account.clone(),
+                self.pool_authority.clone(),
+                spl_token_program.clone(),
+            ];
+
+            program::invoke_signed(
+                &instruction,
+                account_infos,
+                &[&[self.pool_account.key.as_ref(), &[state.vault_signer_nonce]]],
+            )?;
+        }
+
+        Ok(())
+    }
 }
 
 fn check_account_address(account: &AccountInfo, address: &Address) -> Result<(), ProgramError> {
@@ -336,4 +701,91 @@ fn check_token_account(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_get_fees() {
+        assert_eq!(
+            Fees::from_fee_rate_and_tokens(2500, 100_000).unwrap(),
+            Fees {
+                serum_fee: 100,
+                initializer_fee: 100,
+                referrer_fee: 50,
+            }
+        );
+    }
+
+    #[test]
+    fn test_get_fees_small_size() {
+        assert_eq!(
+            Fees::from_fee_rate_and_tokens(2500, 10).unwrap(),
+            Fees {
+                serum_fee: 1,
+                initializer_fee: 0,
+                referrer_fee: 0,
+            }
+        );
+    }
+
+    #[test]
+    fn test_get_fees_min_rate() {
+        assert_eq!(
+            Fees::from_fee_rate_and_tokens(MIN_FEE_RATE, 100_000).unwrap(),
+            Fees {
+                serum_fee: 10,
+                initializer_fee: 0,
+                referrer_fee: 5,
+            }
+        );
+    }
+
+    #[test]
+    fn test_get_fees_min_rate_small_size() {
+        assert_eq!(
+            Fees::from_fee_rate_and_tokens(MIN_FEE_RATE, 100).unwrap(),
+            Fees {
+                serum_fee: 1,
+                initializer_fee: 0,
+                referrer_fee: 0,
+            }
+        );
+    }
+
+    #[test]
+    fn test_get_fees_zero_size() {
+        assert_eq!(
+            Fees::from_fee_rate_and_tokens(MIN_FEE_RATE, 0).unwrap(),
+            Fees {
+                serum_fee: 0,
+                initializer_fee: 0,
+                referrer_fee: 0,
+            }
+        );
+    }
+
+    #[test]
+    fn test_get_fees_max_rate() {
+        assert_eq!(
+            Fees::from_fee_rate_and_tokens(999_999, 100_000).unwrap(),
+            Fees {
+                serum_fee: 40_000,
+                initializer_fee: 40_000,
+                referrer_fee: 20_000,
+            }
+        );
+    }
+
+    #[test]
+    fn test_get_fees_rate_too_low() {
+        assert!(Fees::from_fee_rate_and_tokens(149, 100_000).is_err());
+    }
+
+    #[test]
+    fn test_get_fees_rate_too_high() {
+        assert!(Fees::from_fee_rate_and_tokens(1_000_000, 100_000).is_err());
+    }
 }

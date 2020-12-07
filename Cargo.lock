@@ -3361,6 +3361,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "serum_assert_owner"
+version = "0.1.0"
+dependencies = [
+ "solana-program",
+]
+
+[[package]]
 name = "serum_dex"
 version = "0.2.0"
 dependencies = [
