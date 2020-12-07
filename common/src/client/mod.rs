@@ -11,7 +11,7 @@ pub enum Cluster {
     Devnet,
     Localnet,
     Debug,
-    Custom(String)
+    Custom(String),
 }
 
 impl FromStr for Cluster {
