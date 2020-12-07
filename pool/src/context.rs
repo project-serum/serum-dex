@@ -259,6 +259,7 @@ impl<'a, 'b> RetbufAccounts<'a, 'b> {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Fees {
     pub serum_fee: u64,
     pub initializer_fee: u64,
@@ -268,6 +269,50 @@ pub struct Fees {
 impl Fees {
     pub fn total_fee(&self) -> u64 {
         self.serum_fee + self.initializer_fee + self.referrer_fee
+    }
+
+    pub fn from_fee_rate_and_tokens(fee_rate: u32, tokens: u64) -> Result<Self, ProgramError> {
+        if fee_rate < MIN_FEE_RATE || fee_rate >= FEE_RATE_DENOMINATOR {
+            info!("Invalid fee");
+            Err(ProgramError::InvalidArgument)
+        } else if tokens == 0 {
+            Ok(Fees {
+                serum_fee: 0,
+                referrer_fee: 0,
+                initializer_fee: 0,
+            })
+        } else {
+            let total_fee = (((tokens as u128) * (fee_rate as u128) - 1)
+                / FEE_RATE_DENOMINATOR as u128
+                + 1) as u64;
+            assert!(total_fee <= tokens);
+            let serum_fee = max(
+                total_fee.checked_mul(2).unwrap() / 5,
+                (tokens - 1) / 10000 + 1,
+            );
+            assert!(serum_fee <= total_fee);
+            let referrer_fee = min(serum_fee / 2, total_fee - serum_fee);
+            assert!(serum_fee.checked_add(referrer_fee).unwrap() <= total_fee);
+            let initializer_fee = total_fee
+                .checked_sub(serum_fee)
+                .unwrap()
+                .checked_sub(referrer_fee)
+                .unwrap();
+            assert!(
+                serum_fee
+                    .checked_add(referrer_fee)
+                    .unwrap()
+                    .checked_add(initializer_fee)
+                    .unwrap()
+                    <= tokens
+            );
+
+            Ok(Fees {
+                serum_fee,
+                referrer_fee,
+                initializer_fee,
+            })
+        }
     }
 }
 
@@ -351,50 +396,26 @@ impl<'a, 'b> PoolContext<'a, 'b> {
         })
     }
 
-    /// Returns the (pool fee, referral fee) to charge for creating or redeeming
-    /// pool tokens.
+    /// Computes the fees to charge for creating or redeeming pool tokens.
     pub fn get_fees(&self, state: &PoolState, pool_tokens: u64) -> Result<Fees, ProgramError> {
-        if pool_tokens == 0 {
-            Ok(Fees {
-                serum_fee: 0,
-                referrer_fee: 0,
-                initializer_fee: 0,
-            })
-        } else if state.fee_rate < MIN_FEE_RATE || state.fee_rate >= FEE_RATE_DENOMINATOR {
-            info!("Invalid fee");
-            Err(ProgramError::InvalidArgument)
-        } else {
-            let total_fee = (((pool_tokens as u128) * (state.fee_rate as u128) - 1)
-                / FEE_RATE_DENOMINATOR as u128
-                + 1) as u64;
-            assert!(total_fee <= pool_tokens);
-            let serum_fee = max(
-                total_fee.checked_mul(2).unwrap() / 5,
-                (pool_tokens - 1) / 10000 + 1,
-            );
-            assert!(serum_fee <= total_fee);
-            let referrer_fee = min(serum_fee / 2, total_fee - serum_fee);
-            assert!(serum_fee.checked_add(referrer_fee).unwrap() <= total_fee);
-            let initializer_fee = total_fee
-                .checked_sub(serum_fee)
-                .unwrap()
-                .checked_sub(referrer_fee)
-                .unwrap();
-            assert!(
-                serum_fee
-                    .checked_add(referrer_fee)
-                    .unwrap()
-                    .checked_add(initializer_fee)
-                    .unwrap()
-                    <= pool_tokens
-            );
-
-            Ok(Fees {
-                serum_fee,
-                referrer_fee,
-                initializer_fee,
-            })
+        let mut fees = Fees::from_fee_rate_and_tokens(state.fee_rate, pool_tokens)?;
+        if let Some(user_accounts) = &self.user_accounts {
+            let user_key = user_accounts.pool_token_account.key;
+            if let Some(fee_accounts) = &self.fee_accounts {
+                if fee_accounts.serum_fee_account.key == user_key {
+                    fees.serum_fee = 0;
+                    fees.initializer_fee = 0;
+                    fees.referrer_fee = 0;
+                }
+                if fee_accounts.initializer_fee_account.key == user_key {
+                    fees.initializer_fee = 0;
+                }
+                if fee_accounts.referrer_fee_account.key == user_key {
+                    fees.referrer_fee = 0;
+                }
+            }
         }
+        Ok(fees)
     }
 
     /// Transfers basket tokens from the user to the pool.
@@ -680,4 +701,91 @@ fn check_token_account(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_get_fees() {
+        assert_eq!(
+            Fees::from_fee_rate_and_tokens(2500, 100_000).unwrap(),
+            Fees {
+                serum_fee: 100,
+                initializer_fee: 100,
+                referrer_fee: 50,
+            }
+        );
+    }
+
+    #[test]
+    fn test_get_fees_small_size() {
+        assert_eq!(
+            Fees::from_fee_rate_and_tokens(2500, 10).unwrap(),
+            Fees {
+                serum_fee: 1,
+                initializer_fee: 0,
+                referrer_fee: 0,
+            }
+        );
+    }
+
+    #[test]
+    fn test_get_fees_min_rate() {
+        assert_eq!(
+            Fees::from_fee_rate_and_tokens(MIN_FEE_RATE, 100_000).unwrap(),
+            Fees {
+                serum_fee: 10,
+                initializer_fee: 0,
+                referrer_fee: 5,
+            }
+        );
+    }
+
+    #[test]
+    fn test_get_fees_min_rate_small_size() {
+        assert_eq!(
+            Fees::from_fee_rate_and_tokens(MIN_FEE_RATE, 100).unwrap(),
+            Fees {
+                serum_fee: 1,
+                initializer_fee: 0,
+                referrer_fee: 0,
+            }
+        );
+    }
+
+    #[test]
+    fn test_get_fees_zero_size() {
+        assert_eq!(
+            Fees::from_fee_rate_and_tokens(MIN_FEE_RATE, 0).unwrap(),
+            Fees {
+                serum_fee: 0,
+                initializer_fee: 0,
+                referrer_fee: 0,
+            }
+        );
+    }
+
+    #[test]
+    fn test_get_fees_max_rate() {
+        assert_eq!(
+            Fees::from_fee_rate_and_tokens(999_999, 100_000).unwrap(),
+            Fees {
+                serum_fee: 40_000,
+                initializer_fee: 40_000,
+                referrer_fee: 20_000,
+            }
+        );
+    }
+
+    #[test]
+    fn test_get_fees_rate_too_low() {
+        assert!(Fees::from_fee_rate_and_tokens(149, 100_000).is_err());
+    }
+
+    #[test]
+    fn test_get_fees_rate_too_high() {
+        assert!(Fees::from_fee_rate_and_tokens(1_000_000, 100_000).is_err());
+    }
 }
