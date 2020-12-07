@@ -1,8 +1,8 @@
-use crate::access_control;
+use crate::common::access_control;
 use serum_common::pack::Pack;
 use serum_lockup::accounts::{Safe, Whitelist};
 use serum_lockup::error::{LockupError, LockupErrorCode};
-use solana_program::info;
+use solana_program::msg;
 use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::pubkey::Pubkey;
 use std::convert::Into;
@@ -12,7 +12,7 @@ pub fn handler(
     accounts: &[AccountInfo],
     authority: Pubkey,
 ) -> Result<(), LockupError> {
-    info!("handler: initialize");
+    msg!("handler: initialize");
 
     let acc_infos = &mut accounts.iter();
 
@@ -31,11 +31,10 @@ pub fn handler(
         &mut safe_acc_info.try_borrow_mut_data()?,
         &mut |safe: &mut Safe| {
             state_transition(StateTransitionRequest {
-                safe,
-                safe_addr: safe_acc_info.key,
-                whitelist: Whitelist::new(whitelist_acc_info.clone())?,
-                whitelist_addr: whitelist_acc_info.key,
                 authority,
+                safe,
+                safe_acc_info,
+                whitelist_acc_info,
             })
             .map_err(Into::into)
         },
@@ -45,7 +44,7 @@ pub fn handler(
 }
 
 fn access_control(req: AccessControlRequest) -> Result<(), LockupError> {
-    info!("access-control: initialize");
+    msg!("access-control: initialize");
 
     let AccessControlRequest {
         program_id,
@@ -73,7 +72,7 @@ fn access_control(req: AccessControlRequest) -> Result<(), LockupError> {
         }
     }
 
-    // Whitelist (not yet set on Safe).
+    // Whitelist (uninitialized).
     {
         if whitelist_acc_info.owner != program_id {
             return Err(LockupErrorCode::InvalidAccountOwner)?;
@@ -93,40 +92,37 @@ fn access_control(req: AccessControlRequest) -> Result<(), LockupError> {
 }
 
 fn state_transition(req: StateTransitionRequest) -> Result<(), LockupError> {
-    info!("state-transition: initialize");
+    msg!("state-transition: initialize");
 
     let StateTransitionRequest {
         safe,
-        safe_addr,
+        safe_acc_info,
         authority,
-        whitelist,
-        whitelist_addr,
+        whitelist_acc_info,
     } = req;
 
     // Initialize Safe.
     safe.initialized = true;
     safe.authority = authority;
-    safe.whitelist = *whitelist_addr;
+    safe.whitelist = *whitelist_acc_info.key;
 
     // Inittialize Whitelist.
-    whitelist.set_safe(safe_addr)?;
-
-    info!("state-transition: success");
+    let whitelist = Whitelist::new(whitelist_acc_info.clone())?;
+    whitelist.set_safe(safe_acc_info.key)?;
 
     Ok(())
 }
 
 struct AccessControlRequest<'a, 'b> {
-    program_id: &'a Pubkey,
     safe_acc_info: &'a AccountInfo<'b>,
     whitelist_acc_info: &'a AccountInfo<'b>,
     rent_acc_info: &'a AccountInfo<'b>,
+    program_id: &'a Pubkey,
 }
 
 struct StateTransitionRequest<'a, 'b> {
+    safe_acc_info: &'a AccountInfo<'b>,
+    whitelist_acc_info: &'a AccountInfo<'b>,
     safe: &'a mut Safe,
-    safe_addr: &'a Pubkey,
-    whitelist_addr: &'a Pubkey,
-    whitelist: Whitelist<'b>,
     authority: Pubkey,
 }

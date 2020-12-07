@@ -8,18 +8,15 @@ use solana_sdk::entrypoint::ProgramResult;
 use solana_sdk::pubkey::Pubkey;
 
 mod claim_locked_reward;
+mod claim_unlocked_reward;
 mod common;
 mod create_entity;
 mod create_member;
 mod deposit;
 mod drop_locked_reward;
-mod drop_pool_reward;
+mod drop_unlocked_reward;
 mod end_stake_withdrawal;
-mod entity;
 mod initialize;
-mod mark_generation;
-mod pool;
-mod slash;
 mod stake;
 mod start_stake_withdrawal;
 mod switch_entity;
@@ -30,41 +27,34 @@ mod withdraw;
 
 solana_program::entrypoint!(entry);
 fn entry(program_id: &Pubkey, accounts: &[AccountInfo], instruction_data: &[u8]) -> ProgramResult {
-    // The lockup program prepends the instruction_data with a tag to tell
-    // whitelisted programs that funds are locked, since the instruction data
-    // is completely opaque to the lockup program. Without this measure,
-    // one would effectively be able to transfer funds from the lockup program
-    // freely and use those funds without restriction.
-    let (is_locked, instruction_data) = {
-        if instruction_data.len() <= 8
-            || instruction_data[..8] != serum_lockup::instruction::TAG.to_le_bytes()
-        {
-            (false, instruction_data)
-        } else {
-            (true, &instruction_data[8..])
-        }
-    };
-
     let instruction: RegistryInstruction = RegistryInstruction::unpack(instruction_data)
         .map_err(|_| RegistryError::ErrorCode(RegistryErrorCode::WrongSerialization))?;
 
     let result = match instruction {
         RegistryInstruction::Initialize {
             authority,
+            mint,
+            mint_mega,
             nonce,
             withdrawal_timelock,
             deactivation_timelock,
             reward_activation_threshold,
             max_stake_per_entity,
+            stake_rate,
+            stake_rate_mega,
         } => initialize::handler(
             program_id,
             accounts,
+            mint,
+            mint_mega,
             authority,
             nonce,
             withdrawal_timelock,
             deactivation_timelock,
             reward_activation_threshold,
             max_stake_per_entity,
+            stake_rate,
+            stake_rate_mega,
         ),
         RegistryInstruction::UpdateRegistrar {
             new_authority,
@@ -87,31 +77,22 @@ fn entry(program_id: &Pubkey, accounts: &[AccountInfo], instruction_data: &[u8])
         RegistryInstruction::UpdateEntity { leader, metadata } => {
             update_entity::handler(program_id, accounts, leader, metadata)
         }
-        RegistryInstruction::CreateMember { delegate } => {
-            create_member::handler(program_id, accounts, delegate)
+        RegistryInstruction::CreateMember => create_member::handler(program_id, accounts),
+        RegistryInstruction::UpdateMember { metadata } => {
+            update_member::handler(program_id, accounts, metadata)
         }
-        RegistryInstruction::UpdateMember { delegate, metadata } => {
-            update_member::handler(program_id, accounts, delegate, metadata)
+        RegistryInstruction::Deposit { amount } => deposit::handler(program_id, accounts, amount),
+        RegistryInstruction::Withdraw { amount } => withdraw::handler(program_id, accounts, amount),
+        RegistryInstruction::Stake { amount, balance_id } => {
+            stake::handler(program_id, accounts, amount, balance_id)
         }
-        RegistryInstruction::SwitchEntity => switch_entity::handler(program_id, accounts),
-        RegistryInstruction::Deposit { amount } => {
-            deposit::handler(program_id, accounts, amount, is_locked)
-        }
-        RegistryInstruction::Withdraw { amount } => {
-            withdraw::handler(program_id, accounts, amount, is_locked)
-        }
-        RegistryInstruction::Stake { amount } => stake::handler(program_id, accounts, amount),
-        RegistryInstruction::MarkGeneration => mark_generation::handler(program_id, accounts),
-        RegistryInstruction::StartStakeWithdrawal { amount } => {
-            start_stake_withdrawal::handler(program_id, accounts, amount)
+        RegistryInstruction::StartStakeWithdrawal { amount, balance_id } => {
+            start_stake_withdrawal::handler(program_id, accounts, amount, balance_id)
         }
         RegistryInstruction::EndStakeWithdrawal => {
             end_stake_withdrawal::handler(program_id, accounts)
         }
-        RegistryInstruction::Slash { amount } => slash::handler(program_id, accounts, amount),
-        RegistryInstruction::DropPoolReward { totals } => {
-            drop_pool_reward::handler(program_id, accounts, totals)
-        }
+        RegistryInstruction::SwitchEntity => switch_entity::handler(program_id, accounts),
         RegistryInstruction::DropLockedReward {
             total,
             end_ts,
@@ -129,8 +110,24 @@ fn entry(program_id: &Pubkey, accounts: &[AccountInfo], instruction_data: &[u8])
             period_count,
             nonce,
         ),
+        RegistryInstruction::DropUnlockedReward {
+            total,
+            expiry_ts,
+            expiry_receiver,
+            nonce,
+        } => drop_unlocked_reward::handler(
+            program_id,
+            accounts,
+            total,
+            expiry_ts,
+            expiry_receiver,
+            nonce,
+        ),
         RegistryInstruction::ClaimLockedReward { cursor, nonce } => {
             claim_locked_reward::handler(program_id, accounts, cursor, nonce)
+        }
+        RegistryInstruction::ClaimUnlockedReward { cursor } => {
+            claim_unlocked_reward::handler(program_id, accounts, cursor)
         }
     };
 

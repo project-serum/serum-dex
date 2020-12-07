@@ -2,7 +2,7 @@ use serum_common::pack::Pack;
 use serum_registry::access_control;
 use serum_registry::accounts::Entity;
 use serum_registry::error::{RegistryError, RegistryErrorCode};
-use solana_program::info;
+use solana_program::msg;
 use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::pubkey::Pubkey;
 
@@ -13,7 +13,7 @@ pub fn handler(
     leader: Option<Pubkey>,
     metadata: Option<Pubkey>,
 ) -> Result<(), RegistryError> {
-    info!("handler: update_entity");
+    msg!("handler: update_entity");
 
     let acc_infos = &mut accounts.iter();
 
@@ -44,7 +44,7 @@ pub fn handler(
 }
 
 fn access_control(req: AccessControlRequest) -> Result<(), RegistryError> {
-    info!("access-control: update_entity");
+    msg!("access-control: update_entity");
 
     let AccessControlRequest {
         entity_acc_info,
@@ -68,7 +68,7 @@ fn access_control(req: AccessControlRequest) -> Result<(), RegistryError> {
 }
 
 fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
-    info!("state-transition: update_entity");
+    msg!("state-transition: update_entity");
 
     let StateTransitionRequest {
         entity,

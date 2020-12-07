@@ -15,7 +15,7 @@ pub trait Pack: std::marker::Sized + std::fmt::Debug {
     fn pack(src: Self, dst: &mut [u8]) -> Result<(), ProgramError> {
         if src.size()? != dst.len() as u64 {
             #[cfg(feature = "program")]
-            solana_sdk::info!("pack size mismatch");
+            solana_program::msg!("pack size mismatch");
             return Err(ProgramError::InvalidAccountData);
         }
         Pack::pack_unchecked(src, dst)
@@ -40,12 +40,13 @@ pub trait Pack: std::marker::Sized + std::fmt::Debug {
 
     /// Analogue to pack, performing a check on the size of the given byte
     /// array.
+    #[inline(never)]
     fn unpack(src: &[u8]) -> Result<Self, ProgramError> {
         let mut src_mut = src;
         Pack::unpack_unchecked(&mut src_mut).and_then(|r: Self| {
             if !src_mut.is_empty() {
                 #[cfg(feature = "program")]
-                solana_sdk::info!("unpack did not consume entire array");
+                solana_program::msg!("unpack did not consume entire array");
                 return Err(ProgramError::InvalidAccountData);
             }
             Ok(r)
@@ -64,6 +65,7 @@ pub trait Pack: std::marker::Sized + std::fmt::Debug {
     }
 
     /// Unsafe unpack. Doesn't check the size of the given input array.
+    #[inline(never)]
     fn unpack_unchecked_mut<F, U>(input: &mut [u8], f: &mut F) -> Result<U, ProgramError>
     where
         F: FnMut(&mut Self) -> Result<U, ProgramError>,

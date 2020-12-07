@@ -26,7 +26,7 @@ mod tests {
     fn pack_unpack() {
         let authority = Keypair::generate(&mut OsRng).pubkey();
         let initialized = true;
-        let whitelist = Pubkey::new_rand();
+        let whitelist = Pubkey::new_unique();
         let safe = Safe {
             authority: authority.clone(),
             initialized,

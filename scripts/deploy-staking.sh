@@ -7,11 +7,17 @@
 #
 ################################################################################
 
-RETBUF_PROGRAM_ID=shmem4EWT2sPdVGvTZCzXXRAURL9G5vpPxNwSeKhHUL
-#RETBUF_PROGRAM_ID=3w2Q6XjS2BDpxHVRzs8oWbNuH7ivZp1mVo3mbq318oyG
-RETBUF_SIZE=100
 CLUSTER=l
 #CLUSTER=devnet
+DEACTIVATION_TIMELOCK=60
+WITHDRAWAL_TIMELOCK=60
+# 100_000_000 million SRM (6 decimals)
+MAX_STAKE_PER_ENTITY=100000000000000
+# 1 SRM to stake.
+STAKE_RATE=1000000
+# 1 MSRM to stake.
+STAKE_RATE_MEGA=1
+REWARD_ACTIVATION_THRESHOLD=1
 
 main() {
     # First generate the genesis state, with the SRM/MSRM mints and
@@ -43,10 +49,8 @@ main() {
     make -C lockup build
     make -C registry build
     make -C registry/meta-entity build
-    make -C registry/stake build
     pids=$(make -s -C registry deploy-all)
     registry_pid=$(echo $pids | jq .registryProgramId -r)
-    stake_pid=$(echo $pids | jq .stakeProgramId -r)
     lockup_pid=$(echo $pids | jq .lockupProgramId -r)
     meta_entity_pid=$(echo $pids | jq .metaEntityProgramId -r)
 
@@ -59,12 +63,12 @@ main() {
           --msrm-mint $msrm_mint \
           registry --pid $registry_pid \
           init \
-          --pool-program-id $stake_pid \
-          --pool-token-decimals 3 \
-          --deactivation-timelock 60 \
-          --reward-activation-threshold 1 \
-          --withdrawal-timelock 60 \
-          --max-stake-per-entity 100000000)
+          --deactivation-timelock $DEACTIVATION_TIMELOCK \
+          --reward-activation-threshold $REWARD_ACTIVATION_THRESHOLD \
+          --withdrawal-timelock $WITHDRAWAL_TIMELOCK \
+          --max-stake-per-entity $MAX_STAKE_PER_ENTITY \
+					--stake-rate $STAKE_RATE \
+					--stake-rate-mega $STAKE_RATE_MEGA)
     local registrar=$(echo $rInit | jq .registrar -r)
 		local registrar_nonce=$(echo $rInit | jq .nonce -r)
 		local reward_q=$(echo $rInit | jq .rewardEventQueue -r)
@@ -76,16 +80,6 @@ main() {
           lockup --pid $lockup_pid \
           initialize)
     local safe=$(echo $lInit | jq .safe -r)
-
-    local account=$(cargo run -p serum-node -- \
-          -c $CLUSTER \
-          --srm-mint $srm_mint \
-          --msrm-mint $msrm_mint \
-          dev \
-          allocate-account \
-          --program-id $RETBUF_PROGRAM_ID \
-          --size $RETBUF_SIZE)
-    local retbuf=$(echo $account | jq .account -r)
 
     #
     # Initialize a node entity. Hack until we separate joining entities
@@ -131,14 +125,8 @@ main() {
     registryProgramId: new PublicKey(
       '${registry_pid}',
     ),
-    stakeProgramId: new PublicKey(
-      '${stake_pid}',
-    ),
     lockupProgramId: new PublicKey(
       '${lockup_pid}',
-    ),
-    retbufProgramId: new PublicKey(
-      '${RETBUF_PROGRAM_ID}',
     ),
     metaEntityProgramId: new PublicKey(
       '${meta_entity_pid}',
@@ -147,7 +135,6 @@ main() {
     registrar: new PublicKey('${registrar}'),
     rewardEventQueue: new PublicKey('${reward_q}'),
     safe: new PublicKey('${safe}'),
-    retbuf: new PublicKey('${retbuf}'),
 
     defaultEntity: new PublicKey(
       '${entity}',

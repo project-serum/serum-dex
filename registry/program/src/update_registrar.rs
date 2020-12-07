@@ -2,7 +2,7 @@ use serum_common::pack::Pack;
 use serum_registry::access_control;
 use serum_registry::accounts::Registrar;
 use serum_registry::error::RegistryError;
-use solana_program::info;
+use solana_program::msg;
 use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::pubkey::Pubkey;
 
@@ -16,7 +16,7 @@ pub fn handler(
     reward_activation_threshold: Option<u64>,
     max_stake_per_entity: Option<u64>,
 ) -> Result<(), RegistryError> {
-    info!("handler: initialize");
+    msg!("handler: initialize");
 
     let acc_infos = &mut accounts.iter();
 
@@ -48,7 +48,7 @@ pub fn handler(
 }
 
 fn access_control(req: AccessControlRequest) -> Result<(), RegistryError> {
-    info!("access-control: update_registrar");
+    msg!("access-control: update_registrar");
 
     let AccessControlRequest {
         registrar_acc_info,
@@ -64,7 +64,7 @@ fn access_control(req: AccessControlRequest) -> Result<(), RegistryError> {
 
 #[inline(always)]
 fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
-    info!("state-transition: update_registrar");
+    msg!("state-transition: update_registrar");
 
     let StateTransitionRequest {
         registrar,

@@ -1,5 +1,3 @@
-//! Program entrypoint.
-
 #![cfg_attr(feature = "strict", deny(warnings))]
 
 use serum_common::pack::Pack;
@@ -9,18 +7,18 @@ use solana_sdk::account_info::AccountInfo;
 use solana_sdk::entrypoint::ProgramResult;
 use solana_sdk::pubkey::Pubkey;
 
-pub(crate) mod access_control;
 mod available_for_withdrawal;
+mod common;
 mod create_vesting;
 mod initialize;
-mod redeem;
 mod set_authority;
 mod whitelist_add;
 mod whitelist_delete;
 mod whitelist_deposit;
 mod whitelist_withdraw;
+mod withdraw;
 
-solana_sdk::entrypoint!(entry);
+solana_program::entrypoint!(entry);
 fn entry(program_id: &Pubkey, accounts: &[AccountInfo], instruction_data: &[u8]) -> ProgramResult {
     let instruction: LockupInstruction = LockupInstruction::unpack(instruction_data)
         .map_err(|_| LockupError::ErrorCode(LockupErrorCode::WrongSerialization))?;
@@ -44,7 +42,7 @@ fn entry(program_id: &Pubkey, accounts: &[AccountInfo], instruction_data: &[u8])
             deposit_amount,
             nonce,
         ),
-        LockupInstruction::Redeem { amount } => redeem::handler(program_id, accounts, amount),
+        LockupInstruction::Withdraw { amount } => withdraw::handler(program_id, accounts, amount),
         LockupInstruction::WhitelistWithdraw {
             amount,
             instruction_data,

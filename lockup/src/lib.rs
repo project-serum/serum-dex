@@ -12,8 +12,6 @@ pub mod error;
 pub mod instruction {
     use super::*;
 
-    pub const TAG: u64 = 0x9c52b5632b5f74d2;
-
     #[derive(Debug, BorshSerialize, BorshDeserialize, BorshSchema)]
     pub enum LockupInstruction {
         /// Accounts:
@@ -59,8 +57,7 @@ pub mod instruction {
         /// 5  `[]`         Safe.
         /// 8. `[]`         SPL token program.
         /// 9. `[]`         Clock sysvar.
-        // todo: rename
-        Redeem { amount: u64 },
+        Withdraw { amount: u64 },
         /// Accounts:
         ///
         /// 0. `[signer]`   Beneficiary.

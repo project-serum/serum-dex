@@ -13,7 +13,7 @@ use solana_sdk::program_pack::Pack;
 use solana_sdk::sysvar::{rent, Sysvar};
 use solana_sdk::{account_info::AccountInfo, info, program_error::ProgramError, pubkey::Pubkey};
 use spl_token::state::{Account as TokenAccount, Mint};
-use std::cmp::max;
+use std::cmp::{max, min};
 
 pub struct PoolContext<'a, 'b> {
     pub program_id: &'a Pubkey,
@@ -373,7 +373,7 @@ impl<'a, 'b> PoolContext<'a, 'b> {
                 (pool_tokens - 1) / 10000 + 1,
             );
             assert!(serum_fee <= total_fee);
-            let referrer_fee = serum_fee / 2;
+            let referrer_fee = min(serum_fee / 2, total_fee - serum_fee);
             assert!(serum_fee.checked_add(referrer_fee).unwrap() <= total_fee);
             let initializer_fee = total_fee
                 .checked_sub(serum_fee)

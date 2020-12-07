@@ -1,11 +1,12 @@
-use crate::access_control;
+use crate::common::access_control;
 use serum_common::pack::Pack;
 use serum_lockup::accounts::Vesting;
 use serum_lockup::error::LockupError;
-use solana_program::info;
+use solana_program::msg;
 use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::pubkey::Pubkey;
 
+// Convenience instruction for UI's.
 pub fn handler(_program_id: &Pubkey, accounts: &[AccountInfo]) -> Result<(), LockupError> {
     let acc_infos = &mut accounts.iter();
 
@@ -18,7 +19,7 @@ pub fn handler(_program_id: &Pubkey, accounts: &[AccountInfo]) -> Result<(), Loc
 
     let available = vesting.available_for_withdrawal(clock.unix_timestamp);
     // Log as string so that JS can read as a BN.
-    info!(&format!("{{ \"result\": \"{}\" }}", available));
+    msg!(&format!("{{ \"result\": \"{}\" }}", available));
 
     Ok(())
 }
