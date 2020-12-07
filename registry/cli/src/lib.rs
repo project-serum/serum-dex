@@ -204,10 +204,12 @@ fn create_entity_cmd(
     let CreateEntityResponse { entity, .. } = client.create_entity(CreateEntityRequest {
         node_leader: &leader_kp,
         registrar,
-        name,
-        about,
-        image_url,
-        meta_entity_program_id,
+        metadata: Some(EntityMetadata {
+            name,
+            about,
+            image_url,
+            meta_entity_program_id,
+        }),
     })?;
 
     println!("{}", serde_json::json!({"entity": entity.to_string()}));
