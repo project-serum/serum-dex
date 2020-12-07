@@ -1,5 +1,5 @@
 [package]
-name = "serum-pool-simple"
+name = "serum-pool-admin-controlled"
 version = "0.1.0"
 description = "Simple serum pool"
 edition = "2018"
@@ -12,7 +12,9 @@ default = []
 [dependencies]
 solana-program = "1.4.14"
 serum-pool = { version = "0.1.0", path = "../.." }
+spl-token = { version = "3.0.0", features = ["no-entrypoint"] }
+borsh = { git = "https://github.com/project-serum/borsh", branch = "serum" }
 
 [lib]
-name = "serum_pool_examples_simple"
+name = "serum_pool_examples_admin_controlled"
 crate-type = ["cdylib", "lib"]

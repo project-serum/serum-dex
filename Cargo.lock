@@ -3287,6 +3287,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "serum-pool-admin-controlled"
+version = "0.1.0"
+dependencies = [
+ "borsh",
+ "serum-pool",
+ "solana-program",
+ "spl-token 3.0.0",
+]
+
+[[package]]
 name = "serum-pool-schema"
 version = "0.1.0"
 dependencies = [

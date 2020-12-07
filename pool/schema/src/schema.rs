@@ -40,9 +40,10 @@ impl From<&Pubkey> for Address {
     }
 }
 
+#[macro_export]
 macro_rules! declare_tag {
     ($name:ident, $type:ty, $tag:expr) => {
-        #[derive(Clone, PartialEq, Eq, BorshSerialize, BorshSchema)]
+        #[derive(Clone, PartialEq, Eq, BorshSerialize, BorshSchema, Debug)]
         pub struct $name($type);
         impl $name {
             pub const TAG_VALUE: $type = $tag;

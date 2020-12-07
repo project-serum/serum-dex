@@ -13,11 +13,11 @@ use solana_program::{
 };
 use spl_token::state::Account as TokenAccount;
 
+pub use serum_pool_schema as schema;
 use serum_pool_schema::{
-    AssetInfo, InitializePoolRequest, PoolAction, PoolRequest, PoolState, FEE_RATE_DENOMINATOR,
-    MIN_FEE_RATE,
+    AssetInfo, InitializePoolRequest, PoolAction, PoolRequest, PoolRequestInner, PoolRequestTag,
+    PoolState, FEE_RATE_DENOMINATOR, MIN_FEE_RATE,
 };
-use serum_pool_schema::{PoolRequestInner, PoolRequestTag};
 
 pub use crate::context::PoolContext;
 pub use crate::pool::Pool;
@@ -100,7 +100,7 @@ impl<'a, 'b, P: Pool> PoolProcessor<'a, 'b, P> {
         )?))
     }
 
-    fn set_state(&self, state: PoolState) -> PoolResult<()> {
+    fn save_state(&self, state: &PoolState) -> PoolResult<()> {
         if self.accounts.len() < 1 {
             return Err(ProgramError::NotEnoughAccountKeys);
         }
@@ -156,6 +156,7 @@ impl<'a, 'b, P: Pool> PoolProcessor<'a, 'b, P> {
                     }
                     PoolAction::Swap(inputs) => P::process_swap(&context, pool_state, inputs)?,
                 };
+                self.save_state(pool_state)?;
             }
         };
 
@@ -218,7 +219,7 @@ impl<'a, 'b, P: Pool> PoolProcessor<'a, 'b, P> {
             msg!("Fee too high");
             return Err(ProgramError::InvalidArgument);
         }
-        self.set_state(state)?;
+        self.save_state(&state)?;
         Ok(())
     }
 
@@ -245,17 +246,6 @@ impl<'a, 'b, P: Pool> PoolProcessor<'a, 'b, P> {
         Ok(())
     }
 }
-
-/*
-EXAMPLE. TODO replace with actual documentation
-
-enum FakePool {}
-
-impl pool::Pool for FakePool {}
-
-#[cfg(feature = "program")]
-declare_pool_entrypoint!(FakePool);
-*/
 
 fn next_account_infos<'a, 'b: 'a>(
     iter: &mut std::slice::Iter<'a, AccountInfo<'b>>,
