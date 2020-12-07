@@ -1,8 +1,8 @@
 use serum_meta_entity::accounts::mqueue::Ring;
 use serum_meta_entity::accounts::{MQueue, Message};
 use serum_meta_entity::error::MetaEntityError;
+use solana_program::msg;
 use solana_sdk::account_info::{next_account_info, AccountInfo};
-use solana_sdk::info;
 use solana_sdk::pubkey::Pubkey;
 
 pub fn handler(
@@ -10,7 +10,7 @@ pub fn handler(
     accounts: &[AccountInfo],
     msg: Message,
 ) -> Result<(), MetaEntityError> {
-    info!("handler: send_message");
+    msg!("handler: send_message");
     let acc_infos = &mut accounts.iter();
 
     let mqueue_acc_info = next_account_info(acc_infos)?;

@@ -1,7 +1,6 @@
 use solana_sdk::account_info::AccountInfo;
 use solana_sdk::program_error::ProgramError;
 use spl_token::instruction as token_instruction;
-use std::convert::Into;
 
 pub fn invoke_token_transfer<'a, 'b>(
     from_acc_info: &'a AccountInfo<'b>,

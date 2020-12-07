@@ -3,7 +3,7 @@ use serum_common::pack::Pack;
 use serum_common::program::invoke_token_transfer;
 use serum_lockup::accounts::{vault, Vesting};
 use serum_lockup::error::{LockupError, LockupErrorCode};
-use solana_program::info;
+use solana_program::msg;
 use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::pubkey::Pubkey;
 use std::convert::Into;
@@ -13,7 +13,7 @@ pub fn handler(
     accounts: &[AccountInfo],
     amount: u64,
 ) -> Result<(), LockupError> {
-    info!("handler: withdraw");
+    msg!("handler: withdraw");
 
     let acc_infos = &mut accounts.iter();
 
@@ -57,7 +57,7 @@ pub fn handler(
 }
 
 fn access_control(req: AccessControlRequest) -> Result<(), LockupError> {
-    info!("access-control: withdraw");
+    msg!("access-control: withdraw");
 
     let AccessControlRequest {
         program_id,
@@ -102,7 +102,7 @@ fn access_control(req: AccessControlRequest) -> Result<(), LockupError> {
 }
 
 fn state_transition(req: StateTransitionRequest) -> Result<(), LockupError> {
-    info!("state-transition: withdraw");
+    msg!("state-transition: withdraw");
 
     let StateTransitionRequest {
         vesting,

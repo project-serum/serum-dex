@@ -180,9 +180,10 @@ macro_rules! ring {
 
 #[cfg(test)]
 mod tests {
+    use crate as serum_common;
+    use crate::pack::*;
     use borsh::{BorshDeserialize, BorshSerialize};
-    use serum_common::pack::*;
-    use solana_client_gen::solana_sdk::pubkey::Pubkey;
+    use solana_sdk::pubkey::Pubkey;
     use std::cell::RefCell;
     use std::rc::Rc;
 
@@ -216,7 +217,7 @@ mod tests {
         content: String,
     }
 
-    serum_common::packable!(Message);
+    packable!(Message);
 
     #[test]
     fn mqueue() {

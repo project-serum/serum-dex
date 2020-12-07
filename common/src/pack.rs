@@ -15,7 +15,7 @@ pub trait Pack: std::marker::Sized + std::fmt::Debug {
     fn pack(src: Self, dst: &mut [u8]) -> Result<(), ProgramError> {
         if src.size()? != dst.len() as u64 {
             #[cfg(feature = "program")]
-            solana_sdk::info!("pack size mismatch");
+            solana_program::msg!("pack size mismatch");
             return Err(ProgramError::InvalidAccountData);
         }
         Pack::pack_unchecked(src, dst)
@@ -46,7 +46,7 @@ pub trait Pack: std::marker::Sized + std::fmt::Debug {
         Pack::unpack_unchecked(&mut src_mut).and_then(|r: Self| {
             if !src_mut.is_empty() {
                 #[cfg(feature = "program")]
-                solana_sdk::info!("unpack did not consume entire array");
+                solana_program::msg!("unpack did not consume entire array");
                 return Err(ProgramError::InvalidAccountData);
             }
             Ok(r)

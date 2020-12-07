@@ -13,7 +13,7 @@ mod initialize;
 mod send_message;
 mod update;
 
-solana_sdk::entrypoint!(entry);
+solana_program::entrypoint!(entry);
 fn entry(program_id: &Pubkey, accounts: &[AccountInfo], instruction_data: &[u8]) -> ProgramResult {
     let mut data: &[u8] = instruction_data;
     let instruction: MetaEntityInstruction = MetaEntityInstruction::unpack_unchecked(&mut data)

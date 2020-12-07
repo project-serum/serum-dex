@@ -8,7 +8,7 @@ use solana_sdk::pubkey::Pubkey;
 pub mod access_control;
 
 pub fn whitelist_cpi(
-    mut instruction: Instruction,
+    instruction: Instruction,
     safe: &Pubkey,
     beneficiary_acc_info: &AccountInfo,
     vesting: &Vesting,

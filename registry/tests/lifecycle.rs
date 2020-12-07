@@ -38,7 +38,7 @@ fn lifecycle() {
     let withdrawal_timelock = 1234;
     let deactivation_timelock = 10;
     let reward_activation_threshold = 10;
-    let max_stake_per_entity = 100_000_000;
+    let max_stake_per_entity = 100_000_000_000_000;
     let registrar_authority = Keypair::generate(&mut OsRng);
 
     let InitializeResponse {

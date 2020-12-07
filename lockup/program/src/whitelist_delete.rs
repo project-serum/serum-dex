@@ -1,7 +1,7 @@
 use crate::common::access_control;
 use serum_lockup::accounts::{Whitelist, WhitelistEntry};
 use serum_lockup::error::{LockupError, LockupErrorCode};
-use solana_program::info;
+use solana_program::msg;
 use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::pubkey::Pubkey;
 
@@ -10,7 +10,7 @@ pub fn handler(
     accounts: &[AccountInfo],
     wl_entry: WhitelistEntry,
 ) -> Result<(), LockupError> {
-    info!("handler: whitelist_delete");
+    msg!("handler: whitelist_delete");
 
     let acc_infos = &mut accounts.iter();
 
@@ -34,7 +34,7 @@ pub fn handler(
 }
 
 fn access_control(req: AccessControlRequest) -> Result<(), LockupError> {
-    info!("access-control: whitelist_delete");
+    msg!("access-control: whitelist_delete");
 
     let AccessControlRequest {
         program_id,
@@ -54,7 +54,7 @@ fn access_control(req: AccessControlRequest) -> Result<(), LockupError> {
 }
 
 fn state_transition(req: StateTransitionRequest) -> Result<(), LockupError> {
-    info!("state-transition: whitelist_delete");
+    msg!("state-transition: whitelist_delete");
 
     let StateTransitionRequest {
         whitelist,

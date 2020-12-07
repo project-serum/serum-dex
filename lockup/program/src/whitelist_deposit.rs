@@ -2,7 +2,7 @@ use crate::common::{access_control, whitelist_cpi};
 use serum_common::pack::Pack;
 use serum_lockup::accounts::Vesting;
 use serum_lockup::error::{LockupError, LockupErrorCode};
-use solana_program::info;
+use solana_program::msg;
 use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::instruction::{AccountMeta, Instruction};
 use solana_sdk::program_pack::Pack as TokenPack;
@@ -15,7 +15,7 @@ pub fn handler(
     accounts: &[AccountInfo],
     ref instruction_data: Vec<u8>,
 ) -> Result<(), LockupError> {
-    info!("handler: whitelist_deposit");
+    msg!("handler: whitelist_deposit");
 
     let acc_infos = &mut accounts.iter();
 
@@ -75,7 +75,7 @@ pub fn handler(
 }
 
 fn access_control(req: AccessControlRequest) -> Result<(), LockupError> {
-    info!("access-control: whitelist_deposit");
+    msg!("access-control: whitelist_deposit");
 
     let AccessControlRequest {
         program_id,
@@ -133,7 +133,7 @@ fn access_control(req: AccessControlRequest) -> Result<(), LockupError> {
 }
 
 fn state_transition(req: StateTransitionRequest) -> Result<(), LockupError> {
-    info!("state-transition: whitelist_deposit");
+    msg!("state-transition: whitelist_deposit");
 
     let StateTransitionRequest {
         vesting,

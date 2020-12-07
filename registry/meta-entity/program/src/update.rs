@@ -1,8 +1,8 @@
 use serum_common::pack::Pack;
 use serum_meta_entity::accounts::Metadata;
 use serum_meta_entity::error::{MetaEntityError, MetaEntityErrorCode};
+use solana_program::msg;
 use solana_sdk::account_info::{next_account_info, AccountInfo};
-use solana_sdk::info;
 use solana_sdk::pubkey::Pubkey;
 
 pub fn handler(
@@ -13,7 +13,7 @@ pub fn handler(
     image_url: Option<String>,
     chat: Option<Pubkey>,
 ) -> Result<(), MetaEntityError> {
-    info!("handler: update");
+    msg!("handler: update");
 
     let acc_infos = &mut accounts.iter();
 
