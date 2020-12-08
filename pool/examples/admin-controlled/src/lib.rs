@@ -85,8 +85,11 @@ pub enum AdminInstructionInner {
     UpdateAdmin,
 }
 
+declare_tag!(AdminControlledPoolTag, u64, 0x4a3ab7f76f93f94e);
+
 #[derive(Clone, PartialEq, Eq, Debug, BorshSerialize, BorshDeserialize, BorshSchema, Default)]
 pub struct CustomPoolState {
+    pub tag: AdminControlledPoolTag,
     pub paused: bool,
 }
 
@@ -109,7 +112,7 @@ impl CustomPoolStateContainer for PoolState {
     }
 }
 
-struct AdminControlledPool {}
+struct AdminControlledPool;
 
 impl Pool for AdminControlledPool {
     fn initialize_pool(context: &PoolContext, state: &mut PoolState) -> Result<(), ProgramError> {
