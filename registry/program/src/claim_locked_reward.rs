@@ -21,6 +21,7 @@ pub fn handler(
 
     let acc_infos = &mut accounts.iter();
 
+    let signer_acc_info = next_account_info(acc_infos)?;
     let entity_acc_info = next_account_info(acc_infos)?;
     let member_acc_info = next_account_info(acc_infos)?;
     let registrar_acc_info = next_account_info(acc_infos)?;
@@ -46,6 +47,7 @@ pub fn handler(
         ref clock,
     } = access_control(AccessControlRequest {
         program_id,
+        signer_acc_info,
         registrar_acc_info,
         entity_acc_info,
         member_acc_info,
@@ -90,6 +92,7 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
     let AccessControlRequest {
         program_id,
         cursor,
+        signer_acc_info,
         registrar_acc_info,
         entity_acc_info,
         member_acc_info,
@@ -98,8 +101,10 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
         clock_acc_info,
     } = req;
 
-    // Authorization: none required. This operation is purely beneficial for
-    //                the member account.
+    // Authorization. Must be either the beneficiary or the node leader.
+    if !signer_acc_info.is_signer {
+        return Err(RegistryErrorCode::Unauthorized)?;
+    }
 
     // Account validation.
     let clock = access_control::clock(clock_acc_info)?;
@@ -148,6 +153,10 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
     // Is the entity active?
     if entity.state == EntityState::Inactive {
         return Err(RegistryErrorCode::EntityNotActivated)?;
+    }
+    // Is the beneficiary or the node leader the signer?
+    if &entity.leader != signer_acc_info.key && &member.beneficiary != signer_acc_info.key {
+        return Err(RegistryErrorCode::Unauthorized)?;
     }
 
     Ok(AccessControlResponse {
@@ -253,6 +262,7 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
 struct AccessControlRequest<'a, 'b> {
     program_id: &'a Pubkey,
     cursor: u32,
+    signer_acc_info: &'a AccountInfo<'b>,
     entity_acc_info: &'a AccountInfo<'b>,
     member_acc_info: &'a AccountInfo<'b>,
     registrar_acc_info: &'a AccountInfo<'b>,
