@@ -1,11 +1,13 @@
+use crate::common::entity::{with_entity, EntityContext};
 use serum_common::pack::Pack;
 use serum_common::program::invoke_token_transfer;
 use serum_registry::access_control;
-use serum_registry::accounts::{EntityState, Member, UnlockedRewardVendor};
+use serum_registry::accounts::{Entity, EntityState, Member, Registrar, UnlockedRewardVendor};
 use serum_registry::error::{RegistryError, RegistryErrorCode};
 use solana_program::msg;
 use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::pubkey::Pubkey;
+use solana_sdk::sysvar::clock::Clock;
 use spl_token::state::Account as TokenAccount;
 
 #[inline(never)]
@@ -27,47 +29,59 @@ pub fn handler(
     let vendor_vault_authority_acc_info = next_account_info(acc_infos)?;
     let token_acc_info = next_account_info(acc_infos)?;
     let token_program_acc_info = next_account_info(acc_infos)?;
+    let clock_acc_info = next_account_info(acc_infos)?;
 
     let mut spt_acc_infos = vec![];
     while acc_infos.len() > 0 {
         spt_acc_infos.push(next_account_info(acc_infos)?);
     }
 
-    let AccessControlResponse {
-        ref vendor,
-        ref spts,
-    } = access_control(AccessControlRequest {
-        program_id,
-        signer_acc_info,
-        registrar_acc_info,
+    let ctx = EntityContext {
         entity_acc_info,
-        member_acc_info,
-        vendor_acc_info,
-        token_acc_info,
-        cursor,
-        spt_acc_infos,
-    })?;
+        registrar_acc_info,
+        clock_acc_info,
+        program_id,
+    };
+    with_entity(ctx, &mut |entity: &mut Entity,
+                           registrar: &Registrar,
+                           _clock: &Clock| {
+        let AccessControlResponse {
+            ref vendor,
+            ref spts,
+        } = access_control(AccessControlRequest {
+            program_id,
+            signer_acc_info,
+            registrar_acc_info,
+            entity_acc_info,
+            member_acc_info,
+            vendor_acc_info,
+            token_acc_info,
+            cursor,
+            registrar,
+            entity,
+            spt_acc_infos: spt_acc_infos.as_ref(),
+        })?;
 
-    Member::unpack_mut(
-        &mut member_acc_info.try_borrow_mut_data()?,
-        &mut |member: &mut Member| {
-            state_transition(StateTransitionRequest {
-                cursor,
-                member,
-                vendor,
-                registrar_acc_info,
-                vendor_acc_info,
-                vendor_vault_authority_acc_info,
-                vendor_vault_acc_info,
-                token_acc_info,
-                token_program_acc_info,
-                spts,
-            })
-            .map_err(Into::into)
-        },
-    )?;
-
-    Ok(())
+        Member::unpack_mut(
+            &mut member_acc_info.try_borrow_mut_data()?,
+            &mut |member: &mut Member| {
+                state_transition(StateTransitionRequest {
+                    cursor,
+                    member,
+                    vendor,
+                    registrar_acc_info,
+                    vendor_acc_info,
+                    vendor_vault_authority_acc_info,
+                    vendor_vault_acc_info,
+                    token_acc_info,
+                    token_program_acc_info,
+                    spts,
+                })
+                .map_err(Into::into)
+            },
+        )
+        .map_err(Into::into)
+    })
 }
 
 fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, RegistryError> {
@@ -76,6 +90,8 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
     let AccessControlRequest {
         program_id,
         cursor,
+        registrar,
+        entity,
         signer_acc_info,
         registrar_acc_info,
         entity_acc_info,
@@ -91,8 +107,6 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
     }
 
     // Account validation.
-    let registrar = access_control::registrar(registrar_acc_info, program_id)?;
-    let entity = access_control::entity(entity_acc_info, registrar_acc_info, program_id)?;
     let member = access_control::member_belongs_to(
         member_acc_info,
         registrar_acc_info,
@@ -190,16 +204,18 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
     Ok(())
 }
 
-struct AccessControlRequest<'a, 'b> {
+struct AccessControlRequest<'a, 'b, 'c> {
     program_id: &'a Pubkey,
     cursor: u32,
+    registrar: &'c Registrar,
+    entity: &'c Entity,
     signer_acc_info: &'a AccountInfo<'b>,
     entity_acc_info: &'a AccountInfo<'b>,
     member_acc_info: &'a AccountInfo<'b>,
     registrar_acc_info: &'a AccountInfo<'b>,
     vendor_acc_info: &'a AccountInfo<'b>,
     token_acc_info: &'a AccountInfo<'b>,
-    spt_acc_infos: Vec<&'a AccountInfo<'b>>,
+    spt_acc_infos: &'c [&'a AccountInfo<'b>],
 }
 
 struct AccessControlResponse {
