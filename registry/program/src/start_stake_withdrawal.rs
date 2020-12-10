@@ -231,7 +231,7 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
     pending_withdrawal.burned = false;
     pending_withdrawal.member = *member_acc_info.key;
     pending_withdrawal.start_ts = clock.unix_timestamp;
-    pending_withdrawal.end_ts = clock.unix_timestamp + registrar.deactivation_timelock;
+    pending_withdrawal.end_ts = clock.unix_timestamp + registrar.withdrawal_timelock;
     pending_withdrawal.amount = token_amount;
     pending_withdrawal.pool = *pool_mint_acc_info.key;
     pending_withdrawal.balance_id = *balance_id;
