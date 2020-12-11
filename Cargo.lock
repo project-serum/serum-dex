@@ -3371,10 +3371,38 @@ dependencies = [
 ]
 
 [[package]]
-name = "serum_assert_owner"
+name = "serum-registry-rewards"
 version = "0.1.0"
 dependencies = [
- "solana-program",
+ "arrayref",
+ "borsh",
+ "bytemuck",
+ "crank",
+ "lazy_static",
+ "num_enum",
+ "rand 0.7.3",
+ "serum-common",
+ "serum-common-tests",
+ "serum-registry",
+ "serum-registry-client",
+ "serum-registry-rewards-client",
+ "serum_dex",
+ "solana-client-gen",
+ "spl-token 2.0.6",
+ "thiserror",
+]
+
+[[package]]
+name = "serum-registry-rewards-client"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serum-common",
+ "serum-registry-rewards",
+ "solana-client",
+ "solana-client-gen",
+ "spl-token 2.0.6",
+ "thiserror",
 ]
 
 [[package]]

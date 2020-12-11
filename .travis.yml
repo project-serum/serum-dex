@@ -42,6 +42,7 @@ jobs:
       <<: *localnet
       script:
         - docker exec dev make -C registry init-test
+        - docker exec dev make -C registry/rewards test
     - <<: *defaults
       name: Fmt and Common Tests
       script:

@@ -13,6 +13,7 @@ members = [
     "registry/cli",
     "registry/client",
     "registry/meta-entity",
+    "registry/rewards",
     "lockup",
     "lockup/cli",
     "lockup/client",

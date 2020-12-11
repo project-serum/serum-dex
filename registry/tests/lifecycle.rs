@@ -117,10 +117,12 @@ fn lifecycle() {
             .create_entity(CreateEntityRequest {
                 node_leader: &node_leader,
                 registrar,
-                name: "".to_string(),
-                about: "".to_string(),
-                image_url: "".to_string(),
-                meta_entity_program_id,
+                metadata: Some(EntityMetadata {
+                    name: "".to_string(),
+                    about: "".to_string(),
+                    image_url: "".to_string(),
+                    meta_entity_program_id,
+                }),
             })
             .unwrap();
         let entity_acc = client.entity(&entity).unwrap();
@@ -445,10 +447,12 @@ fn lifecycle() {
             .create_entity(CreateEntityRequest {
                 node_leader: &node_leader,
                 registrar,
-                name: "".to_string(),
-                about: "".to_string(),
-                image_url: "".to_string(),
-                meta_entity_program_id,
+                metadata: Some(EntityMetadata {
+                    name: "".to_string(),
+                    about: "".to_string(),
+                    image_url: "".to_string(),
+                    meta_entity_program_id,
+                }),
             })
             .unwrap();
         // Switch over to it.
