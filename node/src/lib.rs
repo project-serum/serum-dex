@@ -4,8 +4,7 @@ use anyhow::Result;
 use clap::Clap;
 use crossbeam::sync::WaitGroup;
 use futures::channel::mpsc;
-use serum_context::Context;
-use serum_node_logging::{error, info, trace};
+use serum_node_logging::info;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::runtime::Runtime;
@@ -67,9 +66,6 @@ pub struct Config {
     /// Enables the JSON RPC server if set. Defaults to off.
     #[clap(long)]
     pub json: bool,
-
-    #[clap(flatten)]
-    pub context: Context,
 }
 
 pub struct Handle {

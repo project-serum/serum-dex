@@ -5,10 +5,6 @@ description = "Serum Node"
 repository = "https://github.com/project-serum/serum-dex"
 edition = "2018"
 
-[[bin]]
-name = "serum"
-path = "src/bin/main.rs"
-
 [features]
 default = ["serum-node-logging/trace"]
 strict = []
