@@ -3,6 +3,7 @@ use serum_common::client::rpc;
 use serum_registry_rewards::accounts::{vault, Instance};
 use serum_registry_rewards::client::{Client as InnerClient, ClientError as InnerClientError};
 use serum_registry_rewards::error::RewardsError;
+use serum_registry_rewards::instruction;
 use solana_client_gen::prelude::Signer;
 use solana_client_gen::prelude::*;
 use solana_client_gen::solana_sdk;
@@ -15,6 +16,9 @@ use thiserror::Error;
 
 mod inner;
 
+pub use serum_registry_rewards::*;
+pub use solana_client_gen::{ClientGen, RequestOptions};
+
 pub struct Client {
     inner: InnerClient,
 }
@@ -22,6 +26,15 @@ pub struct Client {
 impl Client {
     pub fn new(inner: InnerClient) -> Self {
         Self { inner }
+    }
+
+    pub fn from(program_id: Pubkey, payer: &Keypair, url: &str) -> Self {
+        Self::new(InnerClient::new(
+            program_id,
+            Keypair::from_bytes(&payer.to_bytes()).unwrap(),
+            url,
+            None,
+        ))
     }
 
     pub fn initialize(&self, req: InitializeRequest) -> Result<InitializeResponse, ClientError> {
@@ -42,21 +55,45 @@ impl Client {
     }
 
     pub fn crank_relay(&self, req: CrankRelayRequest) -> Result<CrankRelayResponse, ClientError> {
-        let CrankRelayRequest {
+        let ix = self.crank_relay_ix(req)?;
+        let (recent_hash, _fee_calc) = self
+            .inner
+            .rpc()
+            .get_recent_blockhash()
+            .map_err(|e| InnerClientError::RawError(e.to_string()))?;
+        let tx = Transaction::new_signed_with_payer(
+            &[ix],
+            Some(&self.inner.payer().pubkey()),
+            &vec![self.inner.payer()],
+            recent_hash,
+        );
+        let sig = self
+            .inner
+            .rpc()
+            .send_and_confirm_transaction_with_spinner_and_config(
+                &tx,
+                self.inner.options().commitment,
+                self.inner.options().tx,
+            )
+            .map_err(InnerClientError::RpcError)?;
+        Ok(CrankRelayResponse { tx: sig })
+    }
+
+    pub fn crank_relay_ix(&self, req: CrankRelayIxRequest) -> Result<Instruction, ClientError> {
+        let CrankRelayIxRequest {
             instance,
             token_account,
             entity,
-            entity_leader,
             dex_event_q,
             mut consume_events_instr,
         } = req;
+        let entity_leader = self.payer();
         let instance_acc = self.instance(instance)?;
         let vault_authority = Pubkey::create_program_address(
             &vault::signer_seeds(&instance, &instance_acc.nonce),
             self.program(),
         )
         .map_err(|_| ClientError::Any(anyhow!("unable to derive program address")))?;
-        let signers = [self.inner.payer(), entity_leader];
         let mut accounts = vec![
             AccountMeta::new_readonly(instance, false),
             AccountMeta::new(instance_acc.vault, false),
@@ -70,10 +107,11 @@ impl Client {
             AccountMeta::new(dex_event_q, false),
         ];
         accounts.append(&mut consume_events_instr.accounts);
-        let tx =
-            self.inner
-                .crank_relay_with_signers(&signers, &accounts, consume_events_instr.data)?;
-        Ok(CrankRelayResponse { tx })
+        Ok(instruction::crank_relay(
+            *self.program(),
+            &accounts,
+            consume_events_instr.data,
+        ))
     }
 
     pub fn set_authority(
@@ -185,14 +223,15 @@ pub struct InitializeResponse {
     pub nonce: u8,
 }
 
-pub struct CrankRelayRequest<'a> {
+pub struct CrankRelayRequest {
     pub instance: Pubkey,
     pub token_account: Pubkey,
     pub entity: Pubkey,
-    pub entity_leader: &'a Keypair,
     pub dex_event_q: Pubkey,
     pub consume_events_instr: Instruction,
 }
+
+pub type CrankRelayIxRequest = CrankRelayRequest;
 
 pub struct CrankRelayResponse {
     pub tx: Signature,

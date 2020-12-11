@@ -593,6 +593,7 @@ dependencies = [
  "rand 0.7.3",
  "safe-transmute",
  "serum-common",
+ "serum-registry-rewards-client",
  "serum_dex",
  "slog-scope",
  "slog-stdlog",
@@ -3403,6 +3404,13 @@ dependencies = [
  "solana-client-gen",
  "spl-token 2.0.6",
  "thiserror",
+]
+
+[[package]]
+name = "serum_assert_owner"
+version = "0.1.0"
+dependencies = [
+ "solana-program",
 ]
 
 [[package]]

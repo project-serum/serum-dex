@@ -4,17 +4,19 @@ use serum_common::program::invoke_token_transfer;
 use serum_registry::accounts::{EntityState, Registrar};
 use serum_registry_rewards::accounts::{vault, Instance};
 use serum_registry_rewards::error::{RewardsError, RewardsErrorCode};
-use solana_program::info;
+use serum_registry_rewards::logs;
+use solana_program::msg;
 use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::instruction::{AccountMeta, Instruction};
 use solana_sdk::pubkey::Pubkey;
+use spl_token::state::Account as TokenAccount;
 
 pub fn handler(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
     dex_instruction_data: Vec<u8>,
 ) -> Result<(), RewardsError> {
-    info!("handler: crank_relay");
+    msg!("handler: crank_relay");
 
     let acc_infos = &mut accounts.iter();
 
@@ -32,7 +34,7 @@ pub fn handler(
     // Relayed to the dex.
     let remaining_relay_accs: Vec<&AccountInfo> = acc_infos.collect();
 
-    let AccessControlResponse { instance } = access_control(AccessControlRequest {
+    let AccessControlResponse { instance, vault } = access_control(AccessControlRequest {
         instance_acc_info,
         vault_acc_info,
         vault_authority_acc_info,
@@ -57,11 +59,12 @@ pub fn handler(
         token_acc_info,
         token_program_acc_info,
         instance,
+        vault,
     })
 }
 
 fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, RewardsError> {
-    info!("access-control: crank_relay");
+    msg!("access-control: crank_relay");
 
     let AccessControlRequest {
         instance_acc_info,
@@ -97,7 +100,7 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
         &instance.registry_program_id,
     )
     .map_err(|_| RewardsErrorCode::InvalidEntity)?;
-    let _v = access_control::vault(
+    let vault = access_control::vault(
         vault_acc_info,
         vault_authority_acc_info,
         &instance,
@@ -126,11 +129,11 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
         return Err(RewardsErrorCode::InvalidDEXInstruction)?;
     }
 
-    Ok(AccessControlResponse { instance })
+    Ok(AccessControlResponse { instance, vault })
 }
 
 fn state_transition(req: StateTransitionRequest) -> Result<(), RewardsError> {
-    info!("state-transition: crank_relay");
+    msg!("state-transition: crank_relay");
 
     let StateTransitionRequest {
         instance_acc_info,
@@ -144,6 +147,7 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), RewardsError> {
         token_acc_info,
         token_program_acc_info,
         instance,
+        vault,
     } = req;
 
     // Event queue len before.
@@ -178,6 +182,11 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), RewardsError> {
 
     // Calculate payout amount.
     let amount = (before_event_count - after_event_count) * instance.fee_rate;
+
+    if vault.amount < amount {
+        msg!(logs::VAULT_DEPLETED);
+        return Ok(());
+    }
 
     // Pay out reward.
     invoke_token_transfer(
@@ -218,6 +227,7 @@ struct AccessControlRequest<'a, 'b> {
 
 struct AccessControlResponse {
     instance: Instance,
+    vault: TokenAccount,
 }
 
 struct StateTransitionRequest<'a, 'b> {
@@ -232,4 +242,5 @@ struct StateTransitionRequest<'a, 'b> {
     token_acc_info: &'a AccountInfo<'b>,
     token_program_acc_info: &'a AccountInfo<'b>,
     instance: Instance,
+    vault: TokenAccount,
 }

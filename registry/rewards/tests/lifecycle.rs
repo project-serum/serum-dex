@@ -189,7 +189,6 @@ fn lifecycle() -> Result<()> {
             instance: rewards_init_resp.instance,
             token_account: token_account_kp.pubkey(),
             entity,
-            entity_leader: client.payer(),
             dex_event_q: *market_keys.event_q,
             consume_events_instr,
         })?;

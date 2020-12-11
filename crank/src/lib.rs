@@ -7,6 +7,7 @@ use std::collections::BTreeSet;
 use std::convert::identity;
 use std::mem::size_of;
 use std::num::NonZeroU64;
+use std::sync::Arc;
 use std::{thread, time};
 
 use anyhow::{format_err, Result};
@@ -47,6 +48,9 @@ use serum_dex::state::MarketState;
 use serum_dex::state::QueueHeader;
 use serum_dex::state::Request;
 use serum_dex::state::RequestQueueHeader;
+use serum_registry_rewards_client::{
+    Client as RewardsClient, ClientGen, CrankRelayIxRequest, RequestOptions,
+};
 
 pub fn with_logging<F: FnOnce()>(_to: &str, fnc: F) {
     fnc();
@@ -63,6 +67,12 @@ pub struct Opts {
     pub cluster: Cluster,
     #[clap(subcommand)]
     pub command: Command,
+}
+
+impl Opts {
+    fn client(&self) -> RpcClient {
+        RpcClient::new(self.cluster.url().to_string())
+    }
 }
 
 #[derive(Clap, Debug)]
@@ -102,32 +112,14 @@ pub enum Command {
         payer: String,
     },
     ConsumeEvents {
-        #[clap(long, short)]
-        dex_program_id: Pubkey,
-
-        #[clap(long)]
-        payer: String,
-
-        #[clap(long, short)]
-        market: Pubkey,
-
-        #[clap(long, short)]
-        coin_wallet: Pubkey,
-
-        #[clap(long, short)]
-        pc_wallet: Pubkey,
-
-        #[clap(long, short)]
-        num_workers: usize,
-
-        #[clap(long, short)]
-        events_per_worker: usize,
-
-        #[clap(long)]
-        num_accounts: Option<usize>,
-
-        #[clap(long)]
-        log_directory: String,
+        #[clap(flatten)]
+        inner: ConsumeEventsInner,
+    },
+    ConsumeEventRewards {
+        #[clap(flatten)]
+        inner: ConsumeEventsInner,
+        #[clap(flatten)]
+        r_ctx: RewardsContext,
     },
     MatchOrders {
         #[clap(long, short)]
@@ -191,9 +183,55 @@ pub enum Command {
     },
 }
 
-impl Opts {
-    fn client(&self) -> RpcClient {
-        RpcClient::new(self.cluster.url().to_string())
+#[derive(Clap, Debug)]
+pub struct ConsumeEventsInner {
+    #[clap(long, short)]
+    dex_program_id: Pubkey,
+    #[clap(long)]
+    payer: String,
+    #[clap(long, short)]
+    market: Pubkey,
+    #[clap(long, short)]
+    coin_wallet: Pubkey,
+    #[clap(long, short)]
+    pc_wallet: Pubkey,
+    #[clap(long, short)]
+    num_workers: usize,
+    #[clap(long, short)]
+    events_per_worker: usize,
+    #[clap(long)]
+    num_accounts: Option<usize>,
+    #[clap(long)]
+    log_directory: String,
+}
+
+#[derive(Debug, Clap, Clone)]
+pub struct RewardsContext {
+    #[clap(long = "rewards.program-id")]
+    pub program_id: Pubkey,
+    #[clap(long = "rewards.instance")]
+    pub instance: Pubkey,
+    #[clap(long = "rewards.receiver")]
+    pub receiver: Pubkey,
+    #[clap(long = "rewards.registry-program-id")]
+    pub registry_program_id: Pubkey,
+    #[clap(long = "rewards.registry-entity")]
+    pub registry_entity: Pubkey,
+    #[clap(skip)]
+    pub url: String,
+}
+
+impl RewardsContext {
+    pub fn client(&self, payer: &Keypair) -> Result<RewardsClient> {
+        Ok(
+            RewardsClient::from(self.program_id, payer, &self.url).with_options(RequestOptions {
+                commitment: CommitmentConfig::single(),
+                tx: RpcSendTransactionConfig {
+                    skip_preflight: true,
+                    ..RpcSendTransactionConfig::default()
+                },
+            }),
+        )
     }
 }
 
@@ -258,17 +296,19 @@ pub fn start(opts: Opts) -> Result<()> {
                 pc_wallet,
             )?;
         }
-        Command::ConsumeEvents {
-            ref dex_program_id,
-            ref payer,
-            ref market,
-            ref coin_wallet,
-            ref pc_wallet,
-            num_workers,
-            events_per_worker,
-            ref num_accounts,
-            ref log_directory,
-        } => {
+        Command::ConsumeEvents { ref inner } => {
+            let ConsumeEventsInner {
+                ref dex_program_id,
+                ref payer,
+                ref market,
+                ref coin_wallet,
+                ref pc_wallet,
+                num_workers,
+                events_per_worker,
+                ref num_accounts,
+                ref log_directory,
+            } = inner;
+            init_logger(log_directory);
             consume_events_loop(
                 &opts,
                 &dex_program_id,
@@ -276,12 +316,42 @@ pub fn start(opts: Opts) -> Result<()> {
                 &market,
                 &coin_wallet,
                 &pc_wallet,
+                *num_workers,
+                *events_per_worker,
+                num_accounts.unwrap_or(32),
+                None,
+            )?;
+        }
+        Command::ConsumeEventRewards {
+            ref inner,
+            ref r_ctx,
+        } => {
+            let ConsumeEventsInner {
+                ref dex_program_id,
+                ref payer,
+                ref market,
+                ref coin_wallet,
+                ref pc_wallet,
                 num_workers,
                 events_per_worker,
+                ref num_accounts,
+                ref log_directory,
+            } = inner;
+            let mut r_ctx = r_ctx.clone();
+            r_ctx.url = opts.cluster.url().to_string();
+            init_logger(log_directory);
+            consume_events_loop(
+                &opts,
+                &dex_program_id,
+                &payer,
+                &market,
+                &coin_wallet,
+                &pc_wallet,
+                *num_workers,
+                *events_per_worker,
                 num_accounts.unwrap_or(32),
-                log_directory,
-            )
-            .unwrap();
+                Some(Arc::new(r_ctx)),
+            )?;
         }
         Command::MonitorQueue {
             dex_program_id,
@@ -483,6 +553,18 @@ fn hash_accounts(val: &[u64; 4]) -> u64 {
     val.iter().fold(0, |a, b| b.wrapping_add(a))
 }
 
+fn init_logger(log_directory: &str) {
+    let path = std::path::Path::new(log_directory);
+    let parent = path.parent().unwrap();
+    std::fs::create_dir_all(parent).unwrap();
+    let mut builder = FileLoggerBuilder::new(log_directory);
+    builder.level(Severity::Info).rotate_size(8 * 1024 * 1024);
+    let log = builder.build().unwrap();
+    let _guard = slog_scope::set_global_logger(log);
+    _guard.cancel_reset();
+    slog_stdlog::init().unwrap();
+}
+
 fn consume_events_loop(
     opts: &Opts,
     program_id: &Pubkey,
@@ -493,23 +575,14 @@ fn consume_events_loop(
     num_workers: usize,
     events_per_worker: usize,
     num_accounts: usize,
-    log_directory: &str,
+    r_ctx: Option<Arc<RewardsContext>>,
 ) -> Result<()> {
-    let path = std::path::Path::new(log_directory);
-    let parent = path.parent().unwrap();
-    std::fs::create_dir_all(parent).unwrap();
-    let mut builder = FileLoggerBuilder::new(log_directory);
-    builder.level(Severity::Info).rotate_size(8 * 1024 * 1024);
-    let log = builder.build().unwrap();
-    let _guard = slog_scope::set_global_logger(log);
-    _guard.cancel_reset();
-    slog_stdlog::init().unwrap();
-
     info!("Getting market keys ...");
     let client = opts.client();
     let market_keys = get_keys_for_market(&client, &program_id, &market)?;
     info!("{:#?}", market_keys);
     let pool = threadpool::ThreadPool::new(num_workers);
+
     loop {
         thread::sleep(time::Duration::from_millis(300));
 
@@ -518,12 +591,12 @@ fn consume_events_loop(
         let event_q_data = client
             .get_account_with_commitment(&market_keys.event_q, CommitmentConfig::recent())?
             .value
-            .expect("Failed to retrieve account")
+            .ok_or(format_err!("Failed to retrieve account"))?
             .data;
         let req_q_data = client
             .get_account_with_commitment(&market_keys.req_q, CommitmentConfig::recent())?
             .value
-            .expect("Failed to retrieve account")
+            .ok_or(format_err!("Failed to retrieve account"))?
             .data;
         let inner: Cow<[u64]> = remove_dex_account_padding(&event_q_data)?;
         let (_header, seg0, seg1) = parse_event_queue(&inner)?;
@@ -560,7 +633,7 @@ fn consume_events_loop(
                 pc_wallet
             );
             info!(
-                "First 5 accouts: {:?}",
+                "First 5 accounts: {:?}",
                 orders_accounts
                     .iter()
                     .take(5)
@@ -595,7 +668,8 @@ fn consume_events_loop(
                 let program_id = program_id.clone();
                 let client = opts.client();
                 let account_metas = account_metas.clone();
-
+                let r_ctx = r_ctx.clone();
+                let event_q = *market_keys.event_q;
                 pool.execute(move || {
                     consume_events_wrapper(
                         &client,
@@ -604,6 +678,8 @@ fn consume_events_loop(
                         account_metas,
                         thread_num,
                         events_per_worker,
+                        event_q,
+                        r_ctx,
                     )
                 });
             }
@@ -624,6 +700,8 @@ fn consume_events_wrapper(
     account_metas: Vec<AccountMeta>,
     thread_num: usize,
     to_consume: usize,
+    event_q: Pubkey,
+    r_ctx: Option<Arc<RewardsContext>>,
 ) {
     let start = std::time::Instant::now();
     let result = consume_events_once(
@@ -633,6 +711,8 @@ fn consume_events_wrapper(
         account_metas,
         to_consume,
         thread_num,
+        event_q,
+        r_ctx,
     );
     match result {
         Ok(signature) => info!(
@@ -654,14 +734,27 @@ fn consume_events_once(
     account_metas: Vec<AccountMeta>,
     to_consume: usize,
     _thread_number: usize,
+    event_q: Pubkey,
+    r_ctx: Option<Arc<RewardsContext>>,
 ) -> Result<Signature> {
     let _start = std::time::Instant::now();
     let instruction_data: Vec<u8> = MarketInstruction::ConsumeEvents(to_consume as u16).pack();
-
-    let instruction = Instruction {
-        program_id: *program_id,
-        accounts: account_metas,
-        data: instruction_data,
+    let instruction = {
+        let mut ix = Instruction {
+            program_id: *program_id,
+            accounts: account_metas,
+            data: instruction_data,
+        };
+        if let Some(ctx) = r_ctx.as_ref() {
+            ix = ctx.client(payer)?.crank_relay_ix(CrankRelayIxRequest {
+                instance: ctx.instance,
+                token_account: ctx.receiver,
+                entity: ctx.registry_entity,
+                dex_event_q: event_q,
+                consume_events_instr: ix,
+            })?;
+        }
+        ix
     };
     let random_instruction = solana_sdk::system_instruction::transfer(
         &payer.pubkey(),
@@ -1309,7 +1402,7 @@ async fn read_queue_length_loop(
     market: Pubkey,
     port: u16,
 ) -> Result<()> {
-    let client = std::sync::Arc::new(client);
+    let client = Arc::new(client);
     let get_data = warp::path("length").map(move || {
         let client = client.clone();
         let market_keys = get_keys_for_market(&client, &program_id, &market).unwrap();
