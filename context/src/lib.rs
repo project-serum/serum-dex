@@ -1,3 +1,6 @@
+//! serum-context defines the global state used by Serum crates, read from
+//! a configuration file.
+
 use anyhow::Result;
 use anyhow::{anyhow, format_err};
 use serde::{Deserialize, Serialize};
