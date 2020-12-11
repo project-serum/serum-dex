@@ -145,6 +145,32 @@
 //! runtime/program code as well.
 //!
 
+#[cfg(feature = "client")]
+use solana_client::rpc_client::RpcClient;
+#[cfg(feature = "client")]
+use solana_client::rpc_config::RpcSendTransactionConfig;
+#[cfg(feature = "client")]
+use solana_sdk::commitment_config::CommitmentConfig;
+use solana_sdk::pubkey::Pubkey;
+#[cfg(feature = "client")]
+use solana_sdk::signature::Keypair;
+
+#[cfg(feature = "client")]
+#[derive(Clone, Debug)]
+pub struct RequestOptions {
+    pub commitment: CommitmentConfig,
+    pub tx: RpcSendTransactionConfig,
+}
+
+#[cfg(feature = "client")]
+pub trait ClientGen: std::marker::Sized {
+    fn from_keypair_file(program_id: Pubkey, filename: &str, url: &str) -> anyhow::Result<Self>;
+    fn with_options(self, opts: RequestOptions) -> Self;
+    fn rpc(&self) -> &RpcClient;
+    fn payer(&self) -> &Keypair;
+    fn program(&self) -> &Pubkey;
+}
+
 // The prelude should be included by all crates using this macro.
 pub mod prelude {
     pub use solana_sdk;
@@ -152,6 +178,10 @@ pub mod prelude {
 
     pub use solana_sdk::pubkey::Pubkey;
 
+    #[cfg(feature = "client")]
+    pub use crate::ClientGen;
+    #[cfg(feature = "client")]
+    pub use crate::RequestOptions;
     #[cfg(feature = "client")]
     pub use anyhow;
     #[cfg(feature = "client")]
@@ -178,23 +208,6 @@ pub mod prelude {
     pub use solana_sdk::transaction::Transaction;
     #[cfg(feature = "client")]
     pub use thiserror::Error;
-
-    #[cfg(feature = "client")]
-    #[derive(Clone, Debug)]
-    pub struct RequestOptions {
-        pub commitment: CommitmentConfig,
-        pub tx: RpcSendTransactionConfig,
-    }
-
-    #[cfg(feature = "client")]
-    pub trait ClientGen: std::marker::Sized {
-        fn from_keypair_file(program_id: Pubkey, filename: &str, url: &str)
-            -> anyhow::Result<Self>;
-        fn with_options(self, opts: RequestOptions) -> Self;
-        fn rpc(&self) -> &RpcClient;
-        fn payer(&self) -> &Keypair;
-        fn program(&self) -> &Pubkey;
-    }
 }
 
 // Re-export.
