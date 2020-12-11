@@ -9,7 +9,8 @@ use solana_client_gen::prelude::*;
 use solana_client_gen::solana_client::rpc_client::RpcClient;
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::Keypair;
-use std::convert::Into;
+use std::convert::TryFrom;
+use std::convert::TryInto;
 use std::fs;
 use std::str::FromStr;
 
@@ -29,7 +30,7 @@ pub struct Context {
 
 impl Context {
     pub fn from_config(path: ConfigPath) -> Result<Self> {
-        Config::from(&path.to_string()).map(Into::into)
+        Config::from(&path.to_string())?.try_into()
     }
 
     pub fn connect<T: ClientGen>(&self, program_id: Pubkey) -> Result<T> {
@@ -94,26 +95,26 @@ impl Config {
     }
 }
 
-// TODO: don't unwrap.
-impl From<Config> for Context {
-    fn from(cfg: Config) -> Self {
-        Self {
+impl TryFrom<Config> for Context {
+    type Error = anyhow::Error;
+    fn try_from(cfg: Config) -> std::result::Result<Self, anyhow::Error> {
+        Ok(Self {
             cluster: cfg
                 .network
                 .cluster
-                .map_or(Default::default(), |c| c.parse().unwrap()),
+                .map_or(Ok(Default::default()), |c| c.parse())?,
             wallet_path: cfg
                 .wallet_path
                 .map_or(Default::default(), |p| WalletPath(p)),
             data_dir_path: cfg.data_dir.map_or(Default::default(), |p| DataDirPath(p)),
-            srm_mint: cfg.mints.srm.parse().unwrap(),
-            msrm_mint: cfg.mints.msrm.parse().unwrap(),
-            rewards_pid: cfg.programs.rewards_pid.parse().unwrap(),
-            registry_pid: cfg.programs.registry_pid.parse().unwrap(),
-            lockup_pid: cfg.programs.lockup_pid.parse().unwrap(),
-            meta_entity_pid: cfg.programs.meta_entity_pid.parse().unwrap(),
-            dex_pid: cfg.programs.dex_pid.parse().unwrap(),
-        }
+            srm_mint: cfg.mints.srm.parse()?,
+            msrm_mint: cfg.mints.msrm.parse()?,
+            rewards_pid: cfg.programs.rewards_pid.parse()?,
+            registry_pid: cfg.programs.registry_pid.parse()?,
+            lockup_pid: cfg.programs.lockup_pid.parse()?,
+            meta_entity_pid: cfg.programs.meta_entity_pid.parse()?,
+            dex_pid: cfg.programs.dex_pid.parse()?,
+        })
     }
 }
 
