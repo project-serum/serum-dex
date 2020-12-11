@@ -54,6 +54,9 @@ main() {
     local god=$(echo $genesis | jq .god -r)
     local god_msrm=$(echo $genesis | jq .godMsrm -r)
 
+    #
+    # Write out the CLI configuration file.
+    #
     mkdir -p $(dirname $CONFIG_FILE)
     cat << EOM > $CONFIG_FILE
 ---
