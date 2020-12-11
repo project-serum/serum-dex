@@ -3,6 +3,9 @@ use clap::Clap;
 use crank as serum_crank;
 use serum_context::{ConfigPath, Context};
 
+#[cfg(feature = "dev")]
+mod dev;
+
 #[derive(Debug, Clap)]
 #[clap(name = "Serum CLI")]
 pub struct Opts {
@@ -24,7 +27,7 @@ pub enum Command {
     Rewards(serum_registry_rewards_cli::Command),
     /// Development utilities.
     #[cfg(feature = "dev")]
-    Dev(serum_node_dev::Command),
+    Dev(dev::Command),
 }
 
 fn main() {
@@ -49,6 +52,6 @@ pub fn run(ctx: Context, cmd: Command) -> Result<()> {
         Command::Lockup(l_cmd) => serum_lockup_cli::run(ctx, l_cmd),
         Command::Rewards(r_cmd) => serum_registry_rewards_cli::run(ctx, r_cmd),
         #[cfg(feature = "dev")]
-        Command::Dev(dev_cmd) => serum_node_dev::run(ctx, dev_cmd),
+        Command::Dev(dev_cmd) => dev::run(ctx, dev_cmd),
     }
 }

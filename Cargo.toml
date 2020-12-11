@@ -22,7 +22,6 @@ members = [
     "node/json-rpc",
     "node/logging",
     "node/crank",
-    "node/dev",
     "cli"
 ]
 exclude = [

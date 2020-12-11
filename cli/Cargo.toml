@@ -9,7 +9,7 @@ name = "serum"
 path = "src/main.rs"
 
 [features]
-dev = []
+dev = ["serum-common", "serum-common-tests", "serum_dex", "solana-sdk", "serde_json", "serum-registry"]
 default = []
 
 
@@ -21,4 +21,11 @@ serum-lockup-cli = { path = "../lockup/cli" }
 serum-registry-cli = { path = "../registry/cli" }
 serum-context = { path = "../context" }
 serum-registry-rewards-cli = { path = "../registry/rewards/cli" }
-serum-node-dev = { path = "../node/dev" }
+
+# Dev feature flag.
+serum-common = { path = "../common", optional = true }
+serum-common-tests = { path = "../common/tests", optional = true }
+serum_dex = { path = "../dex", default-features = false, features = ["client"], optional = true }
+solana-sdk = { version = "1.3.14", optional = true }
+serde_json = { version = "1.0.59", optional = true }
+serum-registry = { path = "../registry", optional = true }

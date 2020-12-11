@@ -24,6 +24,3 @@ futures = "0.3"
 anyhow = "1.0.32"
 crossbeam = "0.7.3"
 clap = "3.0.0-beta.1"
-
-# dev feature.
-serum-node-dev = { path = "./dev" }

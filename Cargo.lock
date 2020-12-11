@@ -3076,11 +3076,16 @@ dependencies = [
  "anyhow",
  "clap 3.0.0-beta.2",
  "crank",
+ "serde_json",
+ "serum-common",
+ "serum-common-tests",
  "serum-context",
  "serum-lockup-cli",
- "serum-node-dev",
+ "serum-registry",
  "serum-registry-cli",
  "serum-registry-rewards-cli",
+ "serum_dex",
+ "solana-sdk",
 ]
 
 [[package]]
@@ -3199,7 +3204,6 @@ dependencies = [
  "serum-common",
  "serum-context",
  "serum-node-crank",
- "serum-node-dev",
  "serum-node-json-rpc",
  "serum-node-logging",
  "tokio 0.2.23",
@@ -3219,22 +3223,6 @@ dependencies = [
  "serum-node-logging",
  "solana-sdk",
  "tokio 0.2.23",
-]
-
-[[package]]
-name = "serum-node-dev"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap 3.0.0-beta.2",
- "crank",
- "serde_json",
- "serum-common",
- "serum-common-tests",
- "serum-context",
- "serum-registry",
- "serum_dex",
- "solana-sdk",
 ]
 
 [[package]]
