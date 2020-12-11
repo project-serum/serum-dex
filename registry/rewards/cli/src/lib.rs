@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use clap::Clap;
 use serum_context::Context;
 use serum_registry_rewards_client::*;
