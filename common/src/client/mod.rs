@@ -14,6 +14,12 @@ pub enum Cluster {
     Custom(String),
 }
 
+impl Default for Cluster {
+    fn default() -> Self {
+        Cluster::Localnet
+    }
+}
+
 impl FromStr for Cluster {
     type Err = anyhow::Error;
     fn from_str(s: &str) -> Result<Cluster> {

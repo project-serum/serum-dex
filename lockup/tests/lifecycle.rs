@@ -10,13 +10,13 @@ use spl_token::state::Account as TokenAccount;
 #[test]
 fn lifecycle() {
     // Given.
+    let (client, genesis) = serum_common_tests::genesis::<Client>();
     let serum_common_tests::Genesis {
-        client,
         srm_mint,
         god: depositor,
         god_balance_before: depositor_balance_before,
         ..
-    } = serum_common_tests::genesis::<Client>();
+    } = genesis;
 
     // When.
     //
@@ -68,7 +68,7 @@ fn lifecycle() {
         // A depositor performs the vesting account deposit.
         let CreateVestingResponse { tx: _, vesting } = client
             .create_vesting(CreateVestingRequest {
-                depositor: depositor.pubkey(),
+                depositor: depositor,
                 depositor_owner: client.payer(),
                 safe: safe_acc,
                 beneficiary: vesting_acc_beneficiary.pubkey(),
@@ -92,7 +92,7 @@ fn lifecycle() {
         //
         // The depositor's SPL token account has funds reduced.
         let depositor_spl_acc: spl_token::state::Account =
-            rpc::account_token_unpacked(client.rpc(), &depositor.pubkey());
+            rpc::account_token_unpacked(client.rpc(), &depositor);
         let expected_balance = depositor_balance_before - deposit_amount;
         assert_eq!(depositor_spl_acc.amount, expected_balance);
         // Then.
@@ -128,7 +128,7 @@ fn lifecycle() {
     {
         let bene_tok_acc = rpc::create_token_account(
             client.rpc(),
-            &srm_mint.pubkey(),
+            &srm_mint,
             &expected_beneficiary.pubkey(),
             client.payer(),
         )

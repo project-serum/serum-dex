@@ -6,7 +6,7 @@ repository = "https://github.com/project-serum/serum-dex"
 edition = "2018"
 
 [dependencies]
-serum-node-context = { path = "../../node/context" }
+serum-context = { path = "../../context" }
 serum-common = { path = "../../common" }
 serum-lockup = { path = "../", features = ["client"] }
 serum-lockup-client = { path = "../client" }

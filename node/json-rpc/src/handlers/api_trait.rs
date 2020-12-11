@@ -8,7 +8,4 @@ use serum_node_registry::HealthResponse as RegistryHealthResponse;
 pub trait Api {
     #[rpc(name = "serum_crankHealth")]
     fn crank_health(&self) -> FutureResult<CrankHealthResponse>;
-
-    #[rpc(name = "serum_registryHealth")]
-    fn registry_health(&self) -> FutureResult<RegistryHealthResponse>;
 }

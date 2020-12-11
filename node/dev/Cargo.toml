@@ -5,9 +5,11 @@ authors = ["armaniferrante <armaniferrante@gmail.com>"]
 edition = "2018"
 
 [dependencies]
+crank = { path = "../../crank" }
+serum_dex = { path = "../../dex", default-features = false, features = ["client"] }
 serum-common = { path = "../../common" }
 serum-common-tests = { path = "../../common/tests" }
-serum-node-context = { path = "../context" }
+serum-context = { path = "../../context" }
 serum-registry = { path = "../../registry", features = ["client"] }
 solana-sdk = "1.3.9"
 anyhow = "1.0.32"

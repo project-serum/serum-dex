@@ -5,6 +5,7 @@ pub mod client;
 #[macro_use]
 pub mod pack;
 pub mod accounts;
+mod path;
 #[cfg(feature = "program")]
 pub mod program;
 

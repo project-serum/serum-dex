@@ -1,0 +1,24 @@
+[package]
+name = "serum-cli"
+version = "0.1.0"
+authors = ["armaniferrante <armaniferrante@gmail.com>"]
+edition = "2018"
+
+[[bin]]
+name = "serum"
+path = "src/main.rs"
+
+[features]
+dev = []
+default = []
+
+
+[dependencies]
+anyhow = "1.0.32"
+clap = { version = "3.0.0-beta.2", features = ["yaml"] }
+crank = { path = "../crank" }
+serum-lockup-cli = { path = "../lockup/cli" }
+serum-registry-cli = { path = "../registry/cli" }
+serum-context = { path = "../context" }
+serum-registry-rewards-cli = { path = "../registry/rewards/cli" }
+serum-node-dev = { path = "../node/dev" }

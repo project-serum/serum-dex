@@ -1,25 +1,12 @@
 use anyhow::Result;
 use clap::Clap;
+use serum_context::Context;
 use serum_lockup::accounts::WhitelistEntry;
 use serum_lockup_client::*;
-use serum_node_context::Context;
 use solana_client_gen::prelude::*;
 
 #[derive(Debug, Clap)]
-#[clap(name = "Serum Lockup CLI")]
-pub struct Opts {
-    #[clap(flatten)]
-    pub ctx: Context,
-
-    #[clap(flatten)]
-    pub cmd: Command,
-}
-
-#[derive(Debug, Clap)]
 pub struct Command {
-    /// Program id of the lockup program.
-    #[clap(short, long = "pid")]
-    pub pid: Pubkey,
     #[clap(flatten)]
     pub sub_cmd: SubCommand,
 }
@@ -136,14 +123,12 @@ pub enum GovCommand {
     },
 }
 
-pub fn run(opts: Opts) -> Result<()> {
-    let ctx = &opts.ctx;
-
-    match opts.cmd.sub_cmd {
-        SubCommand::Accounts(cmd) => account_cmd(ctx, opts.cmd.pid, cmd),
-        SubCommand::Gov { safe, cmd } => gov_cmd(ctx, opts.cmd.pid, safe, cmd),
+pub fn run(ctx: Context, cmd: Command) -> Result<()> {
+    match cmd.sub_cmd {
+        SubCommand::Accounts(accs_cmd) => account_cmd(&ctx, accs_cmd),
+        SubCommand::Gov { safe, cmd: gcmd } => gov_cmd(&ctx, safe, gcmd),
         SubCommand::Initialize => {
-            let client = ctx.connect::<Client>(opts.cmd.pid)?;
+            let client = ctx.connect::<Client>(ctx.lockup_pid)?;
             let authority = ctx.wallet()?.pubkey();
             let resp = client.initialize(InitializeRequest { authority })?;
 
@@ -158,7 +143,7 @@ pub fn run(opts: Opts) -> Result<()> {
             period_count,
             deposit_amount,
         } => {
-            let client = ctx.connect::<Client>(opts.cmd.pid)?;
+            let client = ctx.connect::<Client>(ctx.lockup_pid)?;
             let resp = client.create_vesting(CreateVestingRequest {
                 depositor,
                 depositor_owner: &ctx.wallet()?,
@@ -177,7 +162,7 @@ pub fn run(opts: Opts) -> Result<()> {
             token_account,
         } => {
             let beneficiary = ctx.wallet()?;
-            let client = ctx.connect::<Client>(opts.cmd.pid)?;
+            let client = ctx.connect::<Client>(ctx.lockup_pid)?;
             let vesting_account = client.vesting(&vesting)?;
             let safe = vesting_account.safe;
             let resp = client.withdraw(WithdrawRequest {
@@ -193,7 +178,8 @@ pub fn run(opts: Opts) -> Result<()> {
     }
 }
 
-fn account_cmd(ctx: &Context, pid: Pubkey, cmd: AccountsCommand) -> Result<()> {
+fn account_cmd(ctx: &Context, cmd: AccountsCommand) -> Result<()> {
+    let pid = ctx.lockup_pid;
     let client = Client::new(ctx.connect(pid)?);
     match cmd {
         AccountsCommand::Safe { address } => {
@@ -226,7 +212,8 @@ fn account_cmd(ctx: &Context, pid: Pubkey, cmd: AccountsCommand) -> Result<()> {
     }
 }
 
-fn gov_cmd(ctx: &Context, pid: Pubkey, safe: Pubkey, cmd: GovCommand) -> Result<()> {
+fn gov_cmd(ctx: &Context, safe: Pubkey, cmd: GovCommand) -> Result<()> {
+    let pid = ctx.lockup_pid;
     let client = ctx.connect::<Client>(pid)?;
     let authority = ctx.wallet()?;
     match cmd {

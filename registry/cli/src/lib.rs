@@ -1,34 +1,13 @@
 use anyhow::{anyhow, Result};
 use clap::Clap;
 use serum_common::client::rpc;
-use serum_node_context::Context;
-use serum_node_logging::info;
+use serum_context::Context;
 use serum_registry::accounts::{Entity, Member, Registrar};
 use serum_registry_client::*;
 use solana_client_gen::prelude::*;
 
 #[derive(Debug, Clap)]
-#[clap(name = "Serum Registry CLI")]
-pub struct Opts {
-    #[clap(flatten)]
-    pub ctx: Context,
-
-    #[clap(flatten)]
-    pub cmd: Command,
-}
-
-#[derive(Debug, Clap)]
-pub struct Command {
-    /// Program id of the deployed on-chain registrar
-    #[clap(long = "pid")]
-    pub registry_pid: Option<Pubkey>,
-
-    #[clap(flatten)]
-    pub sub_cmd: SubCommand,
-}
-
-#[derive(Debug, Clap)]
-pub enum SubCommand {
+pub enum Command {
     /// Commands to view registry owned accounts.
     Accounts(AccountsCommand),
     /// Initializes a registrar.
@@ -53,9 +32,6 @@ pub enum SubCommand {
     CreateEntity {
         #[clap(short, long)]
         meta_entity_program_id: Pubkey,
-        /// The keypair filepath for the node leader.
-        #[clap(short, long)]
-        leader: String,
         /// Registrar account address.
         #[clap(short, long)]
         registrar: Pubkey,
@@ -80,8 +56,6 @@ pub enum SubCommand {
     },
 }
 
-// AccountsComand defines the subcommand to view formatted account data
-// belonging to the registry program.
 #[derive(Debug, Clap)]
 pub enum AccountsCommand {
     /// View the registrar instance.
@@ -92,12 +66,9 @@ pub enum AccountsCommand {
     },
     /// View a node entity.
     Entity {
-        /// Address of the entity account [optional].
-        #[clap(short, long, required_unless_present("leader"))]
-        address: Option<Pubkey>,
-        /// Address of the leader of the entity [optional].
-        #[clap(short, long, required_unless_present("address"))]
-        leader: Option<Pubkey>,
+        /// Address of the entity account.
+        #[clap(short, long)]
+        address: Pubkey,
     },
     /// View a member of a node entity.
     Member {
@@ -108,13 +79,12 @@ pub enum AccountsCommand {
     },
 }
 
-pub fn run(opts: Opts) -> Result<()> {
-    let ctx = &opts.ctx;
-    let registry_pid = opts.cmd.registry_pid;
+pub fn run(ctx: Context, cmd: Command) -> Result<()> {
+    let registry_pid = ctx.registry_pid;
 
-    match opts.cmd.sub_cmd {
-        SubCommand::Accounts(cmd) => account_cmd(ctx, registry_pid, cmd),
-        SubCommand::Init {
+    match cmd {
+        Command::Accounts(cmd) => account_cmd(&ctx, registry_pid, cmd),
+        Command::Init {
             withdrawal_timelock,
             deactivation_timelock,
             reward_activation_threshold,
@@ -122,7 +92,7 @@ pub fn run(opts: Opts) -> Result<()> {
             stake_rate,
             stake_rate_mega,
         } => init(
-            ctx,
+            &ctx,
             registry_pid,
             withdrawal_timelock,
             deactivation_timelock,
@@ -131,39 +101,36 @@ pub fn run(opts: Opts) -> Result<()> {
             stake_rate,
             stake_rate_mega,
         ),
-        SubCommand::CreateEntity {
-            leader,
+        Command::CreateEntity {
             registrar,
             name,
             about,
             image_url,
             meta_entity_program_id,
         } => create_entity_cmd(
-            ctx,
+            &ctx,
             registry_pid,
             registrar,
-            leader,
             name,
             about,
             image_url,
             meta_entity_program_id,
         ),
-        SubCommand::CreateMember {
+        Command::CreateMember {
             entity,
             delegate,
             registrar,
-        } => create_member_cmd(ctx, registry_pid, registrar, entity, delegate),
+        } => create_member_cmd(&ctx, registry_pid, registrar, entity, delegate),
     }
 }
 
 fn create_member_cmd(
     ctx: &Context,
-    registry_pid: Option<Pubkey>,
+    registry_pid: Pubkey,
     registrar: Pubkey,
     entity: Pubkey,
     delegate: Option<Pubkey>,
 ) -> Result<()> {
-    let registry_pid = registry_pid.ok_or(anyhow!("--pid not provided"))?;
     let delegate = delegate.unwrap_or(Pubkey::new_from_array([0; 32]));
 
     let client = ctx.connect::<Client>(registry_pid)?;
@@ -175,30 +142,22 @@ fn create_member_cmd(
         registrar,
     })?;
 
-    let logger = serum_node_logging::get_logger("node/registry");
-    info!(logger, "Confirmed transaction: {:?}", tx);
-    info!(
-        logger,
-        "Created node entity member with address: {:?}", member
-    );
+    println!("Confirmed transaction: {:?}", tx);
+    println!("Created node entity member with address: {:?}", member);
 
     Ok(())
 }
 
 fn create_entity_cmd(
     ctx: &Context,
-    registry_pid: Option<Pubkey>,
+    registry_pid: Pubkey,
     registrar: Pubkey,
-    leader_filepath: String,
     name: String,
     about: String,
     image_url: String,
     meta_entity_program_id: Pubkey,
 ) -> Result<()> {
-    let registry_pid = registry_pid.ok_or(anyhow!("--pid not provided"))?;
-
-    let leader_kp = solana_sdk::signature::read_keypair_file(&leader_filepath)
-        .map_err(|_| anyhow!("Unable to read leader keypair file"))?;
+    let leader_kp = ctx.wallet()?;
 
     let client = ctx.connect::<Client>(registry_pid)?;
     let CreateEntityResponse { entity, .. } = client.create_entity(CreateEntityRequest {
@@ -217,7 +176,7 @@ fn create_entity_cmd(
     Ok(())
 }
 
-fn account_cmd(ctx: &Context, registry_pid: Option<Pubkey>, cmd: AccountsCommand) -> Result<()> {
+fn account_cmd(ctx: &Context, registry_pid: Pubkey, cmd: AccountsCommand) -> Result<()> {
     let rpc_client = ctx.rpc_client();
 
     match cmd {
@@ -225,36 +184,19 @@ fn account_cmd(ctx: &Context, registry_pid: Option<Pubkey>, cmd: AccountsCommand
             let registrar: Registrar = rpc::get_account(&rpc_client, &address)?;
             println!("{:#?}", registrar);
         }
-        AccountsCommand::Entity { address, leader } => {
-            let entity_addr = {
-                if let Some(address) = address {
-                    address
-                } else {
-                    let registry_pid = registry_pid.ok_or(anyhow!(
-                        "Please provide --pid when looking up entities by node leader"
-                    ))?;
-                    let leader = leader.expect("address or leader must be present");
-                    let seed = "srm:registry:entity";
-                    Pubkey::create_with_seed(&leader, &seed, &registry_pid)?
-                }
-            };
-
-            let acc: Entity = rpc::get_account_unchecked(&rpc_client, &entity_addr)?;
-            println!("Address: {}", entity_addr);
+        AccountsCommand::Entity { address } => {
+            let acc: Entity = rpc::get_account_unchecked(&rpc_client, &address)?;
             println!("{:#?}", acc);
         }
         AccountsCommand::Member { address } => {
             let address = match address {
                 Some(a) => a,
-                None => {
-                    let registry_pid = registry_pid.ok_or(anyhow!("--pid not provided"))?;
-                    Pubkey::create_with_seed(
-                        &ctx.wallet()?.pubkey(),
-                        Client::member_seed(),
-                        &registry_pid,
-                    )
-                    .map_err(|e| anyhow!("unable to derive stake address: {}", e.to_string()))?
-                }
+                None => Pubkey::create_with_seed(
+                    &ctx.wallet()?.pubkey(),
+                    Client::member_seed(),
+                    &registry_pid,
+                )
+                .map_err(|e| anyhow!("unable to derive stake address: {}", e.to_string()))?,
             };
             let acc: Member = rpc::get_account(&rpc_client, &address)?;
             println!("{:#?}", acc);
@@ -265,7 +207,7 @@ fn account_cmd(ctx: &Context, registry_pid: Option<Pubkey>, cmd: AccountsCommand
 
 pub fn init(
     ctx: &Context,
-    registry_pid: Option<Pubkey>,
+    registry_pid: Pubkey,
     withdrawal_timelock: i64,
     deactivation_timelock: i64,
     reward_activation_threshold: u64,
@@ -273,10 +215,6 @@ pub fn init(
     stake_rate: u64,
     stake_rate_mega: u64,
 ) -> Result<()> {
-    let registry_pid = registry_pid.ok_or(anyhow!(
-        "Please provide --pid when initializing a registrar"
-    ))?;
-
     let client = ctx.connect::<Client>(registry_pid)?;
 
     let registrar_authority = ctx.wallet()?.pubkey();
