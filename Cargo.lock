@@ -3099,8 +3099,6 @@ dependencies = [
  "solana-program",
  "solana-sdk",
  "spl-token 2.0.6",
- "tungstenite 0.10.1",
- "url 2.2.0",
 ]
 
 [[package]]
