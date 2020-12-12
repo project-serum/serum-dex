@@ -8,12 +8,8 @@ pub(crate) mod api_trait;
 pub type FutureResult<T> =
     Box<dyn jsonrpc_core::futures::Future<Item = T, Error = jsonrpc_core::Error> + Send>;
 
-pub fn build(
-    logger: Logger,
-    crank: serum_node_crank::Sender,
-    registry: serum_node_registry::Sender,
-) -> jsonrpc_core::IoHandler {
+pub fn build(logger: Logger, crank: serum_node_crank::Sender) -> jsonrpc_core::IoHandler {
     let mut io = jsonrpc_core::IoHandler::new();
-    io.extend_with(Api::new(logger, crank, registry).to_delegate());
+    io.extend_with(Api::new(logger, crank).to_delegate());
     io
 }

@@ -1,30 +1,18 @@
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use clap::Clap;
-use serum_node_context::Context;
-use serum_rewards_client::*;
+use serum_context::Context;
+use serum_registry_rewards_client::*;
 use solana_client_gen::prelude::*;
 
 #[derive(Debug, Clap)]
 #[clap(name = "Serum Registry CLI")]
 pub struct Opts {
     #[clap(flatten)]
-    pub ctx: Context,
-
-    #[clap(flatten)]
     pub cmd: Command,
 }
 
 #[derive(Debug, Clap)]
-pub struct Command {
-    /// Program id of the deployed on-chain rewards program.
-    #[clap(long = "pid")]
-    pub rewards_pid: Option<Pubkey>,
-    #[clap(flatten)]
-    pub sub_cmd: SubCommand,
-}
-
-#[derive(Debug, Clap)]
-pub enum SubCommand {
+pub enum Command {
     /// Commands to view rewards owned accounts.
     Accounts(AccountsCommand),
     /// Governance commands requiring an authority key.
@@ -51,37 +39,31 @@ pub enum AccountsCommand {
 pub enum GovCommand {
     /// Initializes a rewards instance.
     Init {
-        #[clap(short = 'p', long)]
-        registry_program_id: Pubkey,
         #[clap(short, long)]
         registrar: Pubkey,
         #[clap(short = 'm', long)]
         reward_mint: Pubkey,
         #[clap(short, long)]
-        dex_program_id: Pubkey,
+        fee_rate: u64,
     },
     /// Sets a new authority on the instance.
     SetAuthority {
         new_authority: Pubkey,
         instance: Pubkey,
     },
-    /// Migrates all funds to the given address. Authority must be configured
-    /// wallet.
+    /// Migrates all funds to the given address.
     Migrate { instance: Pubkey, receiver: Pubkey },
 }
 
-pub fn run(opts: Opts) -> Result<()> {
-    let ctx = &opts.ctx;
-    let rewards_pid = opts.cmd.rewards_pid;
-
-    match opts.cmd.sub_cmd {
-        SubCommand::Accounts(cmd) => account_cmd(ctx, rewards_pid, cmd),
-        SubCommand::Gov(cmd) => gov_cmd(ctx, rewards_pid, cmd),
+pub fn run(ctx: Context, cmd: Command) -> Result<()> {
+    match cmd {
+        Command::Accounts(cmd) => account_cmd(&ctx, cmd),
+        Command::Gov(cmd) => gov_cmd(&ctx, cmd),
     }
 }
 
-fn account_cmd(ctx: &Context, rewards_pid: Option<Pubkey>, cmd: AccountsCommand) -> Result<()> {
-    let rewards_pid = rewards_pid.ok_or(anyhow!("--pid not provided"))?;
+fn account_cmd(ctx: &Context, cmd: AccountsCommand) -> Result<()> {
+    let rewards_pid = ctx.rewards_pid;
     let client = ctx.connect::<Client>(rewards_pid)?;
     match cmd {
         AccountsCommand::Instance { address } => {
@@ -97,24 +79,25 @@ fn account_cmd(ctx: &Context, rewards_pid: Option<Pubkey>, cmd: AccountsCommand)
     Ok(())
 }
 
-fn gov_cmd(ctx: &Context, rewards_pid: Option<Pubkey>, cmd: GovCommand) -> Result<()> {
-    let rewards_pid = rewards_pid.ok_or(anyhow!("--pid not provided"))?;
+fn gov_cmd(ctx: &Context, cmd: GovCommand) -> Result<()> {
+    let rewards_pid = ctx.rewards_pid;
     let client = ctx.connect::<Client>(rewards_pid)?;
     let wallet = ctx.wallet()?;
     match cmd {
         GovCommand::Init {
-            registry_program_id,
             registrar,
             reward_mint,
-            dex_program_id,
+            fee_rate,
         } => {
-            client.initialize(InitializeRequest {
-                registry_program_id,
+            let resp = client.initialize(InitializeRequest {
+                registry_program_id: ctx.registry_pid,
                 registrar,
                 reward_mint,
-                dex_program_id,
+                dex_program_id: ctx.dex_pid,
+                fee_rate,
                 authority: wallet.pubkey(),
             })?;
+            println!("Rewards instance created: {:?}", resp.instance);
         }
         GovCommand::SetAuthority {
             new_authority,

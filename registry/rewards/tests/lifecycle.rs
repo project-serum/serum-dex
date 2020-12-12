@@ -18,17 +18,15 @@ use std::num::NonZeroU64;
 
 #[test]
 fn lifecycle() -> Result<()> {
+    let (client, genesis) = serum_common_tests::genesis::<Client>();
     let Genesis {
-        client,
         srm_mint,
         msrm_mint,
-        mint_authority: _,
         god,
         god_msrm,
-        god_balance_before: _,
-        god_msrm_balance_before: _,
-        god_owner,
-    } = serum_common_tests::genesis::<Client>();
+        ..
+    } = genesis;
+    let dex_program_id = std::env::var("TEST_DEX_PROGRAM_ID")?.parse()?;
 
     // Initialize the Registry.
     let registry_program_id = std::env::var("TEST_REGISTRY_PROGRAM_ID")?.parse()?;
@@ -40,8 +38,8 @@ fn lifecycle() -> Result<()> {
             registrar_authority: client.payer().pubkey(),
             withdrawal_timelock: 1234,
             deactivation_timelock: 1234,
-            mint: srm_mint.pubkey(),
-            mega_mint: msrm_mint.pubkey(),
+            mint: srm_mint,
+            mega_mint: msrm_mint,
             max_stake_per_entity: 1_000_000_000_000_000,
             stake_rate: 1,
             stake_rate_mega: 1,
@@ -67,8 +65,8 @@ fn lifecycle() -> Result<()> {
         member,
         beneficiary: client.payer(),
         entity,
-        depositor: god_msrm.pubkey(),
-        depositor_authority: &god_owner,
+        depositor: god_msrm,
+        depositor_authority: &client.payer(),
         registrar,
         amount: 1,
     })?;
@@ -83,14 +81,12 @@ fn lifecycle() -> Result<()> {
         balance_id: client.payer().pubkey(),
     })?;
 
-    let dex_program_id = std::env::var("TEST_DEX_PROGRAM_ID")?.parse()?;
-
     // Initialize the Rewards program.
     let rewards_init_resp = client.initialize(InitializeRequest {
         registry_program_id,
         dex_program_id,
         registrar: registrar,
-        reward_mint: srm_mint.pubkey(),
+        reward_mint: srm_mint,
         authority: client.payer().pubkey(),
         fee_rate: 2,
     })?;
@@ -101,10 +97,10 @@ fn lifecycle() -> Result<()> {
         let instance = client.instance(rewards_init_resp.instance).unwrap();
         rpc::transfer(
             client.rpc(),
-            &god.pubkey(),
+            &god,
             &instance.vault,
             rewards_vault_amount,
-            &god_owner,
+            &client.payer(),
             client.payer(),
         )?;
     }
@@ -114,8 +110,8 @@ fn lifecycle() -> Result<()> {
         client.rpc(),
         &dex_program_id,
         client.payer(),
-        &srm_mint.pubkey(),
-        &msrm_mint.pubkey(),
+        &srm_mint,
+        &msrm_mint,
         1_000_000,
         10_000,
     )?;
@@ -126,7 +122,7 @@ fn lifecycle() -> Result<()> {
         client.rpc(),
         &dex_program_id,
         client.payer(),
-        &god_msrm.pubkey(),
+        &god_msrm,
         &market_keys,
         &mut orders,
         NewOrderInstructionV1 {
@@ -144,7 +140,7 @@ fn lifecycle() -> Result<()> {
         client.rpc(),
         &dex_program_id,
         client.payer(),
-        &god.pubkey(),
+        &god,
         &market_keys,
         &mut orders,
         NewOrderInstructionV1 {
@@ -163,8 +159,8 @@ fn lifecycle() -> Result<()> {
         &dex_program_id,
         client.payer(),
         &market_keys,
-        &god.pubkey(),
-        &god_msrm.pubkey(),
+        &god,
+        &god_msrm,
     )?;
 
     // Crank consume events for reward.
@@ -174,14 +170,14 @@ fn lifecycle() -> Result<()> {
             client.rpc(),
             &dex_program_id,
             &market_keys,
-            &god.pubkey(),
-            &god_msrm.pubkey(),
+            &god,
+            &god_msrm,
         )?
         .unwrap();
         // Account for receiving the crank reward.
         let token_account_kp = rpc::create_token_account(
             client.rpc(),
-            &srm_mint.pubkey(),
+            &srm_mint,
             &client.payer().pubkey(),
             client.payer(),
         )?;
@@ -216,7 +212,7 @@ fn lifecycle() -> Result<()> {
     // Migrate funds out.
     let receiver = rpc::create_token_account(
         client.rpc(),
-        &srm_mint.pubkey(),
+        &srm_mint,
         &client.payer().pubkey(),
         client.payer(),
     )?;

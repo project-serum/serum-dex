@@ -8,7 +8,6 @@ edition = "2018"
 [dependencies]
 serum-node-logging = { path = "../logging" }
 serum-node-crank = { path = "../crank" }
-serum-node-registry = { path = "../registry" }
 jsonrpc-core = "15.0.0"
 jsonrpc-derive = "15.0.0"
 jsonrpc-http-server = "15.0.0"

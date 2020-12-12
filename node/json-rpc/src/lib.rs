@@ -7,7 +7,6 @@ mod handlers;
 pub struct StartRequest {
     pub cfg: Config,
     pub crank: serum_node_crank::Sender,
-    pub registry: serum_node_registry::Sender,
 }
 
 #[derive(Debug, Clap)]
@@ -26,7 +25,7 @@ pub fn start(req: StartRequest) -> JsonRpc {
     let logger = serum_node_logging::get_logger("json-rpc");
     info!(logger, "Starting JSON-RPC server at {}", url);
 
-    let handlers = handlers::build(logger, req.crank, req.registry);
+    let handlers = handlers::build(logger, req.crank);
 
     let _server = ServerBuilder::new(handlers)
         .threads(req.cfg.http_threads as usize)

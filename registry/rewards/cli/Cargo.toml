@@ -7,7 +7,7 @@ edition = "2018"
 
 [dependencies]
 clap = "3.0.0-beta.1"
-serum-node-context = { path = "../../../node/context" }
+serum-context = { path = "../../../context" }
 solana-client-gen = { path = "../../../solana-client-gen" }
 anyhow = "1.0.32"
 serum-registry-rewards-client = { path = "../client" }

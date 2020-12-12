@@ -5,6 +5,7 @@ members = [
     "common",
     "common/tests",
     "crank",
+    "context",
     "pool",
     "pool/schema",
     "pool/examples/admin-controlled",
@@ -21,9 +22,7 @@ members = [
     "node/json-rpc",
     "node/logging",
     "node/crank",
-    "node/registry",
-    "node/context",
-    "node/dev",
+    "cli"
 ]
 exclude = [
     "dex",

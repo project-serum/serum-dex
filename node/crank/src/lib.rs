@@ -2,7 +2,7 @@ extern crate crank as serum_crank;
 
 use anyhow::Result;
 use crossbeam::sync::WaitGroup;
-use serum_node_context::Context;
+use serum_context::Context;
 use tokio::runtime::{Builder, Runtime};
 
 mod api;

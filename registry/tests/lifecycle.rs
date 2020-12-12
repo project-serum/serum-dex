@@ -20,18 +20,14 @@ fn lifecycle() {
         .parse()
         .unwrap();
     // First test initiailze.
-    let genesis = serum_common_tests::genesis::<Client>();
+    let (client, genesis) = serum_common_tests::genesis::<Client>();
 
     let Genesis {
-        client,
         srm_mint,
         msrm_mint,
-        mint_authority: _,
         god,
         god_msrm,
-        god_balance_before: _,
-        god_msrm_balance_before: _,
-        god_owner,
+        ..
     } = genesis;
 
     // Initialize the registrar.
@@ -48,8 +44,8 @@ fn lifecycle() {
             registrar_authority: registrar_authority.pubkey(),
             withdrawal_timelock,
             deactivation_timelock,
-            mint: srm_mint.pubkey(),
-            mega_mint: msrm_mint.pubkey(),
+            mint: srm_mint,
+            mega_mint: msrm_mint,
             reward_activation_threshold,
             max_stake_per_entity,
             stake_rate: 1,
@@ -92,8 +88,8 @@ fn lifecycle() {
         let deposit_amount = 1_000;
         let c_vest_resp = l_client
             .create_vesting(CreateVestingRequest {
-                depositor: god.pubkey(),
-                depositor_owner: &god_owner,
+                depositor: god,
+                depositor_owner: client.payer(),
                 safe: init_resp.safe,
                 beneficiary: client.payer().pubkey(),
                 end_ts: current_ts + 60,
@@ -151,7 +147,7 @@ fn lifecycle() {
     }
 
     // CreateMember.
-    let beneficiary = &god_owner;
+    let beneficiary = &client.payer();
     let vesting_vault_authority = l_client
         .vault_authority(safe, vesting, beneficiary.pubkey())
         .unwrap();
@@ -173,7 +169,7 @@ fn lifecycle() {
     };
 
     // Deposit.
-    let god_acc = rpc::get_token_account::<TokenAccount>(client.rpc(), &god.pubkey()).unwrap();
+    let god_acc = rpc::get_token_account::<TokenAccount>(client.rpc(), &god).unwrap();
     let god_balance_before = god_acc.amount;
     let current_deposit_amount = 100;
     {
@@ -182,15 +178,15 @@ fn lifecycle() {
                 member,
                 beneficiary,
                 entity,
-                depositor: god.pubkey(),
-                depositor_authority: &god_owner,
+                depositor: god,
+                depositor_authority: &client.payer(),
                 registrar,
                 amount: current_deposit_amount,
             })
             .unwrap();
         let vault = client.current_deposit_vault(&member, false).unwrap();
         assert_eq!(current_deposit_amount, vault.amount);
-        let god_acc = rpc::get_token_account::<TokenAccount>(client.rpc(), &god.pubkey()).unwrap();
+        let god_acc = rpc::get_token_account::<TokenAccount>(client.rpc(), &god).unwrap();
         assert_eq!(god_acc.amount, god_balance_before - current_deposit_amount);
     }
 
@@ -201,14 +197,14 @@ fn lifecycle() {
                 member,
                 beneficiary,
                 entity,
-                depositor: god.pubkey(),
+                depositor: god,
                 registrar,
                 amount: current_deposit_amount,
             })
             .unwrap();
         let vault = client.current_deposit_vault(&member, false).unwrap();
         assert_eq!(0, vault.amount);
-        let god_acc = rpc::get_token_account::<TokenAccount>(client.rpc(), &god.pubkey()).unwrap();
+        let god_acc = rpc::get_token_account::<TokenAccount>(client.rpc(), &god).unwrap();
         assert_eq!(god_acc.amount, god_balance_before);
     }
 
@@ -262,8 +258,8 @@ fn lifecycle() {
                 member,
                 beneficiary,
                 entity,
-                depositor: god_msrm.pubkey(),
-                depositor_authority: &god_owner,
+                depositor: god_msrm,
+                depositor_authority: &client.payer(),
                 registrar,
                 amount: 1,
             })
@@ -304,8 +300,8 @@ fn lifecycle() {
                 member,
                 beneficiary,
                 entity,
-                depositor: god.pubkey(),
-                depositor_authority: &god_owner,
+                depositor: god,
+                depositor_authority: &client.payer(),
                 registrar,
                 amount: current_deposit_amount,
             })
@@ -405,7 +401,7 @@ fn lifecycle() {
     {
         let token_account = rpc::create_token_account(
             client.rpc(),
-            &msrm_mint.pubkey(),
+            &msrm_mint,
             &client.payer().pubkey(),
             client.payer(),
         )
@@ -416,8 +412,8 @@ fn lifecycle() {
                 member,
                 beneficiary,
                 entity,
-                depositor: god_msrm.pubkey(),
-                depositor_authority: &god_owner,
+                depositor: god_msrm,
+                depositor_authority: client.payer(),
                 registrar,
                 amount: 2,
             })
