@@ -12,10 +12,6 @@ pub struct LockedRewardVendor {
     pub nonce: u8,
     pub pool: Pubkey,
     pub pool_token_supply: u64,
-    // The position of the reward event associated with this vendor.
-    // Used to perform access control on member accounts attempting
-    // to claim the reward. Reject any member who's cursor is greater
-    // than this cursor.
     pub reward_event_q_cursor: u32,
     pub start_ts: i64,
     pub end_ts: i64,
@@ -23,6 +19,7 @@ pub struct LockedRewardVendor {
     pub expiry_receiver: Pubkey,
     pub total: u64,
     pub period_count: u64,
+    pub expired: bool,
 }
 
 impl LockedRewardVendor {

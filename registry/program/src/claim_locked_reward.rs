@@ -194,6 +194,14 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
         clock,
     } = req;
 
+    // Move member rewards cursor.
+    member.rewards_cursor = cursor + 1;
+
+    if vendor.expired {
+        msg!("Vendor expired. Reward not collected");
+        return Ok(());
+    }
+
     // Create vesting account with proportion of the reward.
     let spt_total = spts.iter().map(|a| a.amount).fold(0, |a, b| a + b);
     let amount = spt_total
@@ -257,9 +265,6 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
             &[signer_seeds],
         )?;
     }
-
-    // Move member rewards cursor.
-    member.rewards_cursor = cursor + 1;
 
     Ok(())
 }

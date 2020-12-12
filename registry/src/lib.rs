@@ -183,6 +183,20 @@ pub mod instruction {
         ///
         ///
         ClaimUnlockedReward { cursor: u32 },
+        /// Accounts:
+        ///
+        /// 0. `[signer]`   Expiry receiver.
+        /// 1. `[writable]` Token account to send leftover rewards to.
+        /// 2. `[writable]` Vendor.
+        /// 3. `[writable]` Vendor vault.
+        /// 4. `[]`         Vendor vault authority.
+        /// 5. `[]`         Registrar.
+        /// 6. `[]`         Token program.
+        /// 7. `[]`         Clock sysvar.
+        ExpireUnlockedReward,
+        /// Same as ExpireUnlockedReward, but with a LockedRewardVendor
+        /// account.
+        ExpireLockedReward,
     }
 }
 

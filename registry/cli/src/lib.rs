@@ -2,7 +2,9 @@ use anyhow::{anyhow, Result};
 use clap::Clap;
 use serum_common::client::rpc;
 use serum_context::Context;
-use serum_registry::accounts::{Entity, Member, Registrar};
+use serum_registry::accounts::{
+    Entity, LockedRewardVendor, Member, Registrar, UnlockedRewardVendor,
+};
 use serum_registry_client::*;
 use solana_client_gen::prelude::*;
 
@@ -54,6 +56,28 @@ pub enum Command {
         #[clap(short, long)]
         registrar: Pubkey,
     },
+    /// Sends all leftover funds from an expired unlocked reward vendor to a given
+    /// account.
+    ExpireUnlockedReward {
+        /// The token account to send the leftover rewards to.
+        #[clap(long)]
+        token: Pubkey,
+        #[clap(long)]
+        vendor: Pubkey,
+        #[clap(short, long)]
+        registrar: Pubkey,
+    },
+    /// Sends all leftover funds from an expired locked reward vendor to a given
+    /// account.
+    ExpireLockedReward {
+        /// The token account to send the leftover rewards to.
+        #[clap(long)]
+        token: Pubkey,
+        #[clap(long)]
+        vendor: Pubkey,
+        #[clap(short, long)]
+        registrar: Pubkey,
+    },
 }
 
 #[derive(Debug, Clap)]
@@ -76,6 +100,14 @@ pub enum AccountsCommand {
         /// first derived stake address will be used for the configured wallet.
         #[clap(short, long)]
         address: Option<Pubkey>,
+    },
+    LockedVendor {
+        #[clap(short, long)]
+        address: Pubkey,
+    },
+    UnlockedVendor {
+        #[clap(short, long)]
+        address: Pubkey,
     },
 }
 
@@ -121,6 +153,34 @@ pub fn run(ctx: Context, cmd: Command) -> Result<()> {
             delegate,
             registrar,
         } => create_member_cmd(&ctx, registry_pid, registrar, entity, delegate),
+        Command::ExpireUnlockedReward {
+            token,
+            vendor,
+            registrar,
+        } => {
+            let client = ctx.connect::<Client>(registry_pid)?;
+            let resp = client.expire_unlocked_reward(ExpireUnlockedRewardRequest {
+                token,
+                vendor,
+                registrar,
+            })?;
+            println!("Transaction executed: {:?}", resp.tx);
+            Ok(())
+        }
+        Command::ExpireLockedReward {
+            token,
+            vendor,
+            registrar,
+        } => {
+            let client = ctx.connect::<Client>(registry_pid)?;
+            let resp = client.expire_locked_reward(ExpireLockedRewardRequest {
+                token,
+                vendor,
+                registrar,
+            })?;
+            println!("Transaction executed: {:?}", resp.tx);
+            Ok(())
+        }
     }
 }
 
@@ -199,6 +259,14 @@ fn account_cmd(ctx: &Context, registry_pid: Pubkey, cmd: AccountsCommand) -> Res
                 .map_err(|e| anyhow!("unable to derive stake address: {}", e.to_string()))?,
             };
             let acc: Member = rpc::get_account(&rpc_client, &address)?;
+            println!("{:#?}", acc);
+        }
+        AccountsCommand::LockedVendor { address } => {
+            let acc: LockedRewardVendor = rpc::get_account(&rpc_client, &address)?;
+            println!("{:#?}", acc);
+        }
+        AccountsCommand::UnlockedVendor { address } => {
+            let acc: UnlockedRewardVendor = rpc::get_account(&rpc_client, &address)?;
             println!("{:#?}", acc);
         }
     };

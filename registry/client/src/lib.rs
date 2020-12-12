@@ -3,7 +3,8 @@ use serum_common::pack::*;
 use serum_meta_entity::accounts::mqueue::{MQueue, Ring as MQueueRing};
 use serum_registry::accounts::reward_queue::{RewardEventQueue, Ring};
 use serum_registry::accounts::{
-    self, pending_withdrawal, vault, BalanceSandbox, Entity, Member, PendingWithdrawal, Registrar,
+    self, pending_withdrawal, vault, BalanceSandbox, Entity, LockedRewardVendor, Member,
+    PendingWithdrawal, Registrar, UnlockedRewardVendor,
 };
 use serum_registry::client::{Client as InnerClient, ClientError as InnerClientError};
 use solana_client_gen::prelude::*;
@@ -11,6 +12,7 @@ use solana_client_gen::solana_sdk::instruction::AccountMeta;
 use solana_client_gen::solana_sdk::pubkey::Pubkey;
 use solana_client_gen::solana_sdk::signature::Signature;
 use solana_client_gen::solana_sdk::signature::{Keypair, Signer};
+use solana_client_gen::solana_sdk::sysvar;
 use spl_token::state::Account as TokenAccount;
 use std::convert::Into;
 use thiserror::Error;
@@ -855,6 +857,64 @@ impl Client {
             .switch_entity_with_signers(&[self.payer(), beneficiary], &accs)?;
         Ok(SwitchEntityResponse { tx })
     }
+
+    pub fn expire_unlocked_reward(
+        &self,
+        req: ExpireUnlockedRewardRequest,
+    ) -> Result<ExpireUnlockedRewardResponse, ClientError> {
+        let ExpireUnlockedRewardRequest {
+            token,
+            vendor,
+            registrar,
+        } = req;
+        let vendor_acc = self.unlocked_vendor(&vendor)?;
+        let vendor_va = Pubkey::create_program_address(
+            &[registrar.as_ref(), vendor.as_ref(), &[vendor_acc.nonce]],
+            self.program(),
+        )
+        .map_err(|_| ClientError::Any(anyhow::anyhow!("invalid vendor vault authority")))?;
+        let accs = vec![
+            AccountMeta::new_readonly(self.payer().pubkey(), true),
+            AccountMeta::new(token, false),
+            AccountMeta::new(vendor, false),
+            AccountMeta::new(vendor_acc.vault, false),
+            AccountMeta::new_readonly(vendor_va, false),
+            AccountMeta::new_readonly(registrar, false),
+            AccountMeta::new_readonly(spl_token::ID, false),
+            AccountMeta::new_readonly(sysvar::clock::ID, false),
+        ];
+        let tx = self.inner.expire_unlocked_reward(&accs)?;
+        Ok(ExpireUnlockedRewardResponse { tx })
+    }
+
+    pub fn expire_locked_reward(
+        &self,
+        req: ExpireLockedRewardRequest,
+    ) -> Result<ExpireLockedRewardResponse, ClientError> {
+        let ExpireLockedRewardRequest {
+            token,
+            vendor,
+            registrar,
+        } = req;
+        let vendor_acc = self.locked_vendor(&vendor)?;
+        let vendor_va = Pubkey::create_program_address(
+            &[registrar.as_ref(), vendor.as_ref(), &[vendor_acc.nonce]],
+            self.program(),
+        )
+        .map_err(|_| ClientError::Any(anyhow::anyhow!("invalid vendor vault authority")))?;
+        let accs = vec![
+            AccountMeta::new_readonly(self.payer().pubkey(), true),
+            AccountMeta::new(token, false),
+            AccountMeta::new(vendor, false),
+            AccountMeta::new(vendor_acc.vault, false),
+            AccountMeta::new_readonly(vendor_va, false),
+            AccountMeta::new_readonly(registrar, false),
+            AccountMeta::new_readonly(spl_token::ID, false),
+            AccountMeta::new_readonly(sysvar::clock::ID, false),
+        ];
+        let tx = self.inner.expire_locked_reward(&accs)?;
+        Ok(ExpireLockedRewardResponse { tx })
+    }
 }
 
 // Account accessors.
@@ -1007,6 +1067,14 @@ impl Client {
 
     pub fn pending_withdrawal(&self, pw: &Pubkey) -> Result<PendingWithdrawal, ClientError> {
         rpc::get_account::<PendingWithdrawal>(self.rpc(), pw).map_err(Into::into)
+    }
+
+    pub fn unlocked_vendor(&self, v: &Pubkey) -> Result<UnlockedRewardVendor, ClientError> {
+        rpc::get_account::<UnlockedRewardVendor>(self.rpc(), v).map_err(Into::into)
+    }
+
+    pub fn locked_vendor(&self, v: &Pubkey) -> Result<LockedRewardVendor, ClientError> {
+        rpc::get_account::<LockedRewardVendor>(self.rpc(), v).map_err(Into::into)
     }
 }
 
@@ -1244,6 +1312,26 @@ pub struct SwitchEntityRequest<'a> {
 }
 
 pub struct SwitchEntityResponse {
+    pub tx: Signature,
+}
+
+pub struct ExpireUnlockedRewardRequest {
+    pub token: Pubkey,
+    pub vendor: Pubkey,
+    pub registrar: Pubkey,
+}
+
+pub struct ExpireUnlockedRewardResponse {
+    pub tx: Signature,
+}
+
+pub struct ExpireLockedRewardRequest {
+    pub token: Pubkey,
+    pub vendor: Pubkey,
+    pub registrar: Pubkey,
+}
+
+pub struct ExpireLockedRewardResponse {
     pub tx: Signature,
 }
 
