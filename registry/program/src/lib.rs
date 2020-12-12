@@ -16,6 +16,8 @@ mod deposit;
 mod drop_locked_reward;
 mod drop_unlocked_reward;
 mod end_stake_withdrawal;
+mod expire_locked_reward;
+mod expire_unlocked_reward;
 mod initialize;
 mod stake;
 mod start_stake_withdrawal;
@@ -128,6 +130,12 @@ fn entry(program_id: &Pubkey, accounts: &[AccountInfo], instruction_data: &[u8])
         }
         RegistryInstruction::ClaimUnlockedReward { cursor } => {
             claim_unlocked_reward::handler(program_id, accounts, cursor)
+        }
+        RegistryInstruction::ExpireUnlockedReward => {
+            expire_unlocked_reward::handler(program_id, accounts)
+        }
+        RegistryInstruction::ExpireLockedReward => {
+            expire_locked_reward::handler(program_id, accounts)
         }
     };
 

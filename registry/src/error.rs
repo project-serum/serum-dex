@@ -80,6 +80,7 @@ pub enum RegistryErrorCode {
     InvalidSpt = 66,
     InvalidPendingWithdrawalVault = 67,
     InvalidStakeVault = 68,
+    VendorAlreadyExpired = 69,
     Unknown = 1000,
 }
 

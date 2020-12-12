@@ -54,6 +54,28 @@ pub enum Command {
         #[clap(short, long)]
         registrar: Pubkey,
     },
+    /// Sends all leftover funds from an expired unlocked reward vendor to a given
+    /// account.
+    ExpireUnlockedReward {
+        /// The token account to send the leftover rewards to.
+        #[clap(long)]
+        token: Pubkey,
+        #[clap(long)]
+        vendor: Pubkey,
+        #[clap(short, long)]
+        registrar: Pubkey,
+    },
+    /// Sends all leftover funds from an expired locked reward vendor to a given
+    /// account.
+    ExpireLockedReward {
+        /// The token account to send the leftover rewards to.
+        #[clap(long)]
+        token: Pubkey,
+        #[clap(long)]
+        vendor: Pubkey,
+        #[clap(short, long)]
+        registrar: Pubkey,
+    },
 }
 
 #[derive(Debug, Clap)]
@@ -121,6 +143,34 @@ pub fn run(ctx: Context, cmd: Command) -> Result<()> {
             delegate,
             registrar,
         } => create_member_cmd(&ctx, registry_pid, registrar, entity, delegate),
+        Command::ExpireUnlockedReward {
+            token,
+            vendor,
+            registrar,
+        } => {
+            let client = ctx.connect::<Client>(registry_pid)?;
+            let resp = client.expire_unlocked_reward(ExpireUnlockedRewardRequest {
+                token,
+                vendor,
+                registrar,
+            })?;
+            println!("Transaction executed: {:?}", resp.tx);
+            Ok(())
+        }
+        Command::ExpireLockedReward {
+            token,
+            vendor,
+            registrar,
+        } => {
+            let client = ctx.connect::<Client>(registry_pid)?;
+            let resp = client.expire_locked_reward(ExpireLockedRewardRequest {
+                token,
+                vendor,
+                registrar,
+            })?;
+            println!("Transaction executed: {:?}", resp.tx);
+            Ok(())
+        }
     }
 }
 

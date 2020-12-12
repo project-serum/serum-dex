@@ -176,6 +176,14 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
         spts,
     } = req;
 
+    // Move member rewards cursor.
+    member.rewards_cursor = cursor + 1;
+
+    if vendor.expired {
+        msg!("Vendor expired. Reward not collected");
+        return Ok(());
+    }
+
     // Transfer proportion of the reward to the user.
     let spt_total = spts.iter().map(|a| a.amount).fold(0, |a, b| a + b);
     let amount = spt_total
@@ -197,9 +205,6 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
         &[signer_seeds],
         amount,
     )?;
-
-    // Move member rewards cursor.
-    member.rewards_cursor = cursor + 1;
 
     Ok(())
 }

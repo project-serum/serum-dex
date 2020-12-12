@@ -21,8 +21,17 @@ STAKE_RATE_MEGA=1
 REWARD_ACTIVATION_THRESHOLD=1
 
 CONFIG_FILE=~/.config/serum/cli/dev.yaml
+serum=$(pwd)/target/debug/serum
 
 main() {
+    #
+    # Check the CLI is built or installed.
+    #
+    if ! command -v $serum &> /dev/null
+    then
+        echo "Serum CLI not installed"
+        exit
+    fi
     #
     # Build all programs.
     #
@@ -47,7 +56,7 @@ main() {
     #
     # Generate genesis state.
     #
-    local genesis=$(cargo run -p serum-cli -- dev init-mint)
+    local genesis=$($serum dev init-mint)
 
     local srm_mint=$(echo $genesis | jq .srmMint -r)
     local msrm_mint=$(echo $genesis | jq .msrmMint -r)
@@ -78,7 +87,7 @@ EOM
     #
     # Now intialize all the accounts.
     #
-    local rInit=$(cargo run -p serum-cli -- --config $CONFIG_FILE \
+    local rInit=$($serum --config $CONFIG_FILE \
           registry init \
           --deactivation-timelock $DEACTIVATION_TIMELOCK \
           --reward-activation-threshold $REWARD_ACTIVATION_THRESHOLD \
@@ -91,7 +100,7 @@ EOM
     local registrar_nonce=$(echo $rInit | jq .nonce -r)
     local reward_q=$(echo $rInit | jq .rewardEventQueue -r)
 
-    local lInit=$(cargo run -p serum-cli -- --config $CONFIG_FILE \
+    local lInit=$($serum --config $CONFIG_FILE \
           lockup \
           initialize)
 
@@ -101,7 +110,7 @@ EOM
     # Initialize a node entity. Hack until we separate joining entities
     # from creating member accounts.
     #
-    local createEntity=$(cargo run -p serum-cli -- --config $CONFIG_FILE \
+    local createEntity=$($serum --config $CONFIG_FILE \
           registry create-entity \
           --registrar $registrar \
           --about "This the default entity all new members join." \
@@ -114,7 +123,7 @@ EOM
     #
     # Add the registry to the lockup program whitelist.
     #
-    cargo run -p serum-cli -- --config $CONFIG_FILE \
+    $serum --config $CONFIG_FILE \
     lockup gov \
     --safe $safe \
     whitelist-add \

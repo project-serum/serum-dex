@@ -17,6 +17,7 @@ pub struct UnlockedRewardVendor {
     pub expiry_ts: i64,
     pub expiry_receiver: Pubkey,
     pub total: u64,
+    pub expired: bool,
 }
 
 impl UnlockedRewardVendor {
