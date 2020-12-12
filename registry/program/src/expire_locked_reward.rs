@@ -21,6 +21,7 @@ pub fn handler(program_id: &Pubkey, accounts: &[AccountInfo]) -> Result<(), Regi
     let vault_authority_acc_info = next_account_info(acc_infos)?;
     let registrar_acc_info = next_account_info(acc_infos)?;
     let token_program_acc_info = next_account_info(acc_infos)?;
+    let clock_acc_info = next_account_info(acc_infos)?;
 
     let AccessControlResponse { ref vault } = access_control(AccessControlRequest {
         program_id,
@@ -29,6 +30,7 @@ pub fn handler(program_id: &Pubkey, accounts: &[AccountInfo]) -> Result<(), Regi
         vault_acc_info,
         token_acc_info,
         expiry_receiver_acc_info,
+        clock_acc_info,
     })?;
 
     LockedRewardVendor::unpack_mut(
@@ -60,6 +62,7 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
         vault_acc_info,
         vendor_acc_info,
         token_acc_info,
+        clock_acc_info,
     } = req;
 
     // Authorization.
@@ -70,9 +73,10 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
     // Account validation.
     let _registrar = access_control::registrar(registrar_acc_info, program_id)?;
     let vendor =
-        access_control::unlocked_reward_vendor(vendor_acc_info, registrar_acc_info, program_id)?;
+        access_control::locked_reward_vendor(vendor_acc_info, registrar_acc_info, program_id)?;
     let vault = access_control::token_account(vault_acc_info)?;
-    let _token = access_control::token_account(token_acc_info)?;
+    let token = access_control::token_account(token_acc_info)?;
+    let clock = access_control::clock(clock_acc_info)?;
 
     if vendor.expired {
         return Err(RegistryErrorCode::VendorAlreadyExpired)?;
@@ -82,6 +86,12 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
     }
     if &vendor.expiry_receiver != expiry_receiver_acc_info.key {
         return Err(RegistryErrorCode::InvalidVault)?;
+    }
+    if &token.owner != expiry_receiver_acc_info.key {
+        return Err(RegistryErrorCode::InvalidAccountOwner)?;
+    }
+    if clock.unix_timestamp <= vendor.expiry_ts {
+        return Err(RegistryErrorCode::VendorNotExpired)?;
     }
 
     Ok(AccessControlResponse { vault })
@@ -127,6 +137,7 @@ struct AccessControlRequest<'a, 'b> {
     vendor_acc_info: &'a AccountInfo<'b>,
     vault_acc_info: &'a AccountInfo<'b>,
     token_acc_info: &'a AccountInfo<'b>,
+    clock_acc_info: &'a AccountInfo<'b>,
 }
 
 struct AccessControlResponse {

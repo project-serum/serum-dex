@@ -12,6 +12,7 @@ use solana_client_gen::solana_sdk::instruction::AccountMeta;
 use solana_client_gen::solana_sdk::pubkey::Pubkey;
 use solana_client_gen::solana_sdk::signature::Signature;
 use solana_client_gen::solana_sdk::signature::{Keypair, Signer};
+use solana_client_gen::solana_sdk::sysvar;
 use spl_token::state::Account as TokenAccount;
 use std::convert::Into;
 use thiserror::Error;
@@ -880,6 +881,7 @@ impl Client {
             AccountMeta::new_readonly(vendor_va, false),
             AccountMeta::new_readonly(registrar, false),
             AccountMeta::new_readonly(spl_token::ID, false),
+            AccountMeta::new_readonly(sysvar::clock::ID, false),
         ];
         let tx = self.inner.expire_unlocked_reward(&accs)?;
         Ok(ExpireUnlockedRewardResponse { tx })
@@ -894,7 +896,7 @@ impl Client {
             vendor,
             registrar,
         } = req;
-        let vendor_acc = self.unlocked_vendor(&vendor)?;
+        let vendor_acc = self.locked_vendor(&vendor)?;
         let vendor_va = Pubkey::create_program_address(
             &[registrar.as_ref(), vendor.as_ref(), &[vendor_acc.nonce]],
             self.program(),
@@ -908,6 +910,7 @@ impl Client {
             AccountMeta::new_readonly(vendor_va, false),
             AccountMeta::new_readonly(registrar, false),
             AccountMeta::new_readonly(spl_token::ID, false),
+            AccountMeta::new_readonly(sysvar::clock::ID, false),
         ];
         let tx = self.inner.expire_locked_reward(&accs)?;
         Ok(ExpireLockedRewardResponse { tx })

@@ -81,6 +81,7 @@ pub enum RegistryErrorCode {
     InvalidPendingWithdrawalVault = 67,
     InvalidStakeVault = 68,
     VendorAlreadyExpired = 69,
+    VendorNotExpired = 70,
     Unknown = 1000,
 }
 
