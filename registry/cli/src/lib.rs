@@ -2,7 +2,9 @@ use anyhow::{anyhow, Result};
 use clap::Clap;
 use serum_common::client::rpc;
 use serum_context::Context;
-use serum_registry::accounts::{Entity, Member, Registrar};
+use serum_registry::accounts::{
+    Entity, LockedRewardVendor, Member, Registrar, UnlockedRewardVendor,
+};
 use serum_registry_client::*;
 use solana_client_gen::prelude::*;
 
@@ -98,6 +100,14 @@ pub enum AccountsCommand {
         /// first derived stake address will be used for the configured wallet.
         #[clap(short, long)]
         address: Option<Pubkey>,
+    },
+    LockedVendor {
+        #[clap(short, long)]
+        address: Pubkey,
+    },
+    UnlockedVendor {
+        #[clap(short, long)]
+        address: Pubkey,
     },
 }
 
@@ -249,6 +259,14 @@ fn account_cmd(ctx: &Context, registry_pid: Pubkey, cmd: AccountsCommand) -> Res
                 .map_err(|e| anyhow!("unable to derive stake address: {}", e.to_string()))?,
             };
             let acc: Member = rpc::get_account(&rpc_client, &address)?;
+            println!("{:#?}", acc);
+        }
+        AccountsCommand::LockedVendor { address } => {
+            let acc: LockedRewardVendor = rpc::get_account(&rpc_client, &address)?;
+            println!("{:#?}", acc);
+        }
+        AccountsCommand::UnlockedVendor { address } => {
+            let acc: UnlockedRewardVendor = rpc::get_account(&rpc_client, &address)?;
             println!("{:#?}", acc);
         }
     };
