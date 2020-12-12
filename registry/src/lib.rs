@@ -192,6 +192,7 @@ pub mod instruction {
         /// 4. `[]`         Vendor vault authority.
         /// 5. `[]`         Registrar.
         /// 6. `[]`         Token program.
+        /// 7. `[]`         Clock sysvar.
         ExpireUnlockedReward,
         /// Same as ExpireUnlockedReward, but with a LockedRewardVendor
         /// account.
