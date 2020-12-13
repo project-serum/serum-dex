@@ -57,7 +57,7 @@ pub struct UserAccounts<'a, 'b> {
 }
 
 pub struct FeeAccounts<'a, 'b> {
-    pub serum_fee_account: &'a AccountInfo<'b>,
+    pub lqd_fee_account: &'a AccountInfo<'b>,
     pub initializer_fee_account: &'a AccountInfo<'b>,
     pub referrer_fee_account: &'a AccountInfo<'b>,
 }
@@ -123,7 +123,7 @@ impl<'a, 'b> PoolContext<'a, 'b> {
                 let pool_token_account = next_account_info(accounts_iter)?;
                 let asset_accounts = next_account_infos(accounts_iter, state.assets.len())?;
                 let authority = next_account_info(accounts_iter)?;
-                let serum_fee_account = next_account_info(accounts_iter)?;
+                let lqd_fee_account = next_account_info(accounts_iter)?;
                 let initializer_fee_account = next_account_info(accounts_iter)?;
                 let referrer_fee_account = next_account_info(accounts_iter)?;
                 context.user_accounts = Some(UserAccounts::new(
@@ -134,7 +134,7 @@ impl<'a, 'b> PoolContext<'a, 'b> {
                 )?);
                 context.fee_accounts = Some(FeeAccounts::new(
                     state,
-                    serum_fee_account,
+                    lqd_fee_account,
                     initializer_fee_account,
                     referrer_fee_account,
                 )?);
@@ -145,14 +145,14 @@ impl<'a, 'b> PoolContext<'a, 'b> {
                 )?);
             }
             PoolRequestInner::Initialize(_) => {
-                let serum_fee_account = next_account_info(accounts_iter)?;
+                let lqd_fee_account = next_account_info(accounts_iter)?;
                 let initializer_fee_account = next_account_info(accounts_iter)?;
                 let rent_sysvar_account = next_account_info(accounts_iter)?;
                 context.fee_accounts = Some(FeeAccounts::new(
                     state,
-                    serum_fee_account,
+                    lqd_fee_account,
                     initializer_fee_account,
-                    serum_fee_account,
+                    lqd_fee_account,
                 )?);
                 if rent_sysvar_account.key != &rent::ID {
                     msg!("Incorrect rent sysvar account");
@@ -208,14 +208,14 @@ impl<'a, 'b> UserAccounts<'a, 'b> {
 impl<'a, 'b> FeeAccounts<'a, 'b> {
     pub fn new(
         state: &PoolState,
-        serum_fee_account: &'a AccountInfo<'b>,
+        lqd_fee_account: &'a AccountInfo<'b>,
         initializer_fee_account: &'a AccountInfo<'b>,
         referrer_fee_account: &'a AccountInfo<'b>,
     ) -> Result<Self, ProgramError> {
-        check_account_address(serum_fee_account, &state.serum_fee_vault)?;
+        check_account_address(lqd_fee_account, &state.lqd_fee_vault)?;
         check_account_address(initializer_fee_account, &state.initializer_fee_vault)?;
         check_token_account(
-            serum_fee_account,
+            lqd_fee_account,
             state.pool_token_mint.as_ref(),
             Some(&serum_pool_schema::fee_owner::ID),
         )?;
@@ -226,7 +226,7 @@ impl<'a, 'b> FeeAccounts<'a, 'b> {
         )?;
         check_token_account(referrer_fee_account, state.pool_token_mint.as_ref(), None)?;
         Ok(FeeAccounts {
-            serum_fee_account,
+            lqd_fee_account,
             initializer_fee_account,
             referrer_fee_account,
         })
@@ -261,14 +261,14 @@ impl<'a, 'b> RetbufAccounts<'a, 'b> {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Fees {
-    pub serum_fee: u64,
+    pub lqd_fee: u64,
     pub initializer_fee: u64,
     pub referrer_fee: u64,
 }
 
 impl Fees {
     pub fn total_fee(&self) -> u64 {
-        self.serum_fee + self.initializer_fee + self.referrer_fee
+        self.lqd_fee + self.initializer_fee + self.referrer_fee
     }
 
     pub fn from_fee_rate_and_tokens(fee_rate: u32, tokens: u64) -> Result<Self, ProgramError> {
@@ -277,7 +277,7 @@ impl Fees {
             Err(ProgramError::InvalidArgument)
         } else if tokens == 0 {
             Ok(Fees {
-                serum_fee: 0,
+                lqd_fee: 0,
                 referrer_fee: 0,
                 initializer_fee: 0,
             })
@@ -286,20 +286,20 @@ impl Fees {
                 / FEE_RATE_DENOMINATOR as u128
                 + 1) as u64;
             assert!(total_fee <= tokens);
-            let serum_fee = max(
+            let lqd_fee = max(
                 total_fee.checked_mul(2).unwrap() / 5,
                 (tokens - 1) / 10000 + 1,
             );
-            assert!(serum_fee <= total_fee);
-            let referrer_fee = min(serum_fee / 2, total_fee - serum_fee);
-            assert!(serum_fee.checked_add(referrer_fee).unwrap() <= total_fee);
+            assert!(lqd_fee <= total_fee);
+            let referrer_fee = min(lqd_fee / 2, total_fee - lqd_fee);
+            assert!(lqd_fee.checked_add(referrer_fee).unwrap() <= total_fee);
             let initializer_fee = total_fee
-                .checked_sub(serum_fee)
+                .checked_sub(lqd_fee)
                 .unwrap()
                 .checked_sub(referrer_fee)
                 .unwrap();
             assert!(
-                serum_fee
+                lqd_fee
                     .checked_add(referrer_fee)
                     .unwrap()
                     .checked_add(initializer_fee)
@@ -308,7 +308,7 @@ impl Fees {
             );
 
             Ok(Fees {
-                serum_fee,
+                lqd_fee,
                 referrer_fee,
                 initializer_fee,
             })
@@ -402,8 +402,8 @@ impl<'a, 'b> PoolContext<'a, 'b> {
         if let Some(user_accounts) = &self.user_accounts {
             let user_key = user_accounts.pool_token_account.key;
             if let Some(fee_accounts) = &self.fee_accounts {
-                if fee_accounts.serum_fee_account.key == user_key {
-                    fees.serum_fee = 0;
+                if fee_accounts.lqd_fee_account.key == user_key {
+                    fees.lqd_fee = 0;
                     fees.initializer_fee = 0;
                     fees.referrer_fee = 0;
                 }
@@ -486,7 +486,7 @@ impl<'a, 'b> PoolContext<'a, 'b> {
             .ok_or(ProgramError::InvalidArgument)?;
 
         for (account, quantity) in &[
-            (fee_accounts.serum_fee_account, fees.serum_fee),
+            (fee_accounts.lqd_fee_account, fees.lqd_fee),
             (fee_accounts.initializer_fee_account, fees.initializer_fee),
             (fee_accounts.referrer_fee_account, fees.referrer_fee),
             (user_accounts.pool_token_account, remainder),
@@ -542,7 +542,7 @@ impl<'a, 'b> PoolContext<'a, 'b> {
             .ok_or(ProgramError::InvalidArgument)?;
 
         for (account, quantity) in &[
-            (fee_accounts.serum_fee_account, fees.serum_fee),
+            (fee_accounts.lqd_fee_account, fees.lqd_fee),
             (fee_accounts.initializer_fee_account, fees.initializer_fee),
             (fee_accounts.referrer_fee_account, fees.referrer_fee),
         ] {
@@ -712,7 +712,7 @@ mod tests {
         assert_eq!(
             Fees::from_fee_rate_and_tokens(2500, 100_000).unwrap(),
             Fees {
-                serum_fee: 100,
+                lqd_fee: 100,
                 initializer_fee: 100,
                 referrer_fee: 50,
             }
@@ -724,7 +724,7 @@ mod tests {
         assert_eq!(
             Fees::from_fee_rate_and_tokens(2500, 10).unwrap(),
             Fees {
-                serum_fee: 1,
+                lqd_fee: 1,
                 initializer_fee: 0,
                 referrer_fee: 0,
             }
@@ -736,7 +736,7 @@ mod tests {
         assert_eq!(
             Fees::from_fee_rate_and_tokens(MIN_FEE_RATE, 100_000).unwrap(),
             Fees {
-                serum_fee: 10,
+                lqd_fee: 10,
                 initializer_fee: 0,
                 referrer_fee: 5,
             }
@@ -748,7 +748,7 @@ mod tests {
         assert_eq!(
             Fees::from_fee_rate_and_tokens(MIN_FEE_RATE, 100).unwrap(),
             Fees {
-                serum_fee: 1,
+                lqd_fee: 1,
                 initializer_fee: 0,
                 referrer_fee: 0,
             }
@@ -760,7 +760,7 @@ mod tests {
         assert_eq!(
             Fees::from_fee_rate_and_tokens(MIN_FEE_RATE, 0).unwrap(),
             Fees {
-                serum_fee: 0,
+                lqd_fee: 0,
                 initializer_fee: 0,
                 referrer_fee: 0,
             }
@@ -772,7 +772,7 @@ mod tests {
         assert_eq!(
             Fees::from_fee_rate_and_tokens(999_999, 100_000).unwrap(),
             Fees {
-                serum_fee: 40_000,
+                lqd_fee: 40_000,
                 initializer_fee: 40_000,
                 referrer_fee: 20_000,
             }

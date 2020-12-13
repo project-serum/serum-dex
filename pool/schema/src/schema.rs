@@ -74,7 +74,7 @@ macro_rules! declare_tag {
 pub mod fee_owner {
     use solana_program::declare_id;
 
-    declare_id!("DeqYsmBd9BnrbgUwQjVH4sQWK71dEgE6eoZFw3Rp4ftE");
+    declare_id!("3LTvJCPiPSMjX1kBJ6ZfEhn4G2hM46aJ1yEZsk8i12TK");
 }
 
 declare_tag!(PoolStateTag, u64, 0x16a7874c7fb2301b);
@@ -99,8 +99,8 @@ pub struct PoolState {
     /// User-friendly pool name.
     pub name: String,
 
-    /// Vault for fees collected by the pool for Serum. Mint is the pool token mint.
-    pub serum_fee_vault: Address,
+    /// Vault for fees collected by the pool for LQD. Mint is the pool token mint.
+    pub lqd_fee_vault: Address,
     /// Vault for fees collected by the pool for the pool initializer. Mint is the pool token mint.
     pub initializer_fee_vault: Address,
 
@@ -148,7 +148,7 @@ pub enum PoolRequestInner {
     /// - `[writable]` Pool token mint (`PoolState::pool_token_mint`)
     /// - `[writable]` Pool vault account for each of the N pool assets (`AssetInfo::vault_address`)
     /// - `[]` Pool vault authority (`PoolState::vault_signer`)
-    /// - `[]` Serum fee vault
+    /// - `[]` LQD fee vault
     /// - `[]` Initializer fee vault
     /// - `[]` Rent sysvar
     /// - `[]/[writable]` Any additional accounts needed to initialize the pool
@@ -180,7 +180,7 @@ pub enum PoolRequestInner {
     /// - `[writable]` User pool token account
     /// - `[writable]` User account for each of the N pool assets
     /// - `[signer]` Authority for user accounts
-    /// - `[writable]` Serum fee vault
+    /// - `[writable]` LQD fee vault
     /// - `[writable]` Initializer fee vault
     /// - `[writable]` Referrer fee vault
     /// - `[]` spl-token program

@@ -169,7 +169,7 @@ impl<'a, 'b, P: Pool> PoolProcessor<'a, 'b, P> {
         let pool_token_mint = next_account_info(accounts_iter)?;
         let pool_vaults = next_account_infos(accounts_iter, request.assets_length as usize)?;
         let vault_signer = next_account_info(accounts_iter)?;
-        let serum_fee_vault = next_account_info(accounts_iter)?;
+        let lqd_fee_vault = next_account_info(accounts_iter)?;
         let initializer_fee_vault = next_account_info(accounts_iter)?;
 
         let mut state = PoolState {
@@ -187,7 +187,7 @@ impl<'a, 'b, P: Pool> PoolProcessor<'a, 'b, P> {
                 .collect::<PoolResult<Vec<_>>>()?,
             vault_signer: vault_signer.key.into(),
             vault_signer_nonce: request.vault_signer_nonce,
-            serum_fee_vault: serum_fee_vault.key.into(),
+            lqd_fee_vault: lqd_fee_vault.key.into(),
             initializer_fee_vault: initializer_fee_vault.key.into(),
             fee_rate: request.fee_rate,
             account_params: vec![],
@@ -202,8 +202,8 @@ impl<'a, 'b, P: Pool> PoolProcessor<'a, 'b, P> {
         for vault_account in context.pool_vault_accounts {
             context.check_rent_exemption(vault_account)?;
         }
-        context.check_rent_exemption(serum_fee_vault)?;
-        self.check_serum_fee_account(&state, serum_fee_vault)?;
+        context.check_rent_exemption(lqd_fee_vault)?;
+        self.check_lqd_fee_account(&state, lqd_fee_vault)?;
         context.check_rent_exemption(initializer_fee_vault)?;
 
         P::initialize_pool(&context, &mut state)?;
@@ -223,7 +223,7 @@ impl<'a, 'b, P: Pool> PoolProcessor<'a, 'b, P> {
         Ok(())
     }
 
-    fn check_serum_fee_account(
+    fn check_lqd_fee_account(
         &self,
         state: &PoolState,
         account: &AccountInfo,

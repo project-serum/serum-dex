@@ -13,8 +13,3 @@ The instruction and state types are defined in the [schema crate](schema).
 Implement the `Pool` trait on a marker type `ExamplePool`, and invoke `declare_pool_entrypoint!(ExamplePool)`
 in your program's source somewhere.
 The crate is mostly complete, but there may be minor breaking changes before the first release.
-
-### To-do
-- [x] specify the protocol.
-- [ ] Finish implementing the `pool` crate.
-- [ ] Implement the pool GUI.
