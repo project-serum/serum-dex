@@ -13,7 +13,6 @@ pub fn handler(
     new_authority: Option<Pubkey>,
     withdrawal_timelock: Option<i64>,
     deactivation_timelock: Option<i64>,
-    reward_activation_threshold: Option<u64>,
     max_stake_per_entity: Option<u64>,
 ) -> Result<(), RegistryError> {
     msg!("handler: initialize");
@@ -37,7 +36,6 @@ pub fn handler(
                 new_authority,
                 withdrawal_timelock,
                 deactivation_timelock,
-                reward_activation_threshold,
                 max_stake_per_entity,
             })
             .map_err(Into::into)
@@ -71,7 +69,6 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
         new_authority,
         withdrawal_timelock,
         deactivation_timelock,
-        reward_activation_threshold,
         max_stake_per_entity,
     } = req;
 
@@ -85,10 +82,6 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
 
     if let Some(deactivation_timelock) = deactivation_timelock {
         registrar.deactivation_timelock = deactivation_timelock;
-    }
-
-    if let Some(reward_activation_threshold) = reward_activation_threshold {
-        registrar.reward_activation_threshold = reward_activation_threshold;
     }
 
     if let Some(max_stake_per_entity) = max_stake_per_entity {
@@ -109,6 +102,5 @@ struct StateTransitionRequest<'a> {
     new_authority: Option<Pubkey>,
     withdrawal_timelock: Option<i64>,
     deactivation_timelock: Option<i64>,
-    reward_activation_threshold: Option<u64>,
     max_stake_per_entity: Option<u64>,
 }

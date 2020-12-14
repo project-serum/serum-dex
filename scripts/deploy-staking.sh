@@ -115,8 +115,7 @@ EOM
           --registrar $registrar \
           --about "This the default entity all new members join." \
           --image-url " " \
-          --name "Default" \
-          --meta-entity-program-id $meta_entity_pid)
+          --name "Default" )
 
     local entity=$(echo $createEntity | jq .entity -r)
 

@@ -18,7 +18,6 @@ pub fn handler(
     nonce: u8,
     withdrawal_timelock: i64,
     deactivation_timelock: i64,
-    reward_activation_threshold: u64,
     max_stake_per_entity: u64,
     stake_rate: u64,
     stake_rate_mega: u64,
@@ -56,7 +55,6 @@ pub fn handler(
                 withdrawal_timelock,
                 nonce,
                 deactivation_timelock,
-                reward_activation_threshold,
                 max_stake_per_entity,
                 reward_event_q_acc_info,
                 registrar_acc_info,
@@ -137,7 +135,6 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
         withdrawal_timelock,
         nonce,
         deactivation_timelock,
-        reward_activation_threshold,
         pool_mint_acc_info,
         pool_mint_mega_acc_info,
         max_stake_per_entity,
@@ -155,7 +152,6 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
     registrar.deactivation_timelock = deactivation_timelock;
     registrar.max_stake_per_entity = max_stake_per_entity;
     registrar.nonce = nonce;
-    registrar.reward_activation_threshold = reward_activation_threshold;
     registrar.pool_mint = *pool_mint_acc_info.key;
     registrar.pool_mint_mega = *pool_mint_mega_acc_info.key;
     registrar.reward_event_q = *reward_event_q_acc_info.key;
@@ -187,7 +183,6 @@ struct StateTransitionRequest<'a, 'b, 'c> {
     pool_mint_mega_acc_info: &'a AccountInfo<'b>,
     registrar: &'c mut Registrar,
     authority: Pubkey,
-    reward_activation_threshold: u64,
     deactivation_timelock: i64,
     withdrawal_timelock: i64,
     max_stake_per_entity: u64,

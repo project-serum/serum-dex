@@ -33,7 +33,6 @@ fn lifecycle() {
     // Initialize the registrar.
     let withdrawal_timelock = 10;
     let deactivation_timelock = 10;
-    let reward_activation_threshold = 10;
     let max_stake_per_entity = 100_000_000_000_000;
     let registrar_authority = Keypair::generate(&mut OsRng);
 
@@ -46,7 +45,6 @@ fn lifecycle() {
             deactivation_timelock,
             mint: srm_mint,
             mega_mint: msrm_mint,
-            reward_activation_threshold,
             max_stake_per_entity,
             stake_rate: 1,
             stake_rate_mega: 1,
