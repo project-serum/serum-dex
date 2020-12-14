@@ -242,6 +242,41 @@ pub fn member_vault_stake(
     Ok((member_vault, is_mega))
 }
 
+pub fn member_spt(
+    member: &Member,
+    member_spt_acc_info: &AccountInfo,
+    member_vault_authority_acc_info: &AccountInfo,
+    registrar_acc_info: &AccountInfo,
+    registrar: &Registrar,
+    program_id: &Pubkey,
+    balance_id: &Pubkey,
+) -> Result<(TokenAccount, bool), RegistryError> {
+    let member_spt = vault_authenticated(
+        member_spt_acc_info,
+        member_vault_authority_acc_info,
+        registrar_acc_info,
+        &registrar,
+        program_id,
+    )?;
+
+    let b = member
+        .balances
+        .iter()
+        .filter(|b| &b.owner == balance_id)
+        .collect::<Vec<&BalanceSandbox>>();
+    let balances = b.first().ok_or(RegistryErrorCode::InvalidBalanceSandbox)?;
+
+    let is_mega = {
+        if member_spt_acc_info.key != &balances.spt && member_spt_acc_info.key != &balances.spt_mega
+        {
+            return Err(RegistryErrorCode::InvalidSpt)?;
+        }
+        member_spt_acc_info.key == &balances.spt_mega
+    };
+
+    Ok((member_spt, is_mega))
+}
+
 pub fn member_vault_pending_withdrawal(
     member: &Member,
     member_vault_acc_info: &AccountInfo,

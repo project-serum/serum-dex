@@ -32,7 +32,8 @@ pub fn handler(
     let clock_acc_info = next_account_info(acc_infos)?;
 
     let mut spt_acc_infos = vec![];
-    while acc_infos.len() > 0 {
+    // 2: Main and locked balances.
+    for _ in 0..2 {
         spt_acc_infos.push(next_account_info(acc_infos)?);
     }
 
@@ -122,11 +123,11 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
         .enumerate()
         .map(|(idx, spt_acc_info)| {
             if is_mega {
-                if &member.balances[idx].spt != spt_acc_info.key {
+                if &member.balances[idx].spt_mega != spt_acc_info.key {
                     return Err(RegistryErrorCode::InvalidSpt)?;
                 }
             } else {
-                if &member.balances[idx].spt_mega != spt_acc_info.key {
+                if &member.balances[idx].spt != spt_acc_info.key {
                     return Err(RegistryErrorCode::InvalidSpt)?;
                 }
             }
@@ -187,10 +188,16 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
     // Transfer proportion of the reward to the user.
     let spt_total = spts.iter().map(|a| a.amount).fold(0, |a, b| a + b);
     let amount = spt_total
-        .checked_div(vendor.pool_token_supply)
-        .unwrap()
         .checked_mul(vendor.total)
+        .unwrap()
+        .checked_div(vendor.pool_token_supply)
         .unwrap();
+
+    if amount <= 0 {
+        // Invariant violation.
+        msg!("Invalid reward calculation.");
+        return Err(RegistryErrorCode::Unknown)?;
+    }
 
     let signer_seeds = &[
         registrar_acc_info.key.as_ref(),

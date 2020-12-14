@@ -39,7 +39,8 @@ pub fn handler(
     let clock_acc_info = next_account_info(acc_infos)?;
 
     let mut spt_acc_infos = vec![];
-    while acc_infos.len() > 0 {
+    // 2: Main and locked balances.
+    for _ in 0..2 {
         spt_acc_infos.push(next_account_info(acc_infos)?);
     }
 
@@ -205,10 +206,17 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
     // Create vesting account with proportion of the reward.
     let spt_total = spts.iter().map(|a| a.amount).fold(0, |a, b| a + b);
     let amount = spt_total
-        .checked_div(vendor.pool_token_supply)
-        .unwrap()
         .checked_mul(vendor.total)
+        .unwrap()
+        .checked_div(vendor.pool_token_supply)
         .unwrap();
+
+    if amount <= 0 {
+        // Invariant violation.
+        msg!("Invalid reward calculation.");
+        return Err(RegistryErrorCode::Unknown)?;
+    }
+
     // Lockup program requires the timestamp to be <= clock's timestamp.
     // So update if the time has already passed.
     let end_ts = {
@@ -218,53 +226,52 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
             vendor.end_ts
         }
     };
-    if amount > 0 {
-        let ix = {
-            let instr = LockupInstruction::CreateVesting {
-                beneficiary: member.beneficiary,
-                end_ts,
-                period_count: vendor.period_count,
-                deposit_amount: amount,
-                nonce,
-            };
-            let mut data = vec![0u8; instr.size()? as usize];
-            LockupInstruction::pack(instr, &mut data)?;
-            Instruction {
-                program_id: *lockup_program_acc_info.key,
-                accounts: vec![
-                    AccountMeta::new(*vesting_acc_info.key, false),
-                    AccountMeta::new(vendor.vault, false),
-                    AccountMeta::new_readonly(*vendor_vault_authority_acc_info.key, true),
-                    AccountMeta::new(*vesting_vault_acc_info.key, false),
-                    AccountMeta::new_readonly(*safe_acc_info.key, false),
-                    AccountMeta::new_readonly(spl_token::ID, false),
-                    AccountMeta::new_readonly(sysvar::rent::ID, false),
-                    AccountMeta::new_readonly(sysvar::clock::ID, false),
-                ],
-                data,
-            }
+
+    let ix = {
+        let instr = LockupInstruction::CreateVesting {
+            beneficiary: member.beneficiary,
+            end_ts,
+            period_count: vendor.period_count,
+            deposit_amount: amount,
+            nonce,
         };
-        let signer_seeds = &[
-            registrar_acc_info.key.as_ref(),
-            vendor_acc_info.key.as_ref(),
-            &[vendor.nonce],
-        ];
-        solana_sdk::program::invoke_signed(
-            &ix,
-            &[
-                vesting_acc_info.clone(),
-                vendor_vault_acc_info.clone(),
-                vendor_vault_authority_acc_info.clone(),
-                vesting_vault_acc_info.clone(),
-                safe_acc_info.clone(),
-                token_program_acc_info.clone(),
-                rent_acc_info.clone(),
-                clock_acc_info.clone(),
-                lockup_program_acc_info.clone(),
+        let mut data = vec![0u8; instr.size()? as usize];
+        LockupInstruction::pack(instr, &mut data)?;
+        Instruction {
+            program_id: *lockup_program_acc_info.key,
+            accounts: vec![
+                AccountMeta::new(*vesting_acc_info.key, false),
+                AccountMeta::new(vendor.vault, false),
+                AccountMeta::new_readonly(*vendor_vault_authority_acc_info.key, true),
+                AccountMeta::new(*vesting_vault_acc_info.key, false),
+                AccountMeta::new_readonly(*safe_acc_info.key, false),
+                AccountMeta::new_readonly(spl_token::ID, false),
+                AccountMeta::new_readonly(sysvar::rent::ID, false),
+                AccountMeta::new_readonly(sysvar::clock::ID, false),
             ],
-            &[signer_seeds],
-        )?;
-    }
+            data,
+        }
+    };
+    let signer_seeds = &[
+        registrar_acc_info.key.as_ref(),
+        vendor_acc_info.key.as_ref(),
+        &[vendor.nonce],
+    ];
+    solana_sdk::program::invoke_signed(
+        &ix,
+        &[
+            vesting_acc_info.clone(),
+            vendor_vault_acc_info.clone(),
+            vendor_vault_authority_acc_info.clone(),
+            vesting_vault_acc_info.clone(),
+            safe_acc_info.clone(),
+            token_program_acc_info.clone(),
+            rent_acc_info.clone(),
+            clock_acc_info.clone(),
+            lockup_program_acc_info.clone(),
+        ],
+        &[signer_seeds],
+    )?;
 
     Ok(())
 }
