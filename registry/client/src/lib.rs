@@ -1147,16 +1147,17 @@ fn create_metadata_instructions(
 ) -> Vec<Instruction> {
     let metadata_size = {
         // 280 chars max.
-        let max_name = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
-        let max_about = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
-        let max_image_url = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
+        let max_name = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+						.to_string();
+        let max_about = max_name.clone();
+        let max_image_url = max_name.clone();
         let md = serum_meta_entity::accounts::Metadata {
             initialized: false,
             entity: Pubkey::new_from_array([0; 32]),
             authority: *payer,
-            name: max_name.to_string(),
-            about: max_about.to_string(),
-            image_url: max_image_url.to_string(),
+            name: max_name,
+            about: max_about,
+            image_url: max_image_url,
             chat: Pubkey::new_from_array([0; 32]),
         };
         md.size().unwrap()
