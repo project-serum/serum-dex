@@ -189,6 +189,7 @@ EOM
     #
     # Log the generated TypeScript.
     #
+    set +e
     read -r -d '' VAR << EOM
 {
     srm: new PublicKey('${srm_mint}'),
