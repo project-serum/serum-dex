@@ -17,6 +17,7 @@ pub fn handler(
     let acc_infos = &mut accounts.iter();
 
     // Lockup whitelist relay interface.
+    let _vesting_acc_info = next_account_info(acc_infos)?;
     let depositor_acc_info = next_account_info(acc_infos)?;
     let depositor_authority_acc_info = next_account_info(acc_infos)?;
     let token_program_acc_info = next_account_info(acc_infos)?;

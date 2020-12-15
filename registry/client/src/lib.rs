@@ -559,10 +559,15 @@ impl Client {
             amount,
         } = req;
 
+        // Dummy account to pass into the instruction, since it conforms to the
+        // lockup program's whitelist withdraw/deposit interface.
+        let dummy_account_meta = AccountMeta::new_readonly(sysvar::clock::ID, false);
+
         let vault = self.vault_for(&member, &depositor, false)?;
         let vault_acc = rpc::get_token_account::<TokenAccount>(self.rpc(), &vault)?;
         let accounts = vec![
             // Whitelist relay interface,
+            dummy_account_meta,
             AccountMeta::new(depositor, false),
             AccountMeta::new(depositor_authority.pubkey(), true),
             AccountMeta::new_readonly(spl_token::ID, false),
@@ -593,10 +598,16 @@ impl Client {
             registrar,
             amount,
         } = req;
+
+        // Dummy account to pass into the instruction, since it conforms to the
+        // lockup program's whitelist withdraw/deposit interface.
+        let dummy_account_meta = AccountMeta::new_readonly(sysvar::clock::ID, false);
+
         let vault = self.vault_for(&member, &depositor, false)?;
         let vault_acc = rpc::get_token_account::<TokenAccount>(self.rpc(), &vault)?;
         let accounts = vec![
             // Whitelist relay interface.
+            dummy_account_meta,
             AccountMeta::new(depositor, false),
             AccountMeta::new_readonly(beneficiary.pubkey(), true),
             AccountMeta::new_readonly(spl_token::ID, false),

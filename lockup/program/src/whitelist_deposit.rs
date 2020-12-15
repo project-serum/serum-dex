@@ -20,7 +20,6 @@ pub fn handler(
     let acc_infos = &mut accounts.iter();
 
     let beneficiary_acc_info = next_account_info(acc_infos)?;
-    let vesting_acc_info = next_account_info(acc_infos)?;
     let safe_acc_info = next_account_info(acc_infos)?;
     let wl_acc_info = next_account_info(acc_infos)?;
     let wl_prog_acc_info = next_account_info(acc_infos)?;
@@ -28,6 +27,7 @@ pub fn handler(
     // Below accounts are relayed.
 
     // Whitelist interface.
+    let vesting_acc_info = next_account_info(acc_infos)?;
     let vault_acc_info = next_account_info(acc_infos)?;
     let vault_auth_acc_info = next_account_info(acc_infos)?;
     let tok_prog_acc_info = next_account_info(acc_infos)?;
@@ -64,6 +64,7 @@ pub fn handler(
                 vault_auth_acc_info,
                 tok_prog_acc_info,
                 vesting,
+                vesting_acc_info,
                 beneficiary_acc_info,
                 remaining_relay_accs,
             })
@@ -137,6 +138,7 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), LockupError> {
 
     let StateTransitionRequest {
         vesting,
+        vesting_acc_info,
         instruction_data,
         accounts,
         safe_acc_info,
@@ -158,6 +160,7 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), LockupError> {
     // Invoke relay, signing with the program-derived-address.
     {
         let mut meta_accounts = vec![
+            AccountMeta::new_readonly(*vesting_acc_info.key, false),
             AccountMeta::new(*vault_acc_info.key, false),
             AccountMeta::new_readonly(*vault_auth_acc_info.key, true),
             AccountMeta::new_readonly(*tok_prog_acc_info.key, false),
@@ -230,6 +233,7 @@ struct StateTransitionRequest<'a, 'b, 'c> {
     wl_prog_vault_authority_acc_info: &'a AccountInfo<'b>,
     tok_prog_acc_info: &'a AccountInfo<'b>,
     beneficiary_acc_info: &'a AccountInfo<'b>,
+    vesting_acc_info: &'a AccountInfo<'b>,
     instruction_data: &'c [u8],
     vesting: &'c mut Vesting,
 }
