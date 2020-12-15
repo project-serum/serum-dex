@@ -8,7 +8,6 @@ use solana_sdk::instruction::{AccountMeta, Instruction};
 use solana_sdk::program_pack::Pack as TokenPack;
 use solana_sdk::pubkey::Pubkey;
 use spl_token::state::Account as TokenAccount;
-use std::convert::Into;
 
 pub fn handler(
     program_id: &Pubkey,
@@ -38,7 +37,7 @@ pub fn handler(
     // Program specific.
     let remaining_relay_accs = acc_infos;
 
-    access_control(AccessControlRequest {
+    let AccessControlResponse { vesting_nonce } = access_control(AccessControlRequest {
         program_id,
         beneficiary_acc_info,
         vesting_acc_info,
@@ -51,34 +50,27 @@ pub fn handler(
         vault_auth_acc_info,
         amount,
     })?;
-
-    Vesting::unpack_unchecked_mut(
-        &mut vesting_acc_info.try_borrow_mut_data()?,
-        &mut |vesting: &mut Vesting| {
-            state_transition(StateTransitionRequest {
-                accounts,
-                amount,
-                instruction_data,
-                safe_acc_info,
-                wl_prog_acc_info,
-                wl_prog_vault_acc_info,
-                wl_prog_vault_authority_acc_info,
-                vault_acc_info,
-                vault_auth_acc_info,
-                tok_prog_acc_info,
-                vesting,
-                vesting_acc_info,
-                beneficiary_acc_info,
-                remaining_relay_accs,
-            })
-            .map_err(Into::into)
-        },
-    )?;
+    state_transition(StateTransitionRequest {
+        accounts,
+        amount,
+        vesting_nonce,
+        vesting_acc_info,
+        instruction_data,
+        safe_acc_info,
+        wl_prog_acc_info,
+        wl_prog_vault_acc_info,
+        wl_prog_vault_authority_acc_info,
+        vault_acc_info,
+        vault_auth_acc_info,
+        tok_prog_acc_info,
+        beneficiary_acc_info,
+        remaining_relay_accs,
+    })?;
 
     Ok(())
 }
 
-fn access_control(req: AccessControlRequest) -> Result<(), LockupError> {
+fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, LockupError> {
     msg!("access-control: whitelist_withdraw");
 
     let AccessControlRequest {
@@ -138,15 +130,17 @@ fn access_control(req: AccessControlRequest) -> Result<(), LockupError> {
         return Err(LockupErrorCode::InvalidTokenAccountOwner)?;
     }
 
-    Ok(())
+    Ok(AccessControlResponse {
+        vesting_nonce: vesting.nonce,
+    })
 }
 
 fn state_transition(req: StateTransitionRequest) -> Result<(), LockupError> {
     msg!("state-transition: whitelist_withdraw");
 
     let StateTransitionRequest {
-        vesting,
         vesting_acc_info,
+        vesting_nonce,
         instruction_data,
         beneficiary_acc_info,
         accounts,
@@ -192,7 +186,7 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), LockupError> {
             relay_instruction,
             safe_acc_info.key,
             beneficiary_acc_info,
-            vesting,
+            vesting_nonce,
             accounts,
         )?;
     }
@@ -208,8 +202,14 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), LockupError> {
     if amount_transferred > amount {
         return Err(LockupErrorCode::InsufficientAmount)?;
     }
-    // Book keeping.
-    vesting.whitelist_owned += amount_transferred;
+
+    Vesting::unpack_unchecked_mut(
+        &mut vesting_acc_info.try_borrow_mut_data()?,
+        &mut |vesting: &mut Vesting| {
+            vesting.whitelist_owned += amount_transferred;
+            Ok(())
+        },
+    )?;
 
     Ok(())
 }
@@ -228,6 +228,10 @@ struct AccessControlRequest<'a, 'b> {
     amount: u64,
 }
 
+struct AccessControlResponse {
+    vesting_nonce: u8,
+}
+
 struct StateTransitionRequest<'a, 'b, 'c> {
     remaining_relay_accs: &'c mut dyn Iterator<Item = &'a AccountInfo<'b>>,
     accounts: &'a [AccountInfo<'b>],
@@ -241,6 +245,6 @@ struct StateTransitionRequest<'a, 'b, 'c> {
     safe_acc_info: &'a AccountInfo<'b>,
     vesting_acc_info: &'a AccountInfo<'b>,
     instruction_data: &'c [u8],
-    vesting: &'c mut Vesting,
+    vesting_nonce: u8,
     amount: u64,
 }

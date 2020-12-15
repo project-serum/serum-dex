@@ -887,11 +887,11 @@ impl Client {
             AccountMeta::new_readonly(solana_sdk::sysvar::clock::ID, false),
             AccountMeta::new_readonly(self.vault_authority(&registrar)?, false),
             AccountMeta::new_readonly(m.balances[0].owner, false),
-            AccountMeta::new_readonly(m.balances[0].vault_stake, false),
-            AccountMeta::new_readonly(m.balances[0].vault_stake_mega, false),
+            AccountMeta::new_readonly(m.balances[0].spt, false),
+            AccountMeta::new_readonly(m.balances[0].spt_mega, false),
             AccountMeta::new_readonly(m.balances[1].owner, false),
-            AccountMeta::new_readonly(m.balances[1].vault_stake, false),
-            AccountMeta::new_readonly(m.balances[1].vault_stake_mega, false),
+            AccountMeta::new_readonly(m.balances[1].spt, false),
+            AccountMeta::new_readonly(m.balances[1].spt_mega, false),
         ];
         let tx = self
             .inner

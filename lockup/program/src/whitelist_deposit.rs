@@ -7,7 +7,6 @@ use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::instruction::{AccountMeta, Instruction};
 use solana_sdk::program_pack::Pack as TokenPack;
 use solana_sdk::pubkey::Pubkey;
-use std::convert::Into;
 use std::iter::Iterator;
 
 pub fn handler(
@@ -37,7 +36,10 @@ pub fn handler(
     // Program specific.
     let remaining_relay_accs = acc_infos;
 
-    access_control(AccessControlRequest {
+    let AccessControlResponse {
+        vesting_nonce,
+        vesting_whitelist_owned,
+    } = access_control(AccessControlRequest {
         program_id,
         beneficiary_acc_info,
         vesting_acc_info,
@@ -49,33 +51,27 @@ pub fn handler(
         vault_acc_info,
         vault_auth_acc_info,
     })?;
-
-    Vesting::unpack_unchecked_mut(
-        &mut vesting_acc_info.try_borrow_mut_data()?,
-        &mut |vesting: &mut Vesting| {
-            state_transition(StateTransitionRequest {
-                accounts,
-                instruction_data,
-                safe_acc_info,
-                wl_prog_acc_info,
-                wl_prog_vault_acc_info,
-                wl_prog_vault_authority_acc_info,
-                vault_acc_info,
-                vault_auth_acc_info,
-                tok_prog_acc_info,
-                vesting,
-                vesting_acc_info,
-                beneficiary_acc_info,
-                remaining_relay_accs,
-            })
-            .map_err(Into::into)
-        },
-    )?;
+    state_transition(StateTransitionRequest {
+        accounts,
+        instruction_data,
+        safe_acc_info,
+        wl_prog_acc_info,
+        wl_prog_vault_acc_info,
+        wl_prog_vault_authority_acc_info,
+        vault_acc_info,
+        vault_auth_acc_info,
+        tok_prog_acc_info,
+        vesting_nonce,
+        vesting_whitelist_owned,
+        vesting_acc_info,
+        beneficiary_acc_info,
+        remaining_relay_accs,
+    })?;
 
     Ok(())
 }
 
-fn access_control(req: AccessControlRequest) -> Result<(), LockupError> {
+fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, LockupError> {
     msg!("access-control: whitelist_deposit");
 
     let AccessControlRequest {
@@ -108,7 +104,7 @@ fn access_control(req: AccessControlRequest) -> Result<(), LockupError> {
         safe_acc_info,
         program_id,
     )?;
-    let _vesting = access_control::vesting(
+    let vesting = access_control::vesting(
         program_id,
         safe_acc_info,
         vesting_acc_info,
@@ -130,14 +126,18 @@ fn access_control(req: AccessControlRequest) -> Result<(), LockupError> {
         return Err(LockupErrorCode::InvalidTokenAccountOwner)?;
     }
 
-    Ok(())
+    Ok(AccessControlResponse {
+        vesting_nonce: vesting.nonce,
+        vesting_whitelist_owned: vesting.whitelist_owned,
+    })
 }
 
 fn state_transition(req: StateTransitionRequest) -> Result<(), LockupError> {
     msg!("state-transition: whitelist_deposit");
 
     let StateTransitionRequest {
-        vesting,
+        vesting_nonce,
+        vesting_whitelist_owned,
         vesting_acc_info,
         instruction_data,
         accounts,
@@ -183,7 +183,7 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), LockupError> {
             relay_instruction,
             safe_acc_info.key,
             beneficiary_acc_info,
-            vesting,
+            vesting_nonce,
             accounts,
         )?;
     }
@@ -200,11 +200,19 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), LockupError> {
         return Err(LockupErrorCode::InsufficientDepositAmount)?;
     }
     // Cannot deposit more than withdrawn.
-    if deposit_amount > vesting.whitelist_owned {
+    if deposit_amount > vesting_whitelist_owned {
         return Err(LockupErrorCode::DepositOverflow)?;
     }
-    // Book keeping.
-    vesting.whitelist_owned -= deposit_amount;
+
+    Vesting::unpack_unchecked_mut(
+        &mut vesting_acc_info.try_borrow_mut_data()?,
+        &mut |vesting: &mut Vesting| {
+            // Book keeping.
+            vesting.whitelist_owned -= deposit_amount;
+
+            Ok(())
+        },
+    )?;
 
     Ok(())
 }
@@ -222,6 +230,11 @@ struct AccessControlRequest<'a, 'b> {
     vault_auth_acc_info: &'a AccountInfo<'b>,
 }
 
+struct AccessControlResponse {
+    vesting_nonce: u8,
+    vesting_whitelist_owned: u64,
+}
+
 struct StateTransitionRequest<'a, 'b, 'c> {
     remaining_relay_accs: &'c mut dyn Iterator<Item = &'a AccountInfo<'b>>,
     accounts: &'a [AccountInfo<'b>],
@@ -235,5 +248,6 @@ struct StateTransitionRequest<'a, 'b, 'c> {
     beneficiary_acc_info: &'a AccountInfo<'b>,
     vesting_acc_info: &'a AccountInfo<'b>,
     instruction_data: &'c [u8],
-    vesting: &'c mut Vesting,
+    vesting_nonce: u8,
+    vesting_whitelist_owned: u64,
 }
