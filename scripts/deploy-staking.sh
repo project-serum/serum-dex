@@ -8,8 +8,8 @@
 #
 ################################################################################
 
-#CLUSTER=l
-CLUSTER=devnet
+CLUSTER=l
+#CLUSTER=devnet
 FAUCET_FLAG="--faucet"
 DEACTIVATION_TIMELOCK=60
 WITHDRAWAL_TIMELOCK=60

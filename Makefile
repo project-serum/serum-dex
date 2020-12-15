@@ -17,8 +17,8 @@ TEST_CLUSTER=l
 #
 # The url of TEST_CLUSTER.
 #
-TEST_CLUSTER_URL="http://localhost:8899"
-#TEST_CLUSTER_URL="https://devnet.solana.com"
+#TEST_CLUSTER_URL="http://localhost:8899"
+TEST_CLUSTER_URL="https://devnet.solana.com"
 #
 # One can optionally set this along with the test-program command
 # to avoid redeploying everytime tests are run.
