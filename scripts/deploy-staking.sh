@@ -101,7 +101,7 @@ main() {
     local msrm_faucet="None"
     if [ "$CLUSTER" != "mainnet" ]; then
         echo "Genesis initialization..."
-        genesis=$($serum dev init-mint $FAUCET_FLAG)
+        genesis=$($serum --config $CONFIG_FILE dev init-mint $FAUCET_FLAG)
 
         srm_mint=$(echo $genesis | jq .srmMint -r)
         msrm_mint=$(echo $genesis | jq .msrmMint -r)
