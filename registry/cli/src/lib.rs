@@ -38,7 +38,7 @@ pub enum Command {
         #[clap(short, long)]
         about: String,
         #[clap(short, long)]
-        image_url: String,
+        image_url: Option<String>,
     },
     /// Updates an entity. Active wallet must be the node leader.
     UpdateEntity {
@@ -174,7 +174,7 @@ fn create_entity_cmd(
     registrar: Pubkey,
     name: String,
     about: String,
-    image_url: String,
+    image_url: Option<String>,
 ) -> Result<()> {
     let leader_kp = ctx.wallet()?;
 
@@ -185,7 +185,7 @@ fn create_entity_cmd(
         metadata: Some(EntityMetadata {
             name,
             about,
-            image_url,
+            image_url: image_url.unwrap_or(" ".to_string()),
             meta_entity_program_id: ctx.meta_entity_pid,
         }),
     })?;
