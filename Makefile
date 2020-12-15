@@ -12,11 +12,15 @@ TEST_PAYER_FILEPATH="$(HOME)/.config/solana/id.json"
 #
 # The solana cluster to test against. Defaults to local.
 #
+ifndef TEST_CLUSTER
 TEST_CLUSTER=l
+endif
 #
 # The url of TEST_CLUSTER.
 #
+ifndef TEST_CLUSTER_URL
 TEST_CLUSTER_URL="http://localhost:8899"
+endif
 #
 # One can optionally set this along with the test-program command
 # to avoid redeploying everytime tests are run.
