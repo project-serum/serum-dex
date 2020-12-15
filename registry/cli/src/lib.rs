@@ -185,7 +185,7 @@ fn create_entity_cmd(
         metadata: Some(EntityMetadata {
             name,
             about,
-            image_url: image_url.unwrap_or(" ".to_string()),
+            image_url: image_url.unwrap_or("".to_string()),
             meta_entity_program_id: ctx.meta_entity_pid,
         }),
     })?;
