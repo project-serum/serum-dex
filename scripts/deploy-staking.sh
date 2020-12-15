@@ -67,6 +67,8 @@ main() {
     local msrm_mint=$(echo $genesis | jq .msrmMint -r)
     local god=$(echo $genesis | jq .god -r)
     local god_msrm=$(echo $genesis | jq .godMsrm -r)
+    local srm_faucet=$(echo $genesis | jq .srmFaucet -r)
+    local msrm_faucet=$(echo $genesis | jq .srmFaucet -r)
 
     #
     # Write out the CLI configuration file.
@@ -81,12 +83,17 @@ mints:
   srm: $srm_mint
   msrm: $msrm_mint
 
+faucets:
+  srm: $srm_faucet
+  msrm: $msrm_faucet
+
 programs:
   rewards_pid: $rewards_pid
   registry_pid: $registry_pid
   meta_entity_pid: $meta_entity_pid
   lockup_pid: $lockup_pid
   dex_pid: $dex_pid
+
 EOM
 
     #

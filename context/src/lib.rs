@@ -26,6 +26,7 @@ pub struct Context {
     pub meta_entity_pid: Pubkey,
     pub lockup_pid: Pubkey,
     pub dex_pid: Pubkey,
+    pub faucet_pid: Pubkey,
 }
 
 impl Context {
@@ -85,6 +86,7 @@ struct Programs {
     pub meta_entity_pid: String,
     pub lockup_pid: String,
     pub dex_pid: String,
+    pub faucet_pid: Option<String>,
 }
 
 impl Config {
@@ -114,6 +116,11 @@ impl TryFrom<Config> for Context {
             lockup_pid: cfg.programs.lockup_pid.parse()?,
             meta_entity_pid: cfg.programs.meta_entity_pid.parse()?,
             dex_pid: cfg.programs.dex_pid.parse()?,
+            faucet_pid: cfg
+                .programs
+                .faucet_pid
+                .unwrap_or("4bXpkKSV8swHSnwqtzuboGPaPDeEgAn4Vt8GfarV5rZt".to_string())
+                .parse()?,
         })
     }
 }

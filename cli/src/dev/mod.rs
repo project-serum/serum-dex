@@ -13,6 +13,8 @@ use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::Signer;
 use std::num::NonZeroU64;
 
+mod faucet;
+
 #[derive(Debug, Clap)]
 pub enum Command {
     /// Creates 1) SRM mint, 2) MSRM mint 3) SRM funded token account, and
@@ -51,13 +53,15 @@ fn init_mint(ctx: &Context) -> Result<()> {
     std::env::set_var(serum_common_tests::TEST_PROGRAM_ID, program_id);
     std::env::set_var(serum_common_tests::TEST_PAYER_FILEPATH, payer_filepath);
     std::env::set_var(serum_common_tests::TEST_CLUSTER, cluster);
-    let (_client, g) = serum_common_tests::genesis::<Client>();
+    let (client, g) = serum_common_tests::genesis::<Client>();
+
+    let srm_faucet = faucet::create(ctx, g.srm_mint, 1_000_000_000_000, client.payer().pubkey())?;
+    let msrm_faucet = faucet::create(ctx, g.msrm_mint, 1_000_000_000_000, client.payer().pubkey())?;
 
     println!(
         "{}",
         serde_json::json!({
             "wallet": g.wallet.to_string(),
-            "mintAuthority": g.mint_authority.to_string(),
             "srmMint": g.srm_mint.to_string(),
             "msrmMint": g.msrm_mint.to_string(),
             "god": g.god.to_string(),
@@ -65,6 +69,8 @@ fn init_mint(ctx: &Context) -> Result<()> {
             "godBalanceBefore": g.god_balance_before,
             "godMsrmBalanceBefore": g.god_msrm_balance_before,
             "godOwner": g.god_owner.to_string(),
+            "srmFaucet": srm_faucet.to_string(),
+            "msrmFaucet": msrm_faucet.to_string(),
         })
     );
 
