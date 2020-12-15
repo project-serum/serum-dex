@@ -43,7 +43,6 @@ fn lifecycle() -> Result<()> {
             max_stake_per_entity: 1_000_000_000_000_000,
             stake_rate: 1,
             stake_rate_mega: 1,
-            reward_activation_threshold: 1,
         })?;
 
     // Create entity--and subsequently activate it so that it can receive
