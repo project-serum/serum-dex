@@ -12,13 +12,18 @@ CLUSTER=l
 #CLUSTER=devnet
 DEACTIVATION_TIMELOCK=60
 WITHDRAWAL_TIMELOCK=60
+#
 # 100_000_000 million SRM (6 decimals)
+#
 MAX_STAKE_PER_ENTITY=100000000000000
+#
 # 1 SRM (6 decimals) to stake.
+#
 STAKE_RATE=1000000
+#
 # 1 MSRM (0 decimals) to stake.
+#
 STAKE_RATE_MEGA=1
-REWARD_ACTIVATION_THRESHOLD=1
 
 CONFIG_FILE=~/.config/serum/cli/dev.yaml
 serum=$(pwd)/target/debug/serum
@@ -90,7 +95,6 @@ EOM
     local rInit=$($serum --config $CONFIG_FILE \
           registry init \
           --deactivation-timelock $DEACTIVATION_TIMELOCK \
-          --reward-activation-threshold $REWARD_ACTIVATION_THRESHOLD \
           --withdrawal-timelock $WITHDRAWAL_TIMELOCK \
           --max-stake-per-entity $MAX_STAKE_PER_ENTITY \
           --stake-rate $STAKE_RATE \
@@ -101,8 +105,7 @@ EOM
     local reward_q=$(echo $rInit | jq .rewardEventQueue -r)
 
     local lInit=$($serum --config $CONFIG_FILE \
-          lockup \
-          initialize)
+          lockup initialize)
 
     local safe=$(echo $lInit | jq .safe -r)
 
@@ -115,8 +118,7 @@ EOM
           --registrar $registrar \
           --about "This the default entity all new members join." \
           --image-url " " \
-          --name "Default" \
-          --meta-entity-program-id $meta_entity_pid)
+          --name "Default" )
 
     local entity=$(echo $createEntity | jq .entity -r)
 

@@ -1,6 +1,7 @@
 use serum_common::client::rpc;
 use serum_common::pack::*;
 use serum_meta_entity::accounts::mqueue::{MQueue, Ring as MQueueRing};
+use serum_meta_entity::client::Client as MetaEntityClient;
 use serum_registry::accounts::reward_queue::{RewardEventQueue, Ring};
 use serum_registry::accounts::{
     self, pending_withdrawal, vault, BalanceSandbox, Entity, LockedRewardVendor, Member,
@@ -32,7 +33,6 @@ impl Client {
             withdrawal_timelock,
             deactivation_timelock,
             max_stake_per_entity,
-            reward_activation_threshold,
             mint,
             mega_mint,
             stake_rate,
@@ -113,7 +113,6 @@ impl Client {
                     nonce,
                     withdrawal_timelock,
                     deactivation_timelock,
-                    reward_activation_threshold,
                     max_stake_per_entity,
                     stake_rate,
                     stake_rate_mega,
@@ -267,6 +266,37 @@ impl Client {
             new_metadata,
         )?;
         Ok(UpdateEntityResponse { tx })
+    }
+
+    pub fn update_entity_metadata(
+        &self,
+        req: UpdateEntityMetadataRequest,
+    ) -> Result<UpdateEntityMetadataResponse, ClientError> {
+        let UpdateEntityMetadataRequest {
+            name,
+            about,
+            image_url,
+            meta_entity_pid,
+            entity,
+        } = req;
+
+        let entity = self.entity(&entity)?;
+
+        let accounts = [
+            AccountMeta::new(entity.metadata, false),
+            AccountMeta::new_readonly(self.payer().pubkey(), true),
+        ];
+
+        let client = MetaEntityClient::new(
+            meta_entity_pid,
+            Keypair::from_bytes(&self.payer().to_bytes()).expect("invalid payer"),
+            self.inner.url(),
+            Some(self.inner.options().clone()),
+        );
+        client
+            .update(&accounts, name, about, image_url, None)
+            .map(|tx| UpdateEntityMetadataResponse { tx })
+            .map_err(|err| ClientError::Any(anyhow::anyhow!("{}", err.to_string())))
     }
 
     pub fn create_member(
@@ -529,10 +559,15 @@ impl Client {
             amount,
         } = req;
 
+        // Dummy account to pass into the instruction, since it conforms to the
+        // lockup program's whitelist withdraw/deposit interface.
+        let dummy_account_meta = AccountMeta::new_readonly(sysvar::clock::ID, false);
+
         let vault = self.vault_for(&member, &depositor, false)?;
         let vault_acc = rpc::get_token_account::<TokenAccount>(self.rpc(), &vault)?;
         let accounts = vec![
             // Whitelist relay interface,
+            dummy_account_meta,
             AccountMeta::new(depositor, false),
             AccountMeta::new(depositor_authority.pubkey(), true),
             AccountMeta::new_readonly(spl_token::ID, false),
@@ -563,10 +598,16 @@ impl Client {
             registrar,
             amount,
         } = req;
+
+        // Dummy account to pass into the instruction, since it conforms to the
+        // lockup program's whitelist withdraw/deposit interface.
+        let dummy_account_meta = AccountMeta::new_readonly(sysvar::clock::ID, false);
+
         let vault = self.vault_for(&member, &depositor, false)?;
         let vault_acc = rpc::get_token_account::<TokenAccount>(self.rpc(), &vault)?;
         let accounts = vec![
             // Whitelist relay interface.
+            dummy_account_meta,
             AccountMeta::new(depositor, false),
             AccountMeta::new_readonly(beneficiary.pubkey(), true),
             AccountMeta::new_readonly(spl_token::ID, false),
@@ -846,11 +887,11 @@ impl Client {
             AccountMeta::new_readonly(solana_sdk::sysvar::clock::ID, false),
             AccountMeta::new_readonly(self.vault_authority(&registrar)?, false),
             AccountMeta::new_readonly(m.balances[0].owner, false),
-            AccountMeta::new_readonly(m.balances[0].vault_stake, false),
-            AccountMeta::new_readonly(m.balances[0].vault_stake_mega, false),
+            AccountMeta::new_readonly(m.balances[0].spt, false),
+            AccountMeta::new_readonly(m.balances[0].spt_mega, false),
             AccountMeta::new_readonly(m.balances[1].owner, false),
-            AccountMeta::new_readonly(m.balances[1].vault_stake, false),
-            AccountMeta::new_readonly(m.balances[1].vault_stake_mega, false),
+            AccountMeta::new_readonly(m.balances[1].spt, false),
+            AccountMeta::new_readonly(m.balances[1].spt_mega, false),
         ];
         let tx = self
             .inner
@@ -1115,16 +1156,23 @@ fn create_metadata_instructions(
     about: String,
     image_url: String,
 ) -> Vec<Instruction> {
-    let md = serum_meta_entity::accounts::Metadata {
-        initialized: false,
-        entity: Pubkey::new_from_array([0; 32]),
-        authority: *payer,
-        name: name.clone(),
-        about: about.clone(),
-        image_url: image_url.clone(),
-        chat: Pubkey::new_from_array([0; 32]),
+    let metadata_size = {
+        // 280 chars max.
+        let max_name = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+						.to_string();
+        let max_about = max_name.clone();
+        let max_image_url = max_name.clone();
+        let md = serum_meta_entity::accounts::Metadata {
+            initialized: false,
+            entity: Pubkey::new_from_array([0; 32]),
+            authority: *payer,
+            name: max_name,
+            about: max_about,
+            image_url: max_image_url,
+            chat: Pubkey::new_from_array([0; 32]),
+        };
+        md.size().unwrap()
     };
-    let metadata_size = md.size().unwrap();
     let lamports = client
         .get_minimum_balance_for_rent_exemption(metadata_size as usize)
         .unwrap();
@@ -1179,7 +1227,6 @@ pub struct InitializeRequest {
     pub withdrawal_timelock: i64,
     pub deactivation_timelock: i64,
     pub max_stake_per_entity: u64,
-    pub reward_activation_threshold: u64,
     pub mint: Pubkey,
     pub mega_mint: Pubkey,
     pub stake_rate: u64,
@@ -1220,6 +1267,18 @@ pub struct UpdateEntityRequest<'a> {
 }
 
 pub struct UpdateEntityResponse {
+    pub tx: Signature,
+}
+
+pub struct UpdateEntityMetadataRequest {
+    pub name: Option<String>,
+    pub about: Option<String>,
+    pub image_url: Option<String>,
+    pub meta_entity_pid: Pubkey,
+    pub entity: Pubkey,
+}
+
+pub struct UpdateEntityMetadataResponse {
     pub tx: Signature,
 }
 

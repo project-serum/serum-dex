@@ -26,9 +26,9 @@ pub fn handler(program_id: &Pubkey, accounts: &[AccountInfo]) -> Result<(), Regi
     while acc_infos.len() > 0 {
         asset_acc_infos.push(AssetAccInfos {
             owner_acc_info: next_account_info(acc_infos)?,
-            vault_stake_acc_info: next_account_info(acc_infos)?,
-            vault_stake_mega_acc_info: next_account_info(acc_infos)?,
-        })
+            spt_acc_info: next_account_info(acc_infos)?,
+            spt_mega_acc_info: next_account_info(acc_infos)?,
+        });
     }
 
     let AccessControlResponse {
@@ -121,9 +121,9 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
     // BPF exploads when mapping so use a for loop.
     let mut assets = vec![];
     for a in &asset_acc_infos {
-        let (vault_stake, is_mega) = access_control::member_vault_stake(
+        let (spt, is_mega) = access_control::member_spt(
             &member,
-            a.vault_stake_acc_info,
+            a.spt_acc_info,
             vault_authority_acc_info,
             registrar_acc_info,
             &registrar,
@@ -131,9 +131,9 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
             a.owner_acc_info.key,
         )?;
         assert!(!is_mega);
-        let (vault_stake_mega, is_mega) = access_control::member_vault_stake(
+        let (spt_mega, is_mega) = access_control::member_spt(
             &member,
-            a.vault_stake_mega_acc_info,
+            a.spt_mega_acc_info,
             vault_authority_acc_info,
             registrar_acc_info,
             &registrar,
@@ -141,10 +141,7 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
             a.owner_acc_info.key,
         )?;
         assert!(is_mega);
-        assets.push(Assets {
-            vault_stake,
-            vault_stake_mega,
-        })
+        assets.push(Assets { spt, spt_mega });
     }
 
     Ok(AccessControlResponse {
@@ -182,11 +179,11 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
     // untouched.
     for a in assets {
         // Remove.
-        curr_entity.balances.spt_amount -= a.vault_stake.amount;
-        curr_entity.balances.spt_mega_amount -= a.vault_stake_mega.amount;
+        curr_entity.balances.spt_amount -= a.spt.amount;
+        curr_entity.balances.spt_mega_amount -= a.spt_mega.amount;
         // Add.
-        new_entity.balances.spt_amount += a.vault_stake.amount;
-        new_entity.balances.spt_mega_amount += a.vault_stake_mega.amount;
+        new_entity.balances.spt_amount += a.spt.amount;
+        new_entity.balances.spt_mega_amount += a.spt_mega.amount;
     }
 
     member.entity = *new_entity_acc_info.key;
@@ -227,12 +224,12 @@ struct StateTransitionRequest<'a, 'b, 'c> {
 }
 
 struct Assets {
-    vault_stake: TokenAccount,
-    vault_stake_mega: TokenAccount,
+    spt: TokenAccount,
+    spt_mega: TokenAccount,
 }
 
 struct AssetAccInfos<'a, 'b> {
     owner_acc_info: &'a AccountInfo<'b>,
-    vault_stake_acc_info: &'a AccountInfo<'b>,
-    vault_stake_mega_acc_info: &'a AccountInfo<'b>,
+    spt_acc_info: &'a AccountInfo<'b>,
+    spt_mega_acc_info: &'a AccountInfo<'b>,
 }

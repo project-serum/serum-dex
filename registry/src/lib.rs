@@ -30,7 +30,6 @@ pub mod instruction {
             nonce: u8,
             withdrawal_timelock: i64,
             deactivation_timelock: i64,
-            reward_activation_threshold: u64,
             max_stake_per_entity: u64,
             stake_rate: u64,
             stake_rate_mega: u64,
@@ -43,7 +42,6 @@ pub mod instruction {
             new_authority: Option<Pubkey>,
             withdrawal_timelock: Option<i64>,
             deactivation_timelock: Option<i64>,
-            reward_activation_threshold: Option<u64>,
             max_stake_per_entity: Option<u64>,
         },
         /// Accounts:

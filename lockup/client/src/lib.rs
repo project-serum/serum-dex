@@ -120,11 +120,11 @@ impl Client {
         let whitelist = s.whitelist;
         let mut accounts = vec![
             AccountMeta::new_readonly(beneficiary.pubkey(), true),
-            AccountMeta::new(vesting, false),
             AccountMeta::new_readonly(safe, false),
             AccountMeta::new_readonly(whitelist, false),
             AccountMeta::new_readonly(whitelist_program, false),
             // Below are relay accounts.
+            AccountMeta::new(vesting, false),
             AccountMeta::new(vault, false),
             AccountMeta::new_readonly(
                 self.vault_authority(safe, vesting, beneficiary.pubkey())?,
@@ -170,13 +170,13 @@ impl Client {
         let whitelist = s.whitelist;
         let mut accounts = vec![
             AccountMeta::new_readonly(beneficiary.pubkey(), true),
-            AccountMeta::new(vesting, false),
             AccountMeta::new_readonly(safe, false),
             AccountMeta::new_readonly(whitelist, false),
             AccountMeta::new_readonly(whitelist_program, false),
             // Below are relay accounts.
             //
             // Whitelist relay interface.
+            AccountMeta::new(vesting, false),
             AccountMeta::new(vault, false),
             AccountMeta::new_readonly(
                 self.vault_authority(safe, vesting, beneficiary.pubkey())?,

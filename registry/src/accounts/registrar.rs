@@ -18,9 +18,6 @@ pub struct Registrar {
     pub authority: Pubkey,
     /// Nonce to derive the program-derived address owning the vaults.
     pub nonce: u8,
-    /// The amount of tokens that must be deposited to be eligible for rewards,
-    /// denominated in SRM.
-    pub reward_activation_threshold: u64,
     /// The maximum stake per node entity, denominated in SRM.
     pub max_stake_per_entity: u64,
     /// Number of seconds that must pass for a withdrawal to complete.

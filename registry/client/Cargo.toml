@@ -15,6 +15,4 @@ borsh = { git = "https://github.com/project-serum/borsh", branch = "serum" }
 serum-registry = { path = "../", features = ["client"] }
 solana-client-gen = { path = "../../solana-client-gen" }
 serum-common = { path = "../../common" }
-# todo: remove
-serum-pool-schema = { path = "../../pool/schema" }
-serum-meta-entity = { path = "../meta-entity" }
+serum-meta-entity = { path = "../meta-entity", features = ["client"] }
