@@ -8,8 +8,9 @@
 #
 ################################################################################
 
-CLUSTER=l
-#CLUSTER=devnet
+#CLUSTER=l
+CLUSTER=devnet
+FAUCET_FLAG="--faucet"
 DEACTIVATION_TIMELOCK=60
 WITHDRAWAL_TIMELOCK=60
 #
@@ -61,14 +62,14 @@ main() {
     #
     # Generate genesis state.
     #
-    local genesis=$($serum dev init-mint)
+    local genesis=$($serum dev init-mint $FAUCET_FLAG)
 
     local srm_mint=$(echo $genesis | jq .srmMint -r)
     local msrm_mint=$(echo $genesis | jq .msrmMint -r)
     local god=$(echo $genesis | jq .god -r)
     local god_msrm=$(echo $genesis | jq .godMsrm -r)
     local srm_faucet=$(echo $genesis | jq .srmFaucet -r)
-    local msrm_faucet=$(echo $genesis | jq .srmFaucet -r)
+    local msrm_faucet=$(echo $genesis | jq .msrmFaucet -r)
 
     #
     # Write out the CLI configuration file.
@@ -79,13 +80,13 @@ main() {
 network:
   cluster: $CLUSTER
 
+#
+# SRM Faucet:  $srm_faucet
+# MSRM Faucet: $msrm_faucet
+#
 mints:
   srm: $srm_mint
   msrm: $msrm_mint
-
-faucets:
-  srm: $srm_faucet
-  msrm: $msrm_faucet
 
 programs:
   rewards_pid: $rewards_pid
