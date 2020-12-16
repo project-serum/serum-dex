@@ -6,10 +6,39 @@
 # Does deployment + initialization of all programs and accounts needed to run
 # the staking + lockup application.
 #
+# Usage:
+#
+# ./scripts/deploy-staking.sh <localnet | devnet | mainnet>
+#
 ################################################################################
 
-CLUSTER=l
-#CLUSTER=devnet
+set -euox pipefail
+
+CLUSTER=$1
+
+if [ "$CLUSTER" = "devnet" ]; then
+    echo "Deploying to Devnet..."
+    FAUCET_FLAG="--faucet"
+    CONFIG_FILE=~/.config/serum/cli/devnet.yaml
+    CLUSTER_URL="https://devnet.solana.com"
+elif [ "$CLUSTER" = "mainnet" ]; then
+    echo "Deploying to Mainnet..."
+    FAUCET_FLAG=""
+    CONFIG_FILE=~/.config/serum/cli/mainnet.yaml
+    CLUSTER_URL="https://api.mainnet-beta.solana.com"
+elif [ "$CLUSTER" = "localnet" ]; then
+    echo "Deploying to Localnet..."
+    FAUCET_FLAG=""
+    CONFIG_FILE=~/.config/serum/cli/localnet.yaml
+    CLUSTER_URL="http://localhost:8899"
+else
+    echo "Invalid cluster"
+    exit 1
+fi
+
+#
+# Seconds.
+#
 DEACTIVATION_TIMELOCK=60
 WITHDRAWAL_TIMELOCK=60
 #
@@ -24,8 +53,9 @@ STAKE_RATE=1000000
 # 1 MSRM (0 decimals) to stake.
 #
 STAKE_RATE_MEGA=1
-
-CONFIG_FILE=~/.config/serum/cli/dev.yaml
+#
+# Must be built with the `dev` feature on.
+#
 serum=$(pwd)/target/debug/serum
 
 main() {
@@ -40,6 +70,7 @@ main() {
     #
     # Build all programs.
     #
+    echo "Building all programs..."
     make -s -C lockup build
     make -s -C registry build
     make -s -C registry/meta-entity build
@@ -49,34 +80,51 @@ main() {
     #
     # Deploy all the programs.
     #
-    local pids=$(make -s -C registry deploy-all)
-    local rewards_pids=$(make -s -C registry/rewards deploy-all)
+    echo "Deploying all programs..."
+    local pids=$(TEST_CLUSTER="$CLUSTER" TEST_CLUSTER_URL="$CLUSTER_URL" make -s -C registry deploy-all)
+    local rewards_pids=$(TEST_CLUSTER="$CLUSTER" TEST_CLUSTER_URL="$CLUSTER_URL" make -s -C registry/rewards deploy-all)
 
     local registry_pid=$(echo $pids | jq .registryProgramId -r)
     local lockup_pid=$(echo $pids | jq .lockupProgramId -r)
     local meta_entity_pid=$(echo $pids | jq .metaEntityProgramId -r)
-    local dex_pid=$(echo $rewards_pids | jq .dexProgramId -r)
     local rewards_pid=$(echo $rewards_pids | jq .rewardsProgramId -r)
+    local dex_pid=$(echo $rewards_pids | jq .dexProgramId -r)
 
     #
-    # Generate genesis state.
+    # Generate genesis state. Use dummy accounts, if needed.
     #
-    local genesis=$($serum dev init-mint)
+    local srm_mint="SRMuApVNdxXokk5GT7XD5cUUgXMBCoAz2LHeuAoKWRt"
+    local msrm_mint="MSRMcoVyrFxnSgo5uXwone5SKcGhT1KEJMFEkMEWf9L"
+    local god="FhmUh2PEpTzUwBWPt4qgDBeqfmb2ES3T64CkT1ZiktSS"       # Dummy.
+    local god_msrm="FhmUh2PEpTzUwBWPt4qgDBeqfmb2ES3T64CkT1ZiktSS"  # Dummy.
+    local srm_faucet="None"
+    local msrm_faucet="None"
+    if [ "$CLUSTER" != "mainnet" ]; then
+        echo "Genesis initialization..."
+        genesis=$($serum --config $CONFIG_FILE dev init-mint $FAUCET_FLAG)
 
-    local srm_mint=$(echo $genesis | jq .srmMint -r)
-    local msrm_mint=$(echo $genesis | jq .msrmMint -r)
-    local god=$(echo $genesis | jq .god -r)
-    local god_msrm=$(echo $genesis | jq .godMsrm -r)
+        srm_mint=$(echo $genesis | jq .srmMint -r)
+        msrm_mint=$(echo $genesis | jq .msrmMint -r)
+        god=$(echo $genesis | jq .god -r)
+        god_msrm=$(echo $genesis | jq .godMsrm -r)
+        srm_faucet=$(echo $genesis | jq .srmFaucet -r)
+        msrm_faucet=$(echo $genesis | jq .msrmFaucet -r)
+    fi
 
     #
     # Write out the CLI configuration file.
     #
+    echo "Writing config $CONFIG_FILE..."
     mkdir -p $(dirname $CONFIG_FILE)
     cat << EOM > $CONFIG_FILE
 ---
 network:
   cluster: $CLUSTER
 
+#
+# SRM Faucet:  $srm_faucet
+# MSRM Faucet: $msrm_faucet
+#
 mints:
   srm: $srm_mint
   msrm: $msrm_mint
@@ -87,11 +135,13 @@ programs:
   meta_entity_pid: $meta_entity_pid
   lockup_pid: $lockup_pid
   dex_pid: $dex_pid
+
 EOM
 
     #
     # Now intialize all the accounts.
     #
+    echo "Initializing registrar..."
     local rInit=$($serum --config $CONFIG_FILE \
           registry init \
           --deactivation-timelock $DEACTIVATION_TIMELOCK \
@@ -104,6 +154,7 @@ EOM
     local registrar_nonce=$(echo $rInit | jq .nonce -r)
     local reward_q=$(echo $rInit | jq .rewardEventQueue -r)
 
+    echo "Initializing lockup..."
     local lInit=$($serum --config $CONFIG_FILE \
           lockup initialize)
 
@@ -113,6 +164,7 @@ EOM
     # Initialize a node entity. Hack until we separate joining entities
     # from creating member accounts.
     #
+    echo "Creating the default node entity..."
     local createEntity=$($serum --config $CONFIG_FILE \
           registry create-entity \
           --registrar $registrar \
@@ -125,6 +177,7 @@ EOM
     #
     # Add the registry to the lockup program whitelist.
     #
+    echo "Adding registry to the lockup whitelist..."
     $serum --config $CONFIG_FILE \
     lockup gov \
     --safe $safe \
@@ -136,6 +189,7 @@ EOM
     #
     # Log the generated TypeScript.
     #
+    set +e
     read -r -d '' VAR << EOM
 {
     srm: new PublicKey('${srm_mint}'),

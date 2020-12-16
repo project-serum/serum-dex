@@ -13,11 +13,16 @@ use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::Signer;
 use std::num::NonZeroU64;
 
+mod faucet;
+
 #[derive(Debug, Clap)]
 pub enum Command {
     /// Creates 1) SRM mint, 2) MSRM mint 3) SRM funded token account, and
     /// 4) MSRM funded token account, all owned by the configured wallet.
-    InitMint,
+    InitMint {
+        #[clap(short, long)]
+        faucet: bool,
+    },
     AllocateAccount {
         #[clap(short, long)]
         program_id: Pubkey,
@@ -34,7 +39,7 @@ pub enum Command {
 
 pub fn run(ctx: Context, cmd: Command) -> Result<()> {
     match cmd {
-        Command::InitMint => init_mint(&ctx),
+        Command::InitMint { faucet } => init_mint(&ctx, faucet),
         Command::AllocateAccount { program_id, size } => allocate_account(&ctx, program_id, size),
         Command::GenerateOrders {
             coin_wallet,
@@ -43,7 +48,7 @@ pub fn run(ctx: Context, cmd: Command) -> Result<()> {
     }
 }
 
-fn init_mint(ctx: &Context) -> Result<()> {
+fn init_mint(ctx: &Context, faucet: bool) -> Result<()> {
     // Doesn't matter.
     let program_id = Pubkey::new_from_array([0; 32]).to_string();
     let payer_filepath = &ctx.wallet_path.to_string();
@@ -51,13 +56,22 @@ fn init_mint(ctx: &Context) -> Result<()> {
     std::env::set_var(serum_common_tests::TEST_PROGRAM_ID, program_id);
     std::env::set_var(serum_common_tests::TEST_PAYER_FILEPATH, payer_filepath);
     std::env::set_var(serum_common_tests::TEST_CLUSTER, cluster);
-    let (_client, g) = serum_common_tests::genesis::<Client>();
+    let (client, g) = serum_common_tests::genesis::<Client>();
 
+    let (srm_faucet, msrm_faucet) = match faucet {
+        false => (None, None),
+        true => {
+            let srm_faucet =
+                faucet::create(ctx, g.srm_mint, 1_000_000_000_000, client.payer().pubkey())?;
+            let msrm_faucet =
+                faucet::create(ctx, g.msrm_mint, 1_000_000_000_000, client.payer().pubkey())?;
+            (Some(srm_faucet), Some(msrm_faucet))
+        }
+    };
     println!(
         "{}",
         serde_json::json!({
             "wallet": g.wallet.to_string(),
-            "mintAuthority": g.mint_authority.to_string(),
             "srmMint": g.srm_mint.to_string(),
             "msrmMint": g.msrm_mint.to_string(),
             "god": g.god.to_string(),
@@ -65,6 +79,14 @@ fn init_mint(ctx: &Context) -> Result<()> {
             "godBalanceBefore": g.god_balance_before,
             "godMsrmBalanceBefore": g.god_msrm_balance_before,
             "godOwner": g.god_owner.to_string(),
+            "srmFaucet": match srm_faucet {
+                None => "null".to_string(),
+                Some(f) => f.to_string(),
+            },
+            "msrmFaucet": match msrm_faucet {
+                None => "null".to_string(),
+                Some(f) => f.to_string(),
+            }
         })
     );
 

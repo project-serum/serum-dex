@@ -3085,7 +3085,9 @@ dependencies = [
  "serum-registry-cli",
  "serum-registry-rewards-cli",
  "serum_dex",
+ "solana-client",
  "solana-sdk",
+ "spl-token 2.0.6",
 ]
 
 [[package]]

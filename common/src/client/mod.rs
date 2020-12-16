@@ -32,7 +32,7 @@ impl FromStr for Cluster {
             "l" | "localnet" => Ok(Cluster::Localnet),
             "g" | "debug" => Ok(Cluster::Debug),
             _ => Err(anyhow::Error::msg(
-                "Cluster must be one of [testnet, mainnet, devnet] or be an http or https url\n",
+                "Cluster must be one of [localnet, testnet, mainnet, devnet] or be an http or https url\n",
             )),
         }
     }
