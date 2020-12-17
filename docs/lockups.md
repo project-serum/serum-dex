@@ -5,7 +5,7 @@ WARNING: All code related to Serum Lockups is unaudited. Use at your own risk.
 ## Introduction
 
 The **Lockup** program provides a simple mechanism on Solana to lockup tokens
-of any mint, and release those funds over time, as defined by a vesting schedule.
+of any mint, and release those funds over time as defined by a vesting schedule.
 Although these lockups track a target **beneficiary**, who will eventually receive the
 funds upon vesting, a proper deployment of the program will ensure this **beneficiary**
 can never actually retrieve tokens before vesting. Funds are *never* in an SPL
