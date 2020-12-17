@@ -124,7 +124,7 @@ any other member. So if a single pool token represents one SRM. And if a single 
 member of the pool, all the existing member's shares are now worth two SRM. So to enter the pool without
 dilution, one would have to "create" at a price of 2 SRM per share. This means that rewarding
 stakers becomes more expensive over time. One could of course solve this problem by implementing
-arbitrary `n:m` pool token splits, which leads us right back to the problem of mutating glopal account
+arbitrary `n:m` pool token splits, which leads us right back to the problem of mutating global account
 state for an SPL token. Furthermore, we haven't even touched upon dropping locked token rewards,
 which of course can't be dropped directly onto a pool, since they are controlled by an additional
 program controlling it's own set of accounts. So, if we did go with an AMM style pool, we'd need a separate
