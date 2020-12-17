@@ -14,7 +14,7 @@ For an introduction to DEX and the idea of cranking, see
 The way cranking rewards work is simple, instead of sending transactions directly to the DEX,
 a cranker sends transactions to a cranking rewards vendor, which is an on-chain
 Solana program that proxies all requests to the DEX, recording the amount of events
-cranked, and then sending a reward to the cranker's wallet as a function of the number
+cranked, and then sends a reward to the cranker's wallet as a function of the number
 of events processed and the reward vendor's fee rate.
 
 (Note that, although similar in spirity, the cranking rewards vendor is an entirely different
