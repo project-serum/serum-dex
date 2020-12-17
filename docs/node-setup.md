@@ -8,7 +8,7 @@ Serum nodes are run by staked node leaders, who become eligible for cranking
 when their node has at least 1 MSRM staked. These "cranking rewards"
 are effectively transaction fees earned for operating the DEX.
 
-For an introduction to DEX and the idea of cranking, see
+For an introduction to the DEX and the idea of cranking, see
 [A technical introduction to the Serum DEX](https://docs.google.com/document/d/1isGJES4jzQutI0GtQGuqtrBUqeHxl_xJNXdtOv4SdII/edit).
 
 The way cranking rewards work is simple, instead of sending transactions directly to the DEX,
