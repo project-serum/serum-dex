@@ -178,7 +178,11 @@ has been dropped, but before claiming that reward, one will become ineligible fo
 Similarly, if one switches their **Member** account from one **Entity** to another *after* a
 reward has been dropped but before claiming that reward, one will also become ineligble for
 that reward. These are both overcomeable limitations and will be addressed in a future
-version.
+version. One solution: Currently Member accounts have a single timestamp that gets updated every time they stake,
+and reward vendors check this timestamp against their own to see if a **Member** was staked before
+the reward drop. If we extend this to be a queue or set, then a **Member** can simply provide the 
+reward vendor a proof it was staked, by providing the stake history queue, which the reward vendor
+can easily validate.
 
 Nevertheless, be mindful of this mechanism. If you're developing a UI, be sure to place safety mechanisms
 such as disabling staking and entity switching when a reward is availble but not yet claimed.
