@@ -97,8 +97,8 @@ main() {
     local msrm_mint="MSRMcoVyrFxnSgo5uXwone5SKcGhT1KEJMFEkMEWf9L"
     local god="FhmUh2PEpTzUwBWPt4qgDBeqfmb2ES3T64CkT1ZiktSS"       # Dummy.
     local god_msrm="FhmUh2PEpTzUwBWPt4qgDBeqfmb2ES3T64CkT1ZiktSS"  # Dummy.
-    local srm_faucet="None"
-    local msrm_faucet="None"
+    local srm_faucet="null"
+    local msrm_faucet="null"
     if [ "$CLUSTER" != "mainnet" ]; then
         echo "Genesis initialization..."
         genesis=$($serum --config $CONFIG_FILE dev init-mint $FAUCET_FLAG)
@@ -107,8 +107,13 @@ main() {
         msrm_mint=$(echo $genesis | jq .msrmMint -r)
         god=$(echo $genesis | jq .god -r)
         god_msrm=$(echo $genesis | jq .godMsrm -r)
-        srm_faucet=$(echo $genesis | jq .srmFaucet -r)
-        msrm_faucet=$(echo $genesis | jq .msrmFaucet -r)
+
+        if [ "$CLUSTER" = "devnet" ]; then
+            srm_faucet_key=$(echo $genesis | jq .srmFaucet -r)
+            srm_faucet="new PublicKey('$srm_faucet_key')"
+            msrm_faucet_key=$(echo $genesis | jq .msrmFaucet -r)
+            msrm_faucet="new PublicKey('$msrm_faucet_key')"
+        fi
     fi
 
     #
@@ -194,6 +199,10 @@ EOM
 {
     srm: new PublicKey('${srm_mint}'),
     msrm: new PublicKey('${msrm_mint}'),
+
+    srmFaucet: $srm_faucet,
+    msrmFaucet: $msrm_faucet,
+
     god: new PublicKey('${god}'),
     megaGod: new PublicKey('${god_msrm}'),
 
