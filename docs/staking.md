@@ -197,19 +197,28 @@ An **Entity** is an additional **Registry** owned account representing a collect
 accounts with an associated "node leader", who is eligible for additional rewards via "node duties".
 These "duties" amount to earning what are, effectively, transaction fees. An additional document will describe nodes
 and their setup, but for the purposes of staking, all a **Member** needs to know is that it
-belongs to an **Entity** account, and the stake associated with that **Entity** amount determines
+belongs to an **Entity** account, and the stake associated with that **Entity** determines
 its state.
 
 ### Member Accounts
 
-This document describes 4 types of **Member** accounts, making up a single set of balances. However,
-there are two stake pools: one for SRM holders and one for MSRM holders. Additionally there are two
-token types: locked and unlocked. As a result, there are really 16 vaults for each **Member**,
-4 sets of balances each with 4 vaults, all isolated from each other (so locked tokens don't get
-intermingled with unlocked tokens). As a result, we need an additional
-mechanism for entering and exiting the system to ensure we send locked tokens back to the lockup program.
-Specifically, locked and unlocked token balances are associated with a balance identifier (owner). For
-the unlocked set of accounts the identifier is the **Member** account's beneficiary (i.e.
-the authority of the entire account), and for the locked set of accounts it's  the vesting account's program
+This document describes 4 vault types belonging to **Member** accounts, making up a single set of balances. However,
+there are two stake pools: one for SRM holders and one for MSRM holders, so really there are 8 vault types.
+Additionally there are two types of balance groups: locked and unlocked. 
+As a result, there are really 16 vaults for each **Member**, 8 types of vaults in 2 separate sets, 
+each isolated from the other, so that locked tokens don't get intermingled with unlocked tokens. 
+
+But if we're staking locked tokens, we need to ensure we don't accidently unlock tokens. 
+To maintain the **Lockup** program's invariant, we need a mechanism for safely entering and exiting 
+the system; that is, locked tokens should only be sent back to the lockup program. 
+
+As a result, we assign each set of balances, locked and unlocked, it's own unique identifier. 
+For the unlocked set of accounts the  identifier is the **Member** account's beneficiary 
+(i.e. the authority of the entire account), and for the locked set of accounts it's the vesting account's program
 derived address, controlled by the lockup program. Then, upon depositing or withdrawing from the **Registry**,
-the associated vaults must be owned by balance identifier (owner) matching the vaults being mutated.
+the program ensures that tokens coming into the system are from vaults owned by the correct balance 
+identifier. Similarly, tokens going out of the system can only go to vaults owned by the correct balance
+identifier.
+
+In future work, this setup will allow us to extend the staking program to stake arbitrary assets owned by 
+arbitrary programs on behalf of an account owner.
