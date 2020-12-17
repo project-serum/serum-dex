@@ -7,14 +7,12 @@ WARNING: All code related to Serum Staking is unaudited. Use at your own risk.
 The **Registry** program provides the central point of on-chain coordination for stakers,
 providing two features: a gateway to the staking pool and a repository for node state.
 
-As a gateway to the staking pool, the Registry controls who and when stakers can enter
+As a gateway to the staking pool, the **Registry** controls who and when stakers can enter
 and exit the pool. This enables controls like a mandatory 1 MSRM node deposit before entering
-the pool, the staking of *locked* SRM, and a 1 week timelock for withdrawals.
-
-Additionally, the Registry acts as a repository for node state, allowing programs to
-perform access control on nodes. This is useful for programs building on-top of the
-registry, e.g., for programs paying out rewards for node duties or for those providing
-governance. For example, a **crank-rewards** program could use Registry accounts to determine if
+the pool, the staking of *locked* SRM, and a 1 week timelock for withdrawals. As a repository for 
+node state, the **Registry** allows other programs to
+perform access control on staked accounts. This is useful for programs building on-top of the
+registry. For example, a **crank-rewards** program could use Registry accounts to determine if
 a node-leader is eligble for payment. A **governance** program could tally votes from
 node member accounts based on their stake weight.
 
