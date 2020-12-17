@@ -88,3 +88,28 @@ Finally you can run your crank. Pick a market and run
 If the given `--rewards.registry-entity` is properly staked, and if the given
 `--rewards.instance` is funded, then you should see your token account
 `--rewards.receiver` start to receive rewards with each event consumed.
+
+## Finding a market to crank
+
+You can crank any market of your choosing. To find all markets one can use the `getProgramAccounts`
+API exposed by the Solana JSON RPC. In python,
+
+```python
+def find_market_addresses(program_id: str):
+    resp = requests.post('https://devnet.solana.com', json={
+        'jsonrpc': '2.0',
+        'method': 'getProgramAccounts',
+        'id': 1,
+        'params': [
+            program_id,
+            {
+                'encoding': 'base64',
+                'filters': [
+                    # Base58 encoding of 0x0300000000000000
+                    {'memcmp': {'offset': 5, 'bytes': 'W723RTUpoZ'}},
+                ],
+            },
+        ],
+    }).json()
+    return [info['pubkey'] for info in resp['result']]
+```
