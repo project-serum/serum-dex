@@ -22,8 +22,8 @@ program and account from the **Registry**'s reward vendors. Only node leaders ar
 to crank.)
 
 If the rewards vendor's vault becomes empty or if the node leader's Entity stake
-balance ever transitions to **inactive**, then the vendor will refuse to pay outside
-rewards to the node leader until the vault is funded or the node becomes **active** again.
+balance ever transitions to **inactive**, then the vendor will refuse to pay
+rewards to the node leader until the vault is funded and/or the node becomes **active** again.
 
 ## Install Rust
 
