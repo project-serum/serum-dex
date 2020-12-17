@@ -215,7 +215,7 @@ the system; that is, locked tokens should only be sent back to the lockup progra
 As a result, we assign each set of balances, locked and unlocked, it's own unique identifier. 
 For the unlocked set of accounts the  identifier is the **Member** account's beneficiary 
 (i.e. the authority of the entire account), and for the locked set of accounts it's the vesting account's program
-derived address, controlled by the lockup program. Then, upon depositing or withdrawing from the **Registry**,
+derived address, controlled by the lockup program. Upon depositing or withdrawing from the **Registry**,
 the program ensures that tokens coming into the system are from vaults owned by the correct balance 
 identifier. Similarly, tokens going out of the system can only go to vaults owned by the correct balance
 identifier.
