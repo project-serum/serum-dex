@@ -17,7 +17,7 @@ Solana program that proxies all requests to the DEX, recording the amount of eve
 cranked, and then sends a reward to the cranker's wallet as a function of the number
 of events processed and the reward vendor's fee rate.
 
-(Note that, although similar in spirity, the cranking rewards vendor is an entirely different
+(Note that, although similar in spirit, the cranking rewards vendor is an entirely different
 program and account from the **Registry**'s reward vendors. Only node leaders are eligible
 to crank.)
 
