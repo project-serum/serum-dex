@@ -122,7 +122,7 @@ as rewards are dropped onto the pool, the price to enter the pool monotonically 
 type of pool requires "creating" pool tokens, i.e., depositing enough tokens so that you don't dilute
 any other member. So if a single pool token represents one SRM. And if a single SRM is dropped onto every
 member of the pool, all the existing member's shares are now worth two SRM. So to enter the pool without
-dilution, one would have to "create" at a price of 2 SRM per share. This means that makes rewarding
+dilution, one would have to "create" at a price of 2 SRM per share. This means that rewarding
 stakers becomes more expensive over time. One could of course solve this problem by implementing
 arbitrary `n:m` pool token splits, which leads us right back to the problem of mutating glopal account
 state for an SPL token. Furthermore, we haven't even touched upon dropping locked token rewards,
