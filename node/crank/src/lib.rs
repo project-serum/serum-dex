@@ -30,8 +30,11 @@ pub fn start(req: StartRequest) -> Runtime {
 }
 
 pub fn run_cmd(ctx: &Context, cmd: Command) -> Result<()> {
-    serum_crank::start(serum_crank::Opts {
-        cluster: ctx.cluster.clone(),
-        command: cmd,
-    })
+    serum_crank::start(
+        Some(ctx.clone()),
+        serum_crank::Opts {
+            cluster: ctx.cluster.clone(),
+            command: cmd,
+        },
+    )
 }

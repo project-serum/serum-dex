@@ -39,6 +39,7 @@ use serum_common::client::rpc::{
     create_and_init_mint, create_token_account, mint_to_new_account, send_txn, simulate_transaction,
 };
 use serum_common::client::Cluster;
+use serum_context::Context;
 use serum_dex::instruction::{MarketInstruction, NewOrderInstructionV1};
 use serum_dex::matching::{OrderType, Side};
 use serum_dex::state::gen_vault_signer_key;
@@ -112,12 +113,36 @@ pub enum Command {
         payer: String,
     },
     ConsumeEvents {
-        #[clap(flatten)]
-        inner: ConsumeEventsInner,
+        #[clap(long, short)]
+        dex_program_id: Pubkey,
+        #[clap(long)]
+        payer: String,
+        #[clap(long, short)]
+        market: Pubkey,
+        #[clap(long, short)]
+        coin_wallet: Pubkey,
+        #[clap(long, short)]
+        pc_wallet: Pubkey,
+        #[clap(long, short)]
+        num_workers: usize,
+        #[clap(long, short)]
+        events_per_worker: usize,
+        #[clap(long)]
+        num_accounts: Option<usize>,
+        #[clap(long)]
+        log_directory: String,
     },
     ConsumeEventRewards {
-        #[clap(flatten)]
-        inner: ConsumeEventsInner,
+        #[clap(long, short)]
+        market: Pubkey,
+        #[clap(long, short, default_value = "1")]
+        num_workers: usize,
+        #[clap(long, short, default_value = "1")]
+        events_per_worker: usize,
+        #[clap(long)]
+        num_accounts: Option<usize>,
+        #[clap(long)]
+        log_directory: String,
         #[clap(flatten)]
         r_ctx: RewardsContext,
     },
@@ -183,42 +208,21 @@ pub enum Command {
     },
 }
 
-#[derive(Clap, Debug)]
-pub struct ConsumeEventsInner {
-    #[clap(long, short)]
-    dex_program_id: Pubkey,
-    #[clap(long)]
-    payer: String,
-    #[clap(long, short)]
-    market: Pubkey,
-    #[clap(long, short)]
-    coin_wallet: Pubkey,
-    #[clap(long, short)]
-    pc_wallet: Pubkey,
-    #[clap(long, short)]
-    num_workers: usize,
-    #[clap(long, short)]
-    events_per_worker: usize,
-    #[clap(long)]
-    num_accounts: Option<usize>,
-    #[clap(long)]
-    log_directory: String,
-}
-
 #[derive(Debug, Clap, Clone)]
 pub struct RewardsContext {
-    #[clap(long = "rewards.program-id")]
-    pub program_id: Pubkey,
+    /// Account controlling the rewards vault for crankers.
     #[clap(long = "rewards.instance")]
     pub instance: Pubkey,
+    /// Token account rewards are sent to when cranking.
     #[clap(long = "rewards.receiver")]
     pub receiver: Pubkey,
-    #[clap(long = "rewards.registry-program-id")]
-    pub registry_program_id: Pubkey,
+    /// Entity the cranker is the node leader for.
     #[clap(long = "rewards.registry-entity")]
     pub registry_entity: Pubkey,
     #[clap(skip)]
     pub url: String,
+    #[clap(skip)]
+    pub program_id: Pubkey,
 }
 
 impl RewardsContext {
@@ -235,7 +239,7 @@ impl RewardsContext {
     }
 }
 
-pub fn start(opts: Opts) -> Result<()> {
+pub fn start(ctx: Option<Context>, opts: Opts) -> Result<()> {
     let client = opts.client();
 
     match opts.command {
@@ -296,18 +300,17 @@ pub fn start(opts: Opts) -> Result<()> {
                 pc_wallet,
             )?;
         }
-        Command::ConsumeEvents { ref inner } => {
-            let ConsumeEventsInner {
-                ref dex_program_id,
-                ref payer,
-                ref market,
-                ref coin_wallet,
-                ref pc_wallet,
-                num_workers,
-                events_per_worker,
-                ref num_accounts,
-                ref log_directory,
-            } = inner;
+        Command::ConsumeEvents {
+            ref dex_program_id,
+            ref payer,
+            ref market,
+            ref coin_wallet,
+            ref pc_wallet,
+            num_workers,
+            events_per_worker,
+            ref num_accounts,
+            ref log_directory,
+        } => {
             init_logger(log_directory);
             consume_events_loop(
                 &opts,
@@ -316,39 +319,38 @@ pub fn start(opts: Opts) -> Result<()> {
                 &market,
                 &coin_wallet,
                 &pc_wallet,
-                *num_workers,
-                *events_per_worker,
+                num_workers,
+                events_per_worker,
                 num_accounts.unwrap_or(32),
                 None,
             )?;
         }
         Command::ConsumeEventRewards {
-            ref inner,
+            ref market,
+            num_workers,
+            events_per_worker,
+            ref num_accounts,
+            ref log_directory,
             ref r_ctx,
         } => {
-            let ConsumeEventsInner {
-                ref dex_program_id,
-                ref payer,
-                ref market,
-                ref coin_wallet,
-                ref pc_wallet,
-                num_workers,
-                events_per_worker,
-                ref num_accounts,
-                ref log_directory,
-            } = inner;
             let mut r_ctx = r_ctx.clone();
+            let ctx = ctx.expect("context must exist when consuming rewards");
             r_ctx.url = opts.cluster.url().to_string();
+            r_ctx.program_id = ctx.rewards_pid;
             init_logger(log_directory);
+
+            // Unused by the DEX. Nevertheless required to be passed in.
+            let coin_wallet = market;
+            let pc_wallet = market;
             consume_events_loop(
                 &opts,
-                &dex_program_id,
-                &payer,
+                &ctx.dex_pid,
+                &ctx.wallet_path.to_string(),
                 &market,
                 &coin_wallet,
                 &pc_wallet,
-                *num_workers,
-                *events_per_worker,
+                num_workers,
+                events_per_worker,
                 num_accounts.unwrap_or(32),
                 Some(Arc::new(r_ctx)),
             )?;

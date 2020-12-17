@@ -594,6 +594,7 @@ dependencies = [
  "rand 0.7.3",
  "safe-transmute",
  "serum-common",
+ "serum-context",
  "serum-registry-rewards-client",
  "serum_dex",
  "slog-scope",
