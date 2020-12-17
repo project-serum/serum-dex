@@ -4,5 +4,5 @@ use crank::Opts;
 
 fn main() -> Result<()> {
     let opts = Opts::parse();
-    crank::start(opts)
+    crank::start(None, opts)
 }

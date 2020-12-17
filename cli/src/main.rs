@@ -44,10 +44,13 @@ fn main() {
 
 pub fn run(ctx: Context, cmd: Command) -> Result<()> {
     match cmd {
-        Command::Crank(cmd) => serum_crank::start(serum_crank::Opts {
-            cluster: ctx.cluster,
-            command: cmd,
-        }),
+        Command::Crank(cmd) => serum_crank::start(
+            Some(ctx.clone()),
+            serum_crank::Opts {
+                cluster: ctx.cluster,
+                command: cmd,
+            },
+        ),
         Command::Registry(cmd) => serum_registry_cli::run(ctx, cmd),
         Command::Lockup(l_cmd) => serum_lockup_cli::run(ctx, l_cmd),
         Command::Rewards(r_cmd) => serum_registry_rewards_cli::run(ctx, r_cmd),
