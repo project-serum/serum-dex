@@ -26,7 +26,8 @@ pub struct Member {
     /// Next position in the rewards event queue to process.
     pub rewards_cursor: u32,
     /// The clock timestamp of the last time this account staked or switched
-    /// entities.
+    /// entities. Used as a proof to reward vendors that the Member account
+    /// was staked at a given point in time.
     pub last_stake_ts: i64,
 }
 

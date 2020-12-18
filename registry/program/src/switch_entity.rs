@@ -1,6 +1,6 @@
 use serum_common::pack::*;
 use serum_registry::access_control::{self, StakeAssets};
-use serum_registry::accounts::{Entity, EntityState, Member, Registrar};
+use serum_registry::accounts::{Entity, Member, Registrar};
 use serum_registry::error::{RegistryError, RegistryErrorCode};
 use solana_program::msg;
 use solana_sdk::account_info::{next_account_info, AccountInfo};
@@ -102,26 +102,32 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
     // Account validation.
     let clock = access_control::clock(clock_acc_info)?;
     let registrar = access_control::registrar(registrar_acc_info, program_id)?;
-    let member = access_control::member_join(
+    let _curr = access_control::entity(curr_entity_acc_info, registrar_acc_info, program_id)?;
+    let _new = access_control::entity(new_entity_acc_info, registrar_acc_info, program_id)?;
+    let member = access_control::member_entity(
         member_acc_info,
         curr_entity_acc_info,
         beneficiary_acc_info,
         program_id,
     )?;
-    let _curr_entity =
-        access_control::entity(curr_entity_acc_info, registrar_acc_info, program_id)?;
-    let _new_entity = access_control::entity(new_entity_acc_info, registrar_acc_info, program_id)?;
-    let mut balance_ids: Vec<Pubkey> = asset_acc_infos
-        .iter()
-        .map(|a| *a.owner_acc_info.key)
-        .collect();
-    balance_ids.sort();
-    balance_ids.dedup();
-    if balance_ids.len() != member.balances.len() {
-        return Err(RegistryErrorCode::InvalidAssetsLen)?;
-    }
+    let _reward_q = access_control::reward_event_q(
+        reward_q_acc_info,
+        registrar_acc_info,
+        &registrar,
+        program_id,
+    )?;
     let assets = {
-        // BPF exploads when mapping so use a for loop.
+        // Ensure the given asset ids are unique.
+        let mut balance_ids: Vec<Pubkey> = asset_acc_infos
+            .iter()
+            .map(|a| *a.owner_acc_info.key)
+            .collect();
+        balance_ids.sort();
+        balance_ids.dedup();
+        if balance_ids.len() != member.balances.len() {
+            return Err(RegistryErrorCode::InvalidAssetsLen)?;
+        }
+        // Validate each asset.
         let mut assets = vec![];
         for a in &asset_acc_infos {
             let (spt, is_mega) = access_control::member_spt(
@@ -178,9 +184,7 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
 
     // Bump the last stake timestamp to prevent people from switching from
     // inactive to active entities to retrieve a reward when they shouldn't.
-    if curr_entity.state == EntityState::Inactive {
-        member.last_stake_ts = clock.unix_timestamp;
-    }
+    member.last_stake_ts = clock.unix_timestamp;
 
     // Bookepping.
     //
@@ -199,7 +203,7 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
 
     member.entity = *new_entity_acc_info.key;
 
-    // Trigger activation FSM.
+    // Trigger activation updates.
     curr_entity.transition_activation_if_needed(registrar, clock);
     new_entity.transition_activation_if_needed(registrar, clock);
 

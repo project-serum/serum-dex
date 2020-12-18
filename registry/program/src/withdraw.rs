@@ -82,7 +82,7 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
     // Account validation.
     let registrar = access_control::registrar(registrar_acc_info, program_id)?;
     let _depositor = access_control::token(depositor_acc_info, depositor_authority_acc_info.key)?;
-    let member = access_control::member_join(
+    let member = access_control::member_entity(
         member_acc_info,
         entity_acc_info,
         beneficiary_acc_info,
@@ -98,8 +98,6 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
         depositor_authority_acc_info.key,
     )?;
 
-    // Withdraw specific.
-    //
     // Do we have enough funds for the withdrawal?
     if !member_vault.amount < amount {
         return Err(RegistryErrorCode::InsufficientBalance)?;

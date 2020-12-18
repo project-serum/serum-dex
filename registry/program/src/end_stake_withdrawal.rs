@@ -82,7 +82,7 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
     // Account validation.
     let registrar = access_control::registrar(registrar_acc_info, program_id)?;
     let _entity = access_control::entity(entity_acc_info, registrar_acc_info, program_id)?;
-    let member = access_control::member_join(
+    let member = access_control::member_entity(
         member_acc_info,
         entity_acc_info,
         beneficiary_acc_info,
@@ -90,15 +90,16 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
     )?;
     let pending_withdrawal =
         access_control::pending_withdrawal(pending_withdrawal_acc_info, program_id)?;
-    let clock = access_control::clock(clock_acc_info)?;
 
-    let b = member
-        .balances
-        .iter()
-        .filter(|b| b.owner == pending_withdrawal.balance_id)
-        .collect::<Vec<&BalanceSandbox>>();
-    let balances = b.first().ok_or(RegistryErrorCode::InvalidBalanceSandbox)?;
-
+    let balance_id = {
+        let b = member
+            .balances
+            .iter()
+            .filter(|b| b.owner == pending_withdrawal.balance_id)
+            .collect::<Vec<&BalanceSandbox>>();
+        let balances = b.first().ok_or(RegistryErrorCode::InvalidBalanceSandbox)?;
+        balances.owner
+    };
     let (_, is_mega_vault) = access_control::member_vault(
         &member,
         member_vault_acc_info,
@@ -106,7 +107,7 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
         registrar_acc_info,
         &registrar,
         program_id,
-        &balances.owner,
+        &balance_id,
     )?;
     let (_, is_mega_vault_pw) = access_control::member_vault_pending_withdrawal(
         &member,
@@ -115,7 +116,7 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
         registrar_acc_info,
         &registrar,
         program_id,
-        &balances.owner,
+        &balance_id,
     )?;
 
     let is_mega = {
@@ -131,7 +132,7 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
         return Err(RegistryErrorCode::InvalidVault)?;
     }
 
-    // EndStakeWithdrawal specific.
+    let clock = access_control::clock(clock_acc_info)?;
     if clock.unix_timestamp < pending_withdrawal.end_ts {
         return Err(RegistryErrorCode::WithdrawalTimelockNotPassed)?;
     }

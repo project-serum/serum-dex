@@ -34,7 +34,7 @@ impl<'a> Whitelist<'a> {
 
     pub fn new(acc_info: AccountInfo<'a>) -> Result<Self, LockupError> {
         if acc_info.try_data_len()? != Whitelist::SIZE {
-            return Err(LockupErrorCode::WhitelistInvalidData)?;
+            return Err(LockupErrorCode::WhitelistInvalidData.into());
         }
         Ok(Self { acc_info })
     }
@@ -82,8 +82,8 @@ impl<'a> Whitelist<'a> {
     /// is full, returns None.
     pub fn push(&self, entry: WhitelistEntry) -> Result<Option<usize>, LockupError> {
         let existing_idx = self.index_of(&entry)?;
-        if let Some(_) = existing_idx {
-            return Err(LockupErrorCode::WhitelistEntryAlreadyExists)?;
+        if existing_idx.is_some() {
+            return Err(LockupErrorCode::WhitelistEntryAlreadyExists.into());
         }
         let idx = self.index_of(&WhitelistEntry::zero())?;
         if let Some(idx) = idx {
@@ -131,7 +131,7 @@ impl<'a> Whitelist<'a> {
         program_id_dst.copy_from_slice(item.program_id().as_ref());
         instance_dst.copy_from_slice(
             item.instance()
-                .unwrap_or(Pubkey::new_from_array([0; 32]))
+                .unwrap_or_else(|| Pubkey::new_from_array([0; 32]))
                 .as_ref(),
         );
         nonce[0] = item.nonce();
