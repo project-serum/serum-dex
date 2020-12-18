@@ -27,11 +27,6 @@ pub struct Member {
     pub rewards_cursor: u32,
     /// The clock timestamp of the last time this account staked or switched
     /// entities.
-    // TODO: For v2 we should keep a queue tracking each time the member staked
-    //       or unstaked. Then reward vendors can deduce the amount members
-    //       had staked at time of reward. For now, we use the last_stake_ts
-    //       as an overly harsh mechanism for ensuring rewards are only
-    //       given to those that were staked at the right time.
     pub last_stake_ts: i64,
 }
 

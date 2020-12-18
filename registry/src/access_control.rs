@@ -1,7 +1,7 @@
 use crate::accounts::reward_queue::Ring;
 use crate::accounts::{
     vault, BalanceSandbox, Entity, LockedRewardVendor, Member, PendingWithdrawal, Registrar,
-    RewardEventQueue, UnlockedRewardVendor,
+    RewardEvent, RewardEventQueue, UnlockedRewardVendor,
 };
 use crate::error::{RegistryError, RegistryErrorCode};
 use serum_common::pack::*;
@@ -630,6 +630,47 @@ pub fn balance_sandbox(
     Ok(())
 }
 
+// Returns true if the member's rewards cursor is not up to date with
+// the latest head, meaning it has an unclaimed reward.
+pub fn reward_cursor_needs_update(
+    reward_q_acc_info: &AccountInfo,
+    member: &Member,
+    stake_assets: &[StakeAssets],
+    registrar: &Registrar,
+) -> Result<bool, RegistryError> {
+    let reward_q = RewardEventQueue::from(reward_q_acc_info.data.clone());
+
+    let has_stake = stake_assets.iter().map(|a| a.spt.amount).sum::<u64>() > 0;
+    let has_stake_mega = stake_assets.iter().map(|a| a.spt_mega.amount).sum::<u64>() > 0;
+
+    let mut cursor = member.rewards_cursor;
+
+    // If the member's cursor is less then the tail, then the ring buffer has
+    // lost those entries, so jump to the tail.
+    let tail = reward_q.tail()?;
+    if cursor < tail {
+        cursor = tail;
+    }
+
+    while cursor < reward_q.head()? {
+        let pool = match reward_q.message_at(cursor)? {
+            RewardEvent::LockedAlloc { pool, .. } => pool,
+            RewardEvent::UnlockedAlloc { pool, .. } => pool,
+        };
+        if pool == registrar.pool_mint {
+            if has_stake {
+                return Ok(true);
+            }
+        } else {
+            if has_stake_mega {
+                return Ok(true);
+            }
+        }
+        cursor += 1;
+    }
+    Ok(false)
+}
+
 pub fn token(acc_info: &AccountInfo, authority: &Pubkey) -> Result<TokenAccount, RegistryError> {
     let token = token_account(acc_info)?;
     if token.owner != *authority {
@@ -681,4 +722,9 @@ pub struct BalanceSandboxAccInfo<'a, 'b> {
     pub vault_stake_mega_acc_info: &'a AccountInfo<'b>,
     pub vault_pw_acc_info: &'a AccountInfo<'b>,
     pub vault_pw_mega_acc_info: &'a AccountInfo<'b>,
+}
+
+pub struct StakeAssets {
+    pub spt: TokenAccount,
+    pub spt_mega: TokenAccount,
 }

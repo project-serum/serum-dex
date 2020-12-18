@@ -82,6 +82,7 @@ pub enum RegistryErrorCode {
     InvalidStakeVault = 68,
     VendorAlreadyExpired = 69,
     VendorNotExpired = 70,
+    RewardCursorNeedsUpdate = 71,
     Unknown = 1000,
 }
 
