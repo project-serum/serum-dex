@@ -652,7 +652,8 @@ pub fn reward_cursor_needs_update(
         cursor = tail;
     }
 
-    while cursor < reward_q.head()? {
+    let head = reward_q.head()?;
+    while cursor < head {
         let pool = match reward_q.message_at(cursor)? {
             RewardEvent::LockedAlloc { pool, .. } => pool,
             RewardEvent::UnlockedAlloc { pool, .. } => pool,
