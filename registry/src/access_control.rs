@@ -654,19 +654,23 @@ pub fn reward_cursor_needs_update(
 
     let head = reward_q.head()?;
     while cursor < head {
-        let pool = match reward_q.message_at(cursor)? {
-            RewardEvent::LockedAlloc { pool, .. } => pool,
-            RewardEvent::UnlockedAlloc { pool, .. } => pool,
+        let (pool, ts) = match reward_q.message_at(cursor)? {
+            RewardEvent::LockedAlloc { pool, ts, .. } => (pool, ts),
+            RewardEvent::UnlockedAlloc { pool, ts, .. } => (pool, ts),
         };
-        if pool == registrar.pool_mint {
-            if has_stake {
-                return Ok(true);
-            }
-        } else {
-            if has_stake_mega {
-                return Ok(true);
+        // Was the member staked during this reward event?
+        if member.last_stake_ts < ts {
+            if pool == registrar.pool_mint {
+                if has_stake {
+                    return Ok(true);
+                }
+            } else {
+                if has_stake_mega {
+                    return Ok(true);
+                }
             }
         }
+        // Not eligible. Check the next event.
         cursor += 1;
     }
     Ok(false)

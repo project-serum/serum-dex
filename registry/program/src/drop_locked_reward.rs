@@ -181,6 +181,7 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
         total,
         vendor: *vendor_acc_info.key,
         mint,
+        ts: clock.unix_timestamp,
     })?;
 
     // Transfer the reward to the vendor.
