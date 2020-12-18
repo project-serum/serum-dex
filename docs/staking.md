@@ -168,25 +168,6 @@ or all **Members** should move to a new **Entity**. Note that transitioning to a
 does not affect one's **Member** vaults. It only affects one's ability to retrieve rewards from
 a vendor.
 
-## Reward Caveats
-
-For the first version of staking, one needs to be mindful of two events that can cause one to
-accidently miss staking rewards: *staking* and *switching* entities. If one stakes *after* a reward
-has been dropped, but before claiming that reward, one will become ineligible for the reward.
-Similarly, if one switches their **Member** account from one **Entity** to another *after* a
-reward has been dropped but before claiming that reward, one will also become ineligble for
-that reward. These are both overcomeable limitations and will be addressed in a future
-version. One solution: Currently Member accounts have a single timestamp that gets updated every time they stake,
-and reward vendors check this timestamp against their own to see if a **Member** was staked before
-the reward drop. If we extend this to be a queue or set, then a **Member** can simply provide the 
-reward vendor a proof it was staked, by providing the stake history queue, which the reward vendor
-can easily validate.
-
-Nevertheless, be mindful of this mechanism. If you're developing a UI, be sure to place safety mechanisms
-such as disabling staking and entity switching when a reward is availble but not yet claimed.
-And of course, if your Entity always has 1 MSRM deposited to it, then this is never a problem,
-so choose your node wisely.
-
 ## Misc
 
 ### Entity
