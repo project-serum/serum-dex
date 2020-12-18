@@ -677,6 +677,12 @@ impl Client {
             AccountMeta::new_readonly(r.reward_event_q, false),
             AccountMeta::new_readonly(solana_sdk::sysvar::clock::ID, false),
             AccountMeta::new_readonly(spl_token::ID, false),
+            AccountMeta::new_readonly(m.balances[0].owner, false),
+            AccountMeta::new_readonly(m.balances[0].spt, false),
+            AccountMeta::new_readonly(m.balances[0].spt_mega, false),
+            AccountMeta::new_readonly(m.balances[1].owner, false),
+            AccountMeta::new_readonly(m.balances[1].spt, false),
+            AccountMeta::new_readonly(m.balances[1].spt_mega, false),
         ];
 
         let signers = [self.payer(), beneficiary];
@@ -878,6 +884,7 @@ impl Client {
             beneficiary,
             registrar,
         } = req;
+        let r = self.registrar(&registrar)?;
         let m = self.member(&member)?;
         let accs = vec![
             AccountMeta::new(member, false),
