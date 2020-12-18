@@ -749,6 +749,7 @@ impl Client {
             AccountMeta::new_readonly(solana_sdk::sysvar::clock::ID, false),
             AccountMeta::new_readonly(spl_token::ID, false),
             AccountMeta::new_readonly(solana_sdk::sysvar::rent::ID, false),
+            AccountMeta::new_readonly(r.reward_event_q, false),
             AccountMeta::new_readonly(m.balances[0].owner, false),
             AccountMeta::new_readonly(m.balances[0].spt, false),
             AccountMeta::new_readonly(m.balances[0].spt_mega, false),
