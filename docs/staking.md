@@ -146,7 +146,7 @@ reward can only be processed once.
 This allows us to provide a way of dropping rewards to the stake pool in a way that is
 on chain and verifiable. Of course, it requires an external trigger, some account willing to
 transfer funds to a new **RewardVendor**, but that is outside of the scope of the **Registry**
-program. The reward dropper can be an off chain BFT committee, or it can on-chain multisig. It can be a charitable individual,
+program. The reward dropper can be an off chain BFT committee, or it can be an on-chain multisig. It can be a charitable individual,
 or funds can flow directly from the DEX, which itself creates a Reward Vendor from fees collected. 
 It doesn't matter to the **Registry** program.
 
