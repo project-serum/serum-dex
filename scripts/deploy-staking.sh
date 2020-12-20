@@ -71,7 +71,7 @@ main() {
     # Build all programs.
     #
     echo "Building all programs..."
-		pushd cli && cargo build --features dev && popd
+    pushd cli && cargo build --features dev && popd
     make -s -C lockup build
     make -s -C registry build
     make -s -C registry/meta-entity build
