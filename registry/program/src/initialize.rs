@@ -85,6 +85,18 @@ fn access_control(req: AccessControlRequest) -> Result<(), RegistryError> {
 
     // Account validation.
     let rent = access_control::rent(rent_acc_info)?;
+    let pool_mint = access_control::mint(pool_mint_acc_info)?;
+    let pool_mint_mega = access_control::mint(pool_mint_mega_acc_info)?;
+    let vault_authority = Pubkey::create_program_address(
+        &vault::signer_seeds(registrar_acc_info.key, &nonce),
+        program_id,
+    )
+    .map_err(|_| RegistryErrorCode::InvalidVaultNonce)?;
+    if pool_mint.mint_authority != COption::Some(vault_authority)
+        || pool_mint_mega.mint_authority != COption::Some(vault_authority)
+    {
+        return Err(RegistryErrorCode::InvalidVaultAuthority)?;
+    }
 
     // Registrar (uninitialized).
     {
@@ -101,19 +113,6 @@ fn access_control(req: AccessControlRequest) -> Result<(), RegistryError> {
         if registrar.initialized {
             return Err(RegistryErrorCode::AlreadyInitialized)?;
         }
-    }
-
-    let pool_mint = access_control::mint(pool_mint_acc_info)?;
-    let pool_mint_mega = access_control::mint(pool_mint_mega_acc_info)?;
-    let vault_authority = Pubkey::create_program_address(
-        &vault::signer_seeds(registrar_acc_info.key, &nonce),
-        program_id,
-    )
-    .map_err(|_| RegistryErrorCode::InvalidVaultNonce)?;
-    if pool_mint.mint_authority != COption::Some(vault_authority)
-        || pool_mint_mega.mint_authority != COption::Some(vault_authority)
-    {
-        return Err(RegistryErrorCode::InvalidVaultAuthority)?;
     }
 
     // Reward q must not yet be owned.
@@ -148,17 +147,17 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
 
     registrar.initialized = true;
     registrar.authority = authority;
+    registrar.nonce = nonce;
+    registrar.mint = mint;
+    registrar.mega_mint = mint_mega;
+    registrar.pool_mint = *pool_mint_acc_info.key;
+    registrar.pool_mint_mega = *pool_mint_mega_acc_info.key;
+    registrar.stake_rate = stake_rate;
+    registrar.stake_rate_mega = stake_rate_mega;
+    registrar.reward_event_q = *reward_event_q_acc_info.key;
     registrar.withdrawal_timelock = withdrawal_timelock;
     registrar.deactivation_timelock = deactivation_timelock;
     registrar.max_stake_per_entity = max_stake_per_entity;
-    registrar.nonce = nonce;
-    registrar.pool_mint = *pool_mint_acc_info.key;
-    registrar.pool_mint_mega = *pool_mint_mega_acc_info.key;
-    registrar.reward_event_q = *reward_event_q_acc_info.key;
-    registrar.mint = mint;
-    registrar.mega_mint = mint_mega;
-    registrar.stake_rate = stake_rate;
-    registrar.stake_rate_mega = stake_rate_mega;
 
     let event_q = RewardEventQueue::from(reward_event_q_acc_info.data.clone());
     event_q.set_authority(registrar_acc_info.key);

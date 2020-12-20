@@ -151,6 +151,7 @@ use solana_client::rpc_client::RpcClient;
 use solana_client::rpc_config::RpcSendTransactionConfig;
 #[cfg(feature = "client")]
 use solana_sdk::commitment_config::CommitmentConfig;
+#[cfg(feature = "client")]
 use solana_sdk::pubkey::Pubkey;
 #[cfg(feature = "client")]
 use solana_sdk::signature::Keypair;

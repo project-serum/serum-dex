@@ -125,8 +125,7 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
     }
 
     // Account validation.
-    access_control::entity_check(entity, entity_acc_info, registrar_acc_info, program_id)?;
-    let member = access_control::member_join(
+    let member = access_control::member_entity(
         member_acc_info,
         entity_acc_info,
         beneficiary_acc_info,
@@ -159,19 +158,24 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
         is_mega,
     )?;
     let _pool_mint = access_control::pool_mint(pool_mint_acc_info, &registrar, is_mega)?;
-
-    // Can only stake to active entities. Staking MSRM will activate.
-    if !entity.meets_activation_requirements() {
-        if !is_mega {
-            return Err(RegistryErrorCode::EntityNotActivated)?;
-        }
-    }
-    // Will this new stake put the entity over the maximum allowable limit?
-    if entity.stake_will_max(spt_amount, is_mega, &registrar) {
-        return Err(RegistryErrorCode::EntityMaxStake)?;
-    }
-
+    let _reward_q = access_control::reward_event_q(
+        reward_q_acc_info,
+        registrar_acc_info,
+        &registrar,
+        program_id,
+    )?;
     let assets = {
+        // Ensure the given asset ids are unique.
+        let mut balance_ids: Vec<Pubkey> = asset_acc_infos
+            .iter()
+            .map(|a| *a.owner_acc_info.key)
+            .collect();
+        balance_ids.sort();
+        balance_ids.dedup();
+        if balance_ids.len() != member.balances.len() {
+            return Err(RegistryErrorCode::InvalidAssetsLen)?;
+        }
+        // Validate each asset.
         let mut assets = vec![];
         for a in asset_acc_infos.iter() {
             let (spt, is_mega) = access_control::member_spt(
@@ -202,6 +206,17 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
     if access_control::reward_cursor_needs_update(reward_q_acc_info, &member, &assets, &registrar)?
     {
         return Err(RegistryErrorCode::RewardCursorNeedsUpdate)?;
+    }
+    // Can only stake to active entities.
+    if !entity.meets_activation_requirements() {
+        // Staking MSRM will activate, so allow it.
+        if !is_mega {
+            return Err(RegistryErrorCode::EntityNotActivated)?;
+        }
+    }
+    // Will this new stake put the entity over the maximum allowable limit?
+    if entity.stake_will_max(spt_amount, is_mega, &registrar) {
+        return Err(RegistryErrorCode::EntityMaxStake)?;
     }
 
     Ok(AccessControlResponse { is_mega })

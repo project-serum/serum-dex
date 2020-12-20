@@ -108,7 +108,7 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
     }
 
     // Account validation.
-    let member = access_control::member_belongs_to(
+    let member = access_control::member_registrar_entity(
         member_acc_info,
         registrar_acc_info,
         entity_acc_info,
@@ -135,11 +135,12 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
         })
         .collect::<Result<_, _>>()?;
 
-    // ClaimLockedReward specific.
-    //
     // Is the cursor valid?
     if vendor.reward_event_q_cursor != cursor {
         return Err(RegistryErrorCode::InvalidCursor)?;
+    }
+    if vendor.expired {
+        return Err(RegistryErrorCode::VendorAlreadyExpired)?;
     }
     // Has the member account processed this cursor already?
     if member.rewards_cursor > cursor {

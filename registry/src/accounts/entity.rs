@@ -18,7 +18,7 @@ lazy_static::lazy_static! {
 // the MSRM mint == 10**6 * 1_000_000 units of the SRM mint.
 const MSRM_SRM_RATE: u64 = 1_000_000_000_000;
 
-#[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(Clone, Debug, BorshSerialize, BorshDeserialize)]
 pub struct Entity {
     /// Set when this entity is registered.
     pub initialized: bool,
@@ -61,7 +61,7 @@ impl Entity {
         Ok(())
     }
 
-    pub fn spt_did_unstake_start(&mut self, spt_amount: u64, mega: bool) {
+    pub fn spt_did_unstake(&mut self, spt_amount: u64, mega: bool) {
         if mega {
             self.balances.spt_mega_amount -= spt_amount;
         } else {
@@ -145,7 +145,7 @@ pub struct Balances {
     pub spt_mega_amount: u64,
 }
 
-#[derive(Clone, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq)]
+#[derive(Clone, Debug, BorshSerialize, BorshDeserialize, PartialEq)]
 pub enum EntityState {
     /// The entity is ineligble for rewards. Redeeming existing staking pool
     /// tokens will return less than or equal to the original staking deposit.

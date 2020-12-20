@@ -6,7 +6,7 @@ use std::rc::Rc;
 
 // Largest reward variant size.
 //
-// DOn't forget to change the typescript when modifying this.
+// Don't forget to change the typescript when modifying this.
 const MAX_RING_ITEM_SIZE: u32 = 145;
 
 // Generate the Ring trait.
@@ -71,6 +71,6 @@ mod tests {
             mint: Pubkey::new_unique(),
             ts: 0,
         };
-        println!("TEST: {:?}", e.try_to_vec().unwrap().len());
+        assert_eq!(e.try_to_vec().unwrap().len(), 145);
     }
 }

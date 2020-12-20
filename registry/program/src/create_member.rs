@@ -88,9 +88,23 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
     // Account validation.
     let rent = access_control::rent(rent_acc_info)?;
     let registrar = access_control::registrar(registrar_acc_info, program_id)?;
-    let _ = access_control::entity(entity_acc_info, registrar_acc_info, program_id)?;
+    let _entity = access_control::entity(entity_acc_info, registrar_acc_info, program_id)?;
+    let _signer = access_control::registrar_signer(
+        registry_signer_acc_info,
+        registrar_acc_info,
+        &registrar,
+        program_id,
+    )?;
+    access_control::balance_sandbox_init(
+        balances,
+        registrar_acc_info,
+        &registrar,
+        registry_signer_acc_info,
+        &rent,
+        program_id,
+    )?;
 
-    // CreateMember specific.
+    // Member.
     if !rent.is_exempt(member_acc_info.lamports(), member_acc_info.try_data_len()?) {
         return Err(RegistryErrorCode::NotRentExempt)?;
     }
@@ -102,24 +116,6 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
     if member.initialized {
         return Err(RegistryErrorCode::AlreadyInitialized)?;
     }
-    // Registry signer.
-    let vault_authority = Pubkey::create_program_address(
-        &vault::signer_seeds(registrar_acc_info.key, &registrar.nonce),
-        program_id,
-    )
-    .map_err(|_| RegistryErrorCode::InvalidVaultNonce)?;
-    if &vault_authority != registry_signer_acc_info.key {
-        return Err(RegistryErrorCode::InvalidVaultAuthority)?;
-    }
-    // All balance accounts.
-    access_control::balance_sandbox(
-        balances,
-        registrar_acc_info,
-        &registrar,
-        registry_signer_acc_info,
-        &rent,
-        program_id,
-    )?;
 
     Ok(AccessControlResponse { registrar })
 }

@@ -99,7 +99,6 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Lo
     let rent = access_control::rent(rent_acc_info)?;
     let clock_ts = access_control::clock(&clock_acc_info)?.unix_timestamp;
 
-    // Initialize checks.
     // Vesting account (uninitialized).
     {
         let mut data: &[u8] = &vesting_acc_info.try_borrow_data()?;

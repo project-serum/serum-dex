@@ -27,7 +27,7 @@ pub mod instruction {
         ///
         /// 0. `[writable]  Vesting.
         /// 1. `[writable]` Depositor token account.
-        /// 2. `[signer]`   The authority||owner||delegate of Accounts[1].
+        /// 2. `[signer]`   Depositor owner.
         /// 3. `[writable]` Vault.
         /// 4. `[]`         Safe.
         /// 7. `[]`         Token program.
@@ -40,7 +40,7 @@ pub mod instruction {
             /// be vested.
             end_ts: i64,
             /// The number of vesting periods for the account. For example,
-            /// a vesting yearly over seven years would make this 7.
+            /// vesting yearly over seven years would make this 7.
             period_count: u64,
             /// The amount to deposit into the vesting account.
             deposit_amount: u64,

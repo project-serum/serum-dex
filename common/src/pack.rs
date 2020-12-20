@@ -70,7 +70,8 @@ pub trait Pack: std::marker::Sized + std::fmt::Debug {
     where
         F: FnMut(&mut Self) -> Result<U, ProgramError>,
     {
-        let mut t = Self::unpack_unchecked(&mut input.as_ref())?;
+        let mut data: &[u8] = &input;
+        let mut t = Self::unpack_unchecked(&mut data)?;
         let u = f(&mut t)?;
         Self::pack_unchecked(t, input)?;
         Ok(u)

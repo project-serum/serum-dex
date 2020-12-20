@@ -49,7 +49,7 @@ impl Vesting {
         std::cmp::min(self.outstanding_vested(current_ts), self.balance())
     }
 
-    // The amount of funds left in the vault.
+    // The amount of funds currently in the vault.
     pub fn balance(&self) -> u64 {
         self.outstanding.checked_sub(self.whitelist_owned).unwrap()
     }
@@ -79,13 +79,13 @@ impl Vesting {
     }
 
     fn linear_unlock(&self, current_ts: i64) -> Option<u64> {
-        // LLVM doesn't support signed division.
+        // Signed division not supported.
         let current_ts = current_ts as u64;
         let start_ts = self.start_ts as u64;
         let end_ts = self.end_ts as u64;
 
         // If we can't perfectly partition the vesting window,
-        // push the start of the window window back so that we can.
+        // push the start of the window back so that we can.
         //
         // This has the effect of making the first vesting period shorter
         // than the rest.
@@ -98,9 +98,8 @@ impl Vesting {
         let reward_overflow = self.start_balance % self.period_count;
 
         // Reward per period ignoring the overflow.
-        let reward_per_period = (self.start_balance.checked_sub(reward_overflow)?)
-            .checked_div(self.period_count)
-            .unwrap();
+        let reward_per_period =
+            (self.start_balance.checked_sub(reward_overflow)?).checked_div(self.period_count)?;
 
         // Number of vesting periods that have passed.
         let current_period = {

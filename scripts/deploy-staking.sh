@@ -39,7 +39,7 @@ fi
 #
 # Seconds.
 #
-DEACTIVATION_TIMELOCK=60
+DEACTIVATION_TIMELOCK=120
 WITHDRAWAL_TIMELOCK=60
 #
 # 100_000_000 million SRM (6 decimals)
@@ -48,7 +48,7 @@ MAX_STAKE_PER_ENTITY=100000000000000
 #
 # 1 SRM (6 decimals) to stake.
 #
-STAKE_RATE=1000000
+STAKE_RATE=1000000000
 #
 # 1 MSRM (0 decimals) to stake.
 #
@@ -71,6 +71,7 @@ main() {
     # Build all programs.
     #
     echo "Building all programs..."
+    pushd cli && cargo build --features dev && popd
     make -s -C lockup build
     make -s -C registry build
     make -s -C registry/meta-entity build

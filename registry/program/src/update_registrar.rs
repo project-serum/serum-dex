@@ -15,7 +15,7 @@ pub fn handler(
     deactivation_timelock: Option<i64>,
     max_stake_per_entity: Option<u64>,
 ) -> Result<(), RegistryError> {
-    msg!("handler: initialize");
+    msg!("handler: update_registrar");
 
     let acc_infos = &mut accounts.iter();
 
