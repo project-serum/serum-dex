@@ -1,6 +1,5 @@
 use serum_common::client::rpc;
 use serum_common::pack::*;
-use serum_meta_entity::accounts::mqueue::{MQueue, Ring as MQueueRing};
 use serum_meta_entity::client::Client as MetaEntityClient;
 use serum_registry::accounts::reward_queue::{RewardEventQueue, Ring};
 use serum_registry::accounts::{
@@ -187,7 +186,6 @@ impl Client {
         ];
 
         let metadata_kp = Keypair::generate(&mut OsRng);
-        let mqueue = Keypair::generate(&mut OsRng);
 
         let create_entity_instr = serum_registry::instruction::create_entity(
             *self.inner.program(),
@@ -207,7 +205,6 @@ impl Client {
                 self.rpc(),
                 &self.inner.payer().pubkey(),
                 &metadata_kp,
-                &mqueue,
                 &meta_entity_program_id,
                 &entity_kp.pubkey(),
                 name,
@@ -215,7 +212,7 @@ impl Client {
                 image_url,
             );
             instructions.extend_from_slice(&create_md_instrs);
-            signers.extend_from_slice(&[&metadata_kp, &mqueue])
+            signers.extend_from_slice(&[&metadata_kp])
         }
 
         instructions.extend_from_slice(&[create_acc_instr, create_entity_instr]);
@@ -1165,7 +1162,6 @@ fn create_metadata_instructions(
     client: &RpcClient,
     payer: &Pubkey,
     metadata: &Keypair,
-    mqueue: &Keypair,
     program_id: &Pubkey,
     entity: &Pubkey,
     name: String,
@@ -1200,18 +1196,6 @@ fn create_metadata_instructions(
         program_id,
     );
 
-    let mqueue_size = MQueue::buffer_size(MQueue::RING_CAPACITY);
-    let lamports = client
-        .get_minimum_balance_for_rent_exemption(mqueue_size)
-        .unwrap();
-    let create_mqueue_instr = solana_sdk::system_instruction::create_account(
-        payer,
-        &mqueue.pubkey(),
-        lamports,
-        mqueue_size as u64,
-        program_id,
-    );
-
     let initialize_metadata_instr = {
         let accounts = vec![AccountMeta::new(metadata.pubkey(), false)];
         let instr = serum_meta_entity::instruction::MetaEntityInstruction::Initialize {
@@ -1220,7 +1204,7 @@ fn create_metadata_instructions(
             name,
             about,
             image_url,
-            chat: mqueue.pubkey(),
+            chat: Pubkey::new_from_array([0; 32]),
         };
         let mut data = vec![0u8; instr.size().unwrap() as usize];
         serum_meta_entity::instruction::MetaEntityInstruction::pack(instr, &mut data).unwrap();
@@ -1231,11 +1215,7 @@ fn create_metadata_instructions(
         }
     };
 
-    vec![
-        create_metadata_instr,
-        create_mqueue_instr,
-        initialize_metadata_instr,
-    ]
+    vec![create_metadata_instr, initialize_metadata_instr]
 }
 
 pub struct InitializeRequest {
