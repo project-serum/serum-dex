@@ -1,3 +1,6 @@
+//! Experimental program providing metadata (name, about, image, chat)
+//! to a Registry Entity.
+
 #![cfg_attr(feature = "strict", deny(warnings))]
 #![allow(dead_code)]
 

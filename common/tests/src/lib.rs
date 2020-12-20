@@ -46,7 +46,7 @@ pub fn genesis<T: ClientGen>() -> (T, Genesis) {
         client.payer(),
         &msrm_mint,
         &mint_authority.pubkey(),
-        spl_mint_decimals,
+        0,
     );
 
     // Create a funded SRM account.
