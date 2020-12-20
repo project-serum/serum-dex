@@ -18,11 +18,11 @@ pub fn governance(
     safe_authority_acc_info: &AccountInfo,
 ) -> Result<Safe, LockupError> {
     if !safe_authority_acc_info.is_signer {
-        return Err(LockupErrorCode::Unauthorized)?;
+        return Err(LockupErrorCode::Unauthorized.into());
     }
     let safe = safe(safe_acc_info, program_id)?;
     if safe.authority != *safe_authority_acc_info.key {
-        return Err(LockupErrorCode::Unauthorized)?;
+        return Err(LockupErrorCode::Unauthorized.into());
     }
     Ok(safe)
 }
@@ -34,15 +34,15 @@ pub fn whitelist<'a>(
     program_id: &Pubkey,
 ) -> Result<Whitelist<'a>, LockupError> {
     if program_id != wl_acc_info.owner {
-        return Err(LockupErrorCode::InvalidAccountOwner)?;
+        return Err(LockupErrorCode::InvalidAccountOwner.into());
     }
 
     if safe.whitelist != *wl_acc_info.key {
-        return Err(LockupErrorCode::InvalidWhitelist)?;
+        return Err(LockupErrorCode::InvalidWhitelist.into());
     }
     let wl = Whitelist::new(wl_acc_info)?;
     if wl.safe()? != *safe_acc_info.key {
-        return Err(LockupErrorCode::WhitelistSafeMismatch)?;
+        return Err(LockupErrorCode::WhitelistSafeMismatch.into());
     }
 
     Ok(wl)
@@ -57,7 +57,7 @@ pub fn vesting(
     let vesting = _vesting(program_id, safe_acc_info, vesting_acc_info)?;
 
     if vesting.beneficiary != *vesting_acc_beneficiary_info.key {
-        return Err(LockupErrorCode::Unauthorized)?;
+        return Err(LockupErrorCode::Unauthorized.into());
     }
 
     Ok(vesting)
@@ -72,24 +72,24 @@ fn _vesting(
     let vesting = Vesting::unpack_unchecked(&mut data)?;
 
     if vesting_acc_info.owner != program_id {
-        return Err(LockupErrorCode::InvalidAccount)?;
+        return Err(LockupErrorCode::InvalidAccount.into());
     }
     if !vesting.initialized {
-        return Err(LockupErrorCode::NotInitialized)?;
+        return Err(LockupErrorCode::NotInitialized.into());
     }
     if vesting.safe != *safe_acc_info.key {
-        return Err(LockupErrorCode::WrongSafe)?;
+        return Err(LockupErrorCode::WrongSafe.into());
     }
     Ok(vesting)
 }
 
 pub fn safe(acc_info: &AccountInfo, program_id: &Pubkey) -> Result<Safe, LockupError> {
     if acc_info.owner != program_id {
-        return Err(LockupErrorCode::InvalidAccountOwner)?;
+        return Err(LockupErrorCode::InvalidAccountOwner.into());
     }
     let safe = Safe::unpack(&acc_info.try_borrow_data()?)?;
     if !safe.initialized {
-        return Err(LockupErrorCode::NotInitialized)?;
+        return Err(LockupErrorCode::NotInitialized.into());
     }
     Ok(safe)
 }
@@ -114,8 +114,11 @@ pub fn vault(
         safe_acc_info.key,
     )?;
 
+    if &vesting.vault != acc_info.key {
+        return Err(LockupErrorCode::InvalidVault.into());
+    }
     if va != vault.owner {
-        return Err(LockupErrorCode::InvalidVault)?;
+        return Err(LockupErrorCode::InvalidVault.into());
     }
 
     Ok(vault)
@@ -134,7 +137,7 @@ fn vault_authority(
     )
     .map_err(|_| LockupErrorCode::InvalidVaultNonce)?;
     if va != *vault_authority_acc_info.key {
-        return Err(LockupErrorCode::InvalidVault)?;
+        return Err(LockupErrorCode::InvalidVault.into());
     }
 
     Ok(va)
@@ -142,12 +145,12 @@ fn vault_authority(
 
 pub fn token(acc_info: &AccountInfo) -> Result<TokenAccount, LockupError> {
     if *acc_info.owner != spl_token::ID {
-        return Err(LockupErrorCode::InvalidAccountOwner)?;
+        return Err(LockupErrorCode::InvalidAccountOwner.into());
     }
 
     let token = TokenAccount::unpack(&acc_info.try_borrow_data()?)?;
     if token.state != spl_token::state::AccountState::Initialized {
-        return Err(LockupErrorCode::NotInitialized)?;
+        return Err(LockupErrorCode::NotInitialized.into());
     }
 
     Ok(token)
@@ -155,14 +158,14 @@ pub fn token(acc_info: &AccountInfo) -> Result<TokenAccount, LockupError> {
 
 pub fn rent(acc_info: &AccountInfo) -> Result<Rent, LockupError> {
     if *acc_info.key != solana_sdk::sysvar::rent::id() {
-        return Err(LockupErrorCode::InvalidRentSysvar)?;
+        return Err(LockupErrorCode::InvalidRentSysvar.into());
     }
     Rent::from_account_info(acc_info).map_err(Into::into)
 }
 
 pub fn clock(acc_info: &AccountInfo) -> Result<Clock, LockupError> {
     if *acc_info.key != solana_sdk::sysvar::clock::id() {
-        return Err(LockupErrorCode::InvalidClockSysvar)?;
+        return Err(LockupErrorCode::InvalidClockSysvar.into());
     }
     Clock::from_account_info(acc_info).map_err(Into::into)
 }

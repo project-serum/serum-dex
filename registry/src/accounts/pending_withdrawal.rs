@@ -12,6 +12,7 @@ lazy_static::lazy_static! {
 
 #[derive(Debug, Default, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub struct PendingWithdrawal {
+    /// Set by the program on initialization.
     pub initialized: bool,
     /// Member this account belongs to.
     pub member: Pubkey,
@@ -25,6 +26,7 @@ pub struct PendingWithdrawal {
     pub end_ts: i64,
     /// The number of tokens redeemed from the staking pool.
     pub amount: u64,
+    /// The Member account's set of vaults this withdrawal belongs to.
     pub balance_id: Pubkey,
 }
 

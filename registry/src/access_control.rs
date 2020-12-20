@@ -1,7 +1,7 @@
 use crate::accounts::reward_queue::Ring;
 use crate::accounts::{
     vault, BalanceSandbox, Entity, LockedRewardVendor, Member, PendingWithdrawal, Registrar,
-    RewardEventQueue, UnlockedRewardVendor,
+    RewardEvent, RewardEventQueue, UnlockedRewardVendor,
 };
 use crate::error::{RegistryError, RegistryErrorCode};
 use serum_common::pack::*;
@@ -22,24 +22,43 @@ pub fn governance(
     registrar_authority_acc_info: &AccountInfo,
 ) -> Result<Registrar, RegistryError> {
     if !registrar_authority_acc_info.is_signer {
-        return Err(RegistryErrorCode::Unauthorized)?;
+        return Err(RegistryErrorCode::Unauthorized.into());
     }
     let r = registrar(registrar_acc_info, program_id)?;
     if r.authority != *registrar_authority_acc_info.key {
-        return Err(RegistryErrorCode::Unauthorized)?;
+        return Err(RegistryErrorCode::Unauthorized.into());
     }
     Ok(r)
 }
 
 pub fn registrar(acc_info: &AccountInfo, program_id: &Pubkey) -> Result<Registrar, RegistryError> {
     if acc_info.owner != program_id {
-        return Err(RegistryErrorCode::InvalidAccountOwner)?;
+        return Err(RegistryErrorCode::InvalidAccountOwner.into());
     }
     let registrar = Registrar::unpack(&acc_info.try_borrow_data()?)?;
     if !registrar.initialized {
-        return Err(RegistryErrorCode::NotInitialized)?;
+        return Err(RegistryErrorCode::NotInitialized.into());
     }
     Ok(registrar)
+}
+
+pub fn registrar_signer(
+    registrar_signer_acc_info: &AccountInfo,
+    registrar_acc_info: &AccountInfo,
+    registrar: &Registrar,
+    program_id: &Pubkey,
+) -> Result<(), RegistryError> {
+    // Registry signer.
+    let vault_authority = Pubkey::create_program_address(
+        &vault::signer_seeds(registrar_acc_info.key, &registrar.nonce),
+        program_id,
+    )
+    .map_err(|_| RegistryErrorCode::InvalidVaultNonce)?;
+    if &vault_authority != registrar_signer_acc_info.key {
+        return Err(RegistryErrorCode::InvalidVaultAuthority.into());
+    }
+
+    Ok(())
 }
 
 #[inline(never)]
@@ -61,111 +80,72 @@ pub fn entity_check(
     program_id: &Pubkey,
 ) -> Result<(), RegistryError> {
     if acc_info.owner != program_id {
-        return Err(RegistryErrorCode::InvalidAccountOwner)?;
+        return Err(RegistryErrorCode::InvalidAccountOwner.into());
     }
     if !entity.initialized {
-        return Err(RegistryErrorCode::NotInitialized)?;
+        return Err(RegistryErrorCode::NotInitialized.into());
     }
     if entity.registrar != *registrar_acc_info.key {
-        return Err(RegistryErrorCode::EntityRegistrarMismatch)?;
+        return Err(RegistryErrorCode::EntityRegistrarMismatch.into());
     }
 
     Ok(())
 }
 
-pub fn member(
-    acc_info: &AccountInfo,
-    beneficiary_acc_info: &AccountInfo,
-    program_id: &Pubkey,
-) -> Result<Member, RegistryError> {
-    if acc_info.owner != program_id {
-        return Err(RegistryErrorCode::InvalidOwner)?;
-    }
-
-    let m = Member::unpack(&acc_info.try_borrow_data()?)?;
-    if !m.initialized {
-        return Err(RegistryErrorCode::NotInitialized)?;
-    }
-    if m.beneficiary != *beneficiary_acc_info.key {
-        return Err(RegistryErrorCode::MemberBeneficiaryMismatch)?;
-    }
-    Ok(m)
-}
-
-pub fn member_account(
-    acc_info: &AccountInfo,
-    registrar_acc_info: &AccountInfo,
-    program_id: &Pubkey,
-) -> Result<Member, RegistryError> {
-    if acc_info.owner != program_id {
-        return Err(RegistryErrorCode::InvalidOwner)?;
-    }
-
-    let m = Member::unpack(&acc_info.try_borrow_data()?)?;
-    if !m.initialized {
-        return Err(RegistryErrorCode::NotInitialized)?;
-    }
-    if &m.registrar != registrar_acc_info.key {
-        return Err(RegistryErrorCode::MemberRegistrarMismatch)?;
-    }
-    Ok(m)
-}
-
-pub fn member_belongs_to(
-    acc_info: &AccountInfo,
-    registrar_acc_info: &AccountInfo,
-    entity_acc_info: &AccountInfo,
-    program_id: &Pubkey,
-) -> Result<Member, RegistryError> {
-    if acc_info.owner != program_id {
-        return Err(RegistryErrorCode::InvalidOwner)?;
-    }
-
-    let m = Member::unpack(&acc_info.try_borrow_data()?)?;
-    if !m.initialized {
-        return Err(RegistryErrorCode::NotInitialized)?;
-    }
-    if &m.registrar != registrar_acc_info.key {
-        return Err(RegistryErrorCode::MemberRegistrarMismatch)?;
-    }
-    if &m.entity != entity_acc_info.key {
-        return Err(RegistryErrorCode::MemberEntityMismatch)?;
-    }
-
-    Ok(m)
-}
-
-pub fn member_join(
+pub fn member_entity(
     acc_info: &AccountInfo,
     entity: &AccountInfo,
     beneficiary_acc_info: &AccountInfo,
     program_id: &Pubkey,
 ) -> Result<Member, RegistryError> {
-    let m = member(acc_info, beneficiary_acc_info, program_id)?;
+    let m = member_beneficiary(acc_info, beneficiary_acc_info, program_id)?;
 
     if m.entity != *entity.key {
-        return Err(RegistryErrorCode::MemberEntityMismatch)?;
+        return Err(RegistryErrorCode::MemberEntityMismatch.into());
     }
     Ok(m)
 }
 
-#[inline(always)]
-pub fn member_raw(
+pub fn member_beneficiary(
     acc_info: &AccountInfo,
-    entity_acc_info: &AccountInfo,
+    beneficiary_acc_info: &AccountInfo,
     program_id: &Pubkey,
 ) -> Result<Member, RegistryError> {
     if acc_info.owner != program_id {
-        return Err(RegistryErrorCode::InvalidOwner)?;
+        return Err(RegistryErrorCode::InvalidOwner.into());
     }
 
     let m = Member::unpack(&acc_info.try_borrow_data()?)?;
     if !m.initialized {
-        return Err(RegistryErrorCode::NotInitialized)?;
+        return Err(RegistryErrorCode::NotInitialized.into());
     }
-    if m.entity != *entity_acc_info.key {
-        return Err(RegistryErrorCode::MemberEntityMismatch)?;
+    if m.beneficiary != *beneficiary_acc_info.key {
+        return Err(RegistryErrorCode::MemberBeneficiaryMismatch.into());
     }
+    Ok(m)
+}
+
+pub fn member_registrar_entity(
+    acc_info: &AccountInfo,
+    registrar_acc_info: &AccountInfo,
+    entity_acc_info: &AccountInfo,
+    program_id: &Pubkey,
+) -> Result<Member, RegistryError> {
+    if acc_info.owner != program_id {
+        return Err(RegistryErrorCode::InvalidOwner.into());
+    }
+
+    let m = Member::unpack(&acc_info.try_borrow_data()?)?;
+    if !m.initialized {
+        return Err(RegistryErrorCode::NotInitialized.into());
+    }
+    if &m.registrar != registrar_acc_info.key {
+        return Err(RegistryErrorCode::MemberRegistrarMismatch.into());
+    }
+    if &m.entity != entity_acc_info.key {
+        return Err(RegistryErrorCode::MemberEntityMismatch.into());
+    }
+
     Ok(m)
 }
 
@@ -191,13 +171,14 @@ pub fn member_vault(
         .iter()
         .filter(|b| &b.owner == balance_id)
         .collect::<Vec<&BalanceSandbox>>();
+    assert!(b.len() == 1);
     let balances = b.first().ok_or(RegistryErrorCode::InvalidBalanceSandbox)?;
 
     let is_mega = {
         if &balances.vault != member_vault_acc_info.key
             && &balances.vault_mega != member_vault_acc_info.key
         {
-            return Err(RegistryErrorCode::InvalidVault)?;
+            return Err(RegistryErrorCode::InvalidVault.into());
         }
         member_vault_acc_info.key == &balances.vault_mega
     };
@@ -228,13 +209,14 @@ pub fn member_vault_stake(
         .iter()
         .filter(|b| &b.owner == balance_id)
         .collect::<Vec<&BalanceSandbox>>();
+    assert!(b.len() == 1);
     let balances = b.first().ok_or(RegistryErrorCode::InvalidBalanceSandbox)?;
 
     let is_mega = {
         if member_vault_acc_info.key != &balances.vault_stake
             && member_vault_acc_info.key != &balances.vault_stake_mega
         {
-            return Err(RegistryErrorCode::InvalidStakeVault)?;
+            return Err(RegistryErrorCode::InvalidStakeVault.into());
         }
         member_vault_acc_info.key == &balances.vault_stake_mega
     };
@@ -264,17 +246,49 @@ pub fn member_spt(
         .iter()
         .filter(|b| &b.owner == balance_id)
         .collect::<Vec<&BalanceSandbox>>();
+    assert!(b.len() == 1);
     let balances = b.first().ok_or(RegistryErrorCode::InvalidBalanceSandbox)?;
 
     let is_mega = {
         if member_spt_acc_info.key != &balances.spt && member_spt_acc_info.key != &balances.spt_mega
         {
-            return Err(RegistryErrorCode::InvalidSpt)?;
+            return Err(RegistryErrorCode::InvalidSpt.into());
         }
         member_spt_acc_info.key == &balances.spt_mega
     };
 
     Ok((member_spt, is_mega))
+}
+
+pub fn member_pool_token(
+    member: &Member,
+    pool_token_acc_info: &AccountInfo,
+    pool_mint_acc_info: &AccountInfo,
+    balance_id: &Pubkey,
+    is_mega: bool,
+) -> Result<TokenAccount, RegistryError> {
+    let b = member
+        .balances
+        .iter()
+        .filter(|b| &b.owner == balance_id)
+        .collect::<Vec<&BalanceSandbox>>();
+    assert!(b.len() == 1);
+    let balances = b.first().ok_or(RegistryErrorCode::InvalidBalanceSandbox)?;
+
+    if is_mega {
+        if &balances.spt_mega != pool_token_acc_info.key {
+            return Err(RegistryErrorCode::InvalidPoolToken.into());
+        }
+    } else if &balances.spt != pool_token_acc_info.key {
+        return Err(RegistryErrorCode::InvalidPoolToken.into());
+    }
+
+    let token = token_account(pool_token_acc_info)?;
+    if &token.mint != pool_mint_acc_info.key {
+        return Err(RegistryErrorCode::InvalidPoolToken.into());
+    }
+
+    Ok(token)
 }
 
 pub fn member_vault_pending_withdrawal(
@@ -299,13 +313,14 @@ pub fn member_vault_pending_withdrawal(
         .iter()
         .filter(|b| &b.owner == balance_id)
         .collect::<Vec<&BalanceSandbox>>();
+    assert!(b.len() == 1);
     let balances = b.first().ok_or(RegistryErrorCode::InvalidBalanceSandbox)?;
 
     let is_mega = {
         if member_vault_acc_info.key != &balances.vault_pending_withdrawal
             && member_vault_acc_info.key != &balances.vault_pending_withdrawal_mega
         {
-            return Err(RegistryErrorCode::InvalidPendingWithdrawalVault)?;
+            return Err(RegistryErrorCode::InvalidPendingWithdrawalVault.into());
         }
         member_vault_acc_info.key == &balances.vault_pending_withdrawal_mega
     };
@@ -313,252 +328,7 @@ pub fn member_vault_pending_withdrawal(
     Ok((member_vault, is_mega))
 }
 
-pub fn reward_event_q<'a, 'b, 'c>(
-    reward_event_q_acc_info: &'a AccountInfo<'b>,
-    registrar_acc_info: &'a AccountInfo<'b>,
-    registrar: &'c Registrar,
-    program_id: &'a Pubkey,
-) -> Result<RewardEventQueue<'b>, RegistryError> {
-    if reward_event_q_acc_info.owner == program_id {
-        return Err(RegistryErrorCode::InvalidOwner)?;
-    }
-    if registrar.reward_event_q != *reward_event_q_acc_info.key {
-        return Err(RegistryErrorCode::RegistrarRewardQMismatch)?;
-    }
-    let q = RewardEventQueue::from(reward_event_q_acc_info.data.clone());
-    if q.authority() != *registrar_acc_info.key {
-        return Err(RegistryErrorCode::RegistrarRewardQMismatch)?;
-    }
-    Ok(q)
-}
-
-pub fn pool_mint(
-    pool_mint_acc_info: &AccountInfo,
-    registrar: &Registrar,
-    is_mega: bool,
-) -> Result<Mint, RegistryError> {
-    if is_mega {
-        if pool_mint_acc_info.key != &registrar.pool_mint_mega {
-            return Err(RegistryErrorCode::InvalidPoolTokenMint)?;
-        }
-    } else {
-        if pool_mint_acc_info.key != &registrar.pool_mint {
-            return Err(RegistryErrorCode::InvalidPoolTokenMint)?;
-        }
-    }
-
-    let mint = mint(pool_mint_acc_info)?;
-
-    Ok(mint)
-}
-
-pub fn member_pool_token(
-    member: &Member,
-    pool_token_acc_info: &AccountInfo,
-    pool_mint_acc_info: &AccountInfo,
-    balance_id: &Pubkey,
-    is_mega: bool,
-) -> Result<TokenAccount, RegistryError> {
-    let b = member
-        .balances
-        .iter()
-        .filter(|b| &b.owner == balance_id)
-        .collect::<Vec<&BalanceSandbox>>();
-    let balances = b.first().ok_or(RegistryErrorCode::InvalidBalanceSandbox)?;
-
-    if is_mega {
-        if &balances.spt_mega != pool_token_acc_info.key {
-            return Err(RegistryErrorCode::InvalidPoolToken)?;
-        }
-    } else {
-        if &balances.spt != pool_token_acc_info.key {
-            return Err(RegistryErrorCode::InvalidPoolToken)?;
-        }
-    }
-
-    let token = token_account(pool_token_acc_info)?;
-    if &token.mint != pool_mint_acc_info.key {
-        return Err(RegistryErrorCode::InvalidPoolToken)?;
-    }
-
-    Ok(token)
-}
-
-pub fn vault_authenticated(
-    acc_info: &AccountInfo,
-    vault_authority_acc_info: &AccountInfo,
-    registrar_acc_info: &AccountInfo,
-    registrar: &Registrar,
-    program_id: &Pubkey,
-) -> Result<TokenAccount, RegistryError> {
-    let v = vault(acc_info, registrar_acc_info, registrar, program_id)?;
-
-    if v.owner != *vault_authority_acc_info.key {
-        return Err(RegistryErrorCode::InvalidVaultAuthority)?;
-    }
-
-    Ok(v)
-}
-
-fn vault(
-    acc_info: &AccountInfo,
-    registrar_acc_info: &AccountInfo,
-    registrar: &Registrar,
-    program_id: &Pubkey,
-) -> Result<TokenAccount, RegistryError> {
-    let vault = TokenAccount::unpack(&acc_info.try_borrow_data()?)?;
-
-    let expected_vault_auth = Pubkey::create_program_address(
-        &vault::signer_seeds(registrar_acc_info.key, &registrar.nonce),
-        program_id,
-    )
-    .map_err(|_| RegistryErrorCode::InvalidVaultAuthority)?;
-    if expected_vault_auth != vault.owner {
-        return Err(RegistryErrorCode::InvalidVaultAuthority)?;
-    }
-
-    Ok(vault)
-}
-
-pub fn vault_pair(
-    vault_acc_info: &AccountInfo,
-    vault_mega_acc_info: &AccountInfo,
-    registrar_acc_info: &AccountInfo,
-    registrar: &Registrar,
-    rent: &Rent,
-    program_id: &Pubkey,
-) -> Result<(), RegistryError> {
-    let v = vault_init(
-        vault_acc_info,
-        registrar_acc_info,
-        rent,
-        registrar.nonce,
-        program_id,
-    )?;
-    let v_mega = vault_init(
-        vault_mega_acc_info,
-        registrar_acc_info,
-        rent,
-        registrar.nonce,
-        program_id,
-    )?;
-
-    if v.mint != registrar.mint {
-        return Err(RegistryErrorCode::InvalidMint)?;
-    }
-    if v_mega.mint != registrar.mega_mint {
-        return Err(RegistryErrorCode::InvalidMint)?;
-    }
-    Ok(())
-}
-
-pub fn pool_token_pair(
-    spt_acc_info: &AccountInfo,
-    spt_mega_acc_info: &AccountInfo,
-    registrar: &Registrar,
-    registry_signer_acc_info: &AccountInfo,
-) -> Result<(), RegistryError> {
-    let spt = TokenAccount::unpack(&spt_acc_info.try_borrow_data()?)?;
-    let spt_mega = TokenAccount::unpack(&spt_mega_acc_info.try_borrow_data()?)?;
-    // Pool token owner must be the program derived address.
-    // Delegate must be None, since it will be set in this instruction.
-    if spt.delegate != COption::None {
-        return Err(RegistryErrorCode::SptDelegateAlreadySet)?;
-    }
-    if spt.owner != *registry_signer_acc_info.key {
-        return Err(RegistryErrorCode::InvalidStakeTokenOwner)?;
-    }
-    if spt.mint != registrar.pool_mint {
-        return Err(RegistryErrorCode::InvalidMint)?;
-    }
-    if spt_mega.delegate != COption::None {
-        return Err(RegistryErrorCode::SptDelegateAlreadySet)?;
-    }
-    if spt_mega.owner != *registry_signer_acc_info.key {
-        return Err(RegistryErrorCode::InvalidStakeTokenOwner)?;
-    }
-    if spt_mega.mint != registrar.pool_mint_mega {
-        return Err(RegistryErrorCode::InvalidMint)?;
-    }
-    Ok(())
-}
-
-pub fn vault_init(
-    vault_acc_info: &AccountInfo,
-    registrar_acc_info: &AccountInfo,
-    rent: &Rent,
-    nonce: u8,
-    program_id: &Pubkey,
-) -> Result<TokenAccount, RegistryError> {
-    let vault_authority = Pubkey::create_program_address(
-        &vault::signer_seeds(registrar_acc_info.key, &nonce),
-        program_id,
-    )
-    .map_err(|_| RegistryErrorCode::InvalidVaultNonce)?;
-    let vault = token(vault_acc_info, &vault_authority)?;
-    if vault.owner != vault_authority {
-        return Err(RegistryErrorCode::InvalidVaultAuthority)?;
-    }
-    if !rent.is_exempt(vault_acc_info.lamports(), vault_acc_info.try_data_len()?) {
-        return Err(RegistryErrorCode::NotRentExempt)?;
-    }
-    Ok(vault)
-}
-
-pub fn pending_withdrawal(
-    acc_info: &AccountInfo,
-    program_id: &Pubkey,
-) -> Result<PendingWithdrawal, RegistryError> {
-    let pw = PendingWithdrawal::unpack(&acc_info.try_borrow_data()?)?;
-    if acc_info.owner != program_id {
-        return Err(RegistryErrorCode::InvalidAccountOwner)?;
-    }
-    if !pw.initialized {
-        return Err(RegistryErrorCode::NotInitialized)?;
-    }
-    if pw.burned {
-        return Err(RegistryErrorCode::AlreadyBurned)?;
-    }
-    Ok(pw)
-}
-
-pub fn locked_reward_vendor(
-    vendor_acc_info: &AccountInfo,
-    registrar_acc_info: &AccountInfo,
-    program_id: &Pubkey,
-) -> Result<LockedRewardVendor, RegistryError> {
-    if vendor_acc_info.owner != program_id {
-        return Err(RegistryErrorCode::InvalidAccountOwner)?;
-    }
-    let vendor = LockedRewardVendor::unpack(&vendor_acc_info.try_borrow_data()?)?;
-    if !vendor.initialized {
-        return Err(RegistryErrorCode::NotInitialized)?;
-    }
-    if vendor.registrar != *registrar_acc_info.key {
-        return Err(RegistryErrorCode::VendorRegistrarMismatch)?;
-    }
-    Ok(vendor)
-}
-
-pub fn unlocked_reward_vendor(
-    vendor_acc_info: &AccountInfo,
-    registrar_acc_info: &AccountInfo,
-    program_id: &Pubkey,
-) -> Result<UnlockedRewardVendor, RegistryError> {
-    if vendor_acc_info.owner != program_id {
-        return Err(RegistryErrorCode::InvalidAccountOwner)?;
-    }
-    let vendor = UnlockedRewardVendor::unpack(&vendor_acc_info.try_borrow_data()?)?;
-    if !vendor.initialized {
-        return Err(RegistryErrorCode::NotInitialized)?;
-    }
-    if vendor.registrar != *registrar_acc_info.key {
-        return Err(RegistryErrorCode::VendorRegistrarMismatch)?;
-    }
-    Ok(vendor)
-}
-
-pub fn balance_sandbox(
+pub fn balance_sandbox_init(
     balances: &[BalanceSandboxAccInfo],
     registrar_acc_info: &AccountInfo,
     registrar: &Registrar,
@@ -568,13 +338,14 @@ pub fn balance_sandbox(
 ) -> Result<(), RegistryError> {
     // Only allow two sets of balances for now (main and locked).
     if balances.len() != 2 {
-        return Err(RegistryErrorCode::InvalidAssetsLen)?;
+        return Err(RegistryErrorCode::InvalidAssetsLen.into());
     }
-    // Check the given balance assets are all unique accounts.
+
+    // Validate each vault in each balance set.
     let mut all_accounts = vec![];
     for b in balances {
         // Pool Tokens.
-        pool_token_pair(
+        pool_token_pair_init(
             b.spt_acc_info,
             b.spt_mega_acc_info,
             registrar,
@@ -582,7 +353,7 @@ pub fn balance_sandbox(
         )?;
 
         // Deposits.
-        vault_pair(
+        vault_pair_init(
             b.vault_acc_info,
             b.vault_mega_acc_info,
             registrar_acc_info,
@@ -590,8 +361,9 @@ pub fn balance_sandbox(
             &rent,
             program_id,
         )?;
+
         // Stake.
-        vault_pair(
+        vault_pair_init(
             b.vault_stake_acc_info,
             b.vault_stake_mega_acc_info,
             registrar_acc_info,
@@ -599,8 +371,9 @@ pub fn balance_sandbox(
             &rent,
             program_id,
         )?;
+
         // Pending withdrawals.
-        vault_pair(
+        vault_pair_init(
             b.vault_pw_acc_info,
             b.vault_pw_mega_acc_info,
             registrar_acc_info,
@@ -621,51 +394,317 @@ pub fn balance_sandbox(
             b.vault_pw_mega_acc_info.key,
         ]);
     }
+
+    // Check the given balance assets are all unique accounts.
     let given_len = all_accounts.len();
     all_accounts.sort();
     all_accounts.dedup();
     if given_len != all_accounts.len() {
-        return Err(RegistryErrorCode::InvalidAssetsLen)?;
+        return Err(RegistryErrorCode::InvalidAssetsLen.into());
+    }
+
+    Ok(())
+}
+
+fn pool_token_pair_init(
+    spt_acc_info: &AccountInfo,
+    spt_mega_acc_info: &AccountInfo,
+    registrar: &Registrar,
+    registry_signer_acc_info: &AccountInfo,
+) -> Result<(), RegistryError> {
+    // Regular.
+    let spt = TokenAccount::unpack(&spt_acc_info.try_borrow_data()?)?;
+    if spt.delegate != COption::None {
+        return Err(RegistryErrorCode::SptDelegateAlreadySet.into());
+    }
+    if spt.owner != *registry_signer_acc_info.key {
+        return Err(RegistryErrorCode::InvalidStakeTokenOwner.into());
+    }
+    if spt.mint != registrar.pool_mint {
+        return Err(RegistryErrorCode::InvalidMint.into());
+    }
+
+    // Mega.
+    let spt_mega = TokenAccount::unpack(&spt_mega_acc_info.try_borrow_data()?)?;
+    if spt_mega.delegate != COption::None {
+        return Err(RegistryErrorCode::SptDelegateAlreadySet.into());
+    }
+    if spt_mega.owner != *registry_signer_acc_info.key {
+        return Err(RegistryErrorCode::InvalidStakeTokenOwner.into());
+    }
+    if spt_mega.mint != registrar.pool_mint_mega {
+        return Err(RegistryErrorCode::InvalidMint.into());
     }
     Ok(())
+}
+
+fn vault_pair_init(
+    vault_acc_info: &AccountInfo,
+    vault_mega_acc_info: &AccountInfo,
+    registrar_acc_info: &AccountInfo,
+    registrar: &Registrar,
+    rent: &Rent,
+    program_id: &Pubkey,
+) -> Result<(), RegistryError> {
+    // Regular.
+    let v = vault_init(
+        vault_acc_info,
+        registrar_acc_info,
+        rent,
+        registrar.nonce,
+        program_id,
+    )?;
+    if v.mint != registrar.mint {
+        return Err(RegistryErrorCode::InvalidMint.into());
+    }
+
+    // Mega.
+    let v_mega = vault_init(
+        vault_mega_acc_info,
+        registrar_acc_info,
+        rent,
+        registrar.nonce,
+        program_id,
+    )?;
+    if v_mega.mint != registrar.mega_mint {
+        return Err(RegistryErrorCode::InvalidMint.into());
+    }
+
+    Ok(())
+}
+
+pub fn reward_event_q<'a, 'b, 'c>(
+    reward_event_q_acc_info: &'a AccountInfo<'b>,
+    registrar_acc_info: &'a AccountInfo<'b>,
+    registrar: &'c Registrar,
+    program_id: &'a Pubkey,
+) -> Result<RewardEventQueue<'b>, RegistryError> {
+    if reward_event_q_acc_info.owner != program_id {
+        return Err(RegistryErrorCode::InvalidOwner.into());
+    }
+    if registrar.reward_event_q != *reward_event_q_acc_info.key {
+        return Err(RegistryErrorCode::RegistrarRewardQMismatch.into());
+    }
+    let q = RewardEventQueue::from(reward_event_q_acc_info.data.clone());
+    if q.authority() != *registrar_acc_info.key {
+        return Err(RegistryErrorCode::RegistrarRewardQMismatch.into());
+    }
+    Ok(q)
+}
+
+pub fn pool_mint(
+    pool_mint_acc_info: &AccountInfo,
+    registrar: &Registrar,
+    is_mega: bool,
+) -> Result<Mint, RegistryError> {
+    if is_mega {
+        if pool_mint_acc_info.key != &registrar.pool_mint_mega {
+            return Err(RegistryErrorCode::InvalidPoolTokenMint.into());
+        }
+    } else if pool_mint_acc_info.key != &registrar.pool_mint {
+        return Err(RegistryErrorCode::InvalidPoolTokenMint.into());
+    }
+
+    let mint = mint(pool_mint_acc_info)?;
+
+    Ok(mint)
+}
+
+pub fn vault_authenticated(
+    acc_info: &AccountInfo,
+    vault_authority_acc_info: &AccountInfo,
+    registrar_acc_info: &AccountInfo,
+    registrar: &Registrar,
+    program_id: &Pubkey,
+) -> Result<TokenAccount, RegistryError> {
+    let v = vault(acc_info, registrar_acc_info, registrar, program_id)?;
+
+    if v.owner != *vault_authority_acc_info.key {
+        return Err(RegistryErrorCode::InvalidVaultAuthority.into());
+    }
+
+    Ok(v)
+}
+
+fn vault(
+    acc_info: &AccountInfo,
+    registrar_acc_info: &AccountInfo,
+    registrar: &Registrar,
+    program_id: &Pubkey,
+) -> Result<TokenAccount, RegistryError> {
+    let vault = token_account(acc_info)?;
+
+    let expected_vault_auth = Pubkey::create_program_address(
+        &vault::signer_seeds(registrar_acc_info.key, &registrar.nonce),
+        program_id,
+    )
+    .map_err(|_| RegistryErrorCode::InvalidVaultAuthority)?;
+    if expected_vault_auth != vault.owner {
+        return Err(RegistryErrorCode::InvalidVaultAuthority.into());
+    }
+
+    Ok(vault)
+}
+
+pub fn vault_init(
+    vault_acc_info: &AccountInfo,
+    registrar_acc_info: &AccountInfo,
+    rent: &Rent,
+    nonce: u8,
+    program_id: &Pubkey,
+) -> Result<TokenAccount, RegistryError> {
+    let vault_authority = Pubkey::create_program_address(
+        &vault::signer_seeds(registrar_acc_info.key, &nonce),
+        program_id,
+    )
+    .map_err(|_| RegistryErrorCode::InvalidVaultNonce)?;
+    let vault = token(vault_acc_info, &vault_authority)?;
+    if vault.owner != vault_authority {
+        return Err(RegistryErrorCode::InvalidVaultAuthority.into());
+    }
+    if !rent.is_exempt(vault_acc_info.lamports(), vault_acc_info.try_data_len()?) {
+        return Err(RegistryErrorCode::NotRentExempt.into());
+    }
+    Ok(vault)
+}
+
+pub fn pending_withdrawal(
+    acc_info: &AccountInfo,
+    program_id: &Pubkey,
+) -> Result<PendingWithdrawal, RegistryError> {
+    let pw = PendingWithdrawal::unpack(&acc_info.try_borrow_data()?)?;
+    if acc_info.owner != program_id {
+        return Err(RegistryErrorCode::InvalidAccountOwner.into());
+    }
+    if !pw.initialized {
+        return Err(RegistryErrorCode::NotInitialized.into());
+    }
+    if pw.burned {
+        return Err(RegistryErrorCode::AlreadyBurned.into());
+    }
+    Ok(pw)
+}
+
+pub fn locked_reward_vendor(
+    vendor_acc_info: &AccountInfo,
+    registrar_acc_info: &AccountInfo,
+    program_id: &Pubkey,
+) -> Result<LockedRewardVendor, RegistryError> {
+    if vendor_acc_info.owner != program_id {
+        return Err(RegistryErrorCode::InvalidAccountOwner.into());
+    }
+    let vendor = LockedRewardVendor::unpack(&vendor_acc_info.try_borrow_data()?)?;
+    if !vendor.initialized {
+        return Err(RegistryErrorCode::NotInitialized.into());
+    }
+    if vendor.registrar != *registrar_acc_info.key {
+        return Err(RegistryErrorCode::VendorRegistrarMismatch.into());
+    }
+    Ok(vendor)
+}
+
+pub fn unlocked_reward_vendor(
+    vendor_acc_info: &AccountInfo,
+    registrar_acc_info: &AccountInfo,
+    program_id: &Pubkey,
+) -> Result<UnlockedRewardVendor, RegistryError> {
+    if vendor_acc_info.owner != program_id {
+        return Err(RegistryErrorCode::InvalidAccountOwner.into());
+    }
+    let vendor = UnlockedRewardVendor::unpack(&vendor_acc_info.try_borrow_data()?)?;
+    if !vendor.initialized {
+        return Err(RegistryErrorCode::NotInitialized.into());
+    }
+    if vendor.registrar != *registrar_acc_info.key {
+        return Err(RegistryErrorCode::VendorRegistrarMismatch.into());
+    }
+    Ok(vendor)
+}
+
+// Returns true if the member's rewards cursor is not up to date with
+// the latest head, meaning it has an unclaimed reward.
+pub fn reward_cursor_needs_update(
+    reward_q_acc_info: &AccountInfo,
+    member: &Member,
+    stake_assets: &[StakeAssets],
+    registrar: &Registrar,
+) -> Result<bool, RegistryError> {
+    assert!(stake_assets.len() == 2);
+
+    let reward_q = RewardEventQueue::from(reward_q_acc_info.data.clone());
+
+    let has_stake = stake_assets.iter().map(|a| a.spt.amount).sum::<u64>() > 0;
+    let has_stake_mega = stake_assets.iter().map(|a| a.spt_mega.amount).sum::<u64>() > 0;
+
+    let mut cursor = member.rewards_cursor;
+
+    // If the member's cursor is less then the tail, then the ring buffer has
+    // overwritten those entries, so jump to the tail.
+    let tail = reward_q.tail()?;
+    if cursor < tail {
+        cursor = tail;
+    }
+
+    // For all unprocessed rewards, check if we're eligible for the reward.
+    let head = reward_q.head()?;
+    while cursor < head {
+        let (pool, ts) = match reward_q.message_at(cursor)? {
+            RewardEvent::LockedAlloc { pool, ts, .. } => (pool, ts),
+            RewardEvent::UnlockedAlloc { pool, ts, .. } => (pool, ts),
+        };
+        // Was the member staked during this reward event?
+        if member.last_stake_ts < ts {
+            if pool == registrar.pool_mint {
+                if has_stake {
+                    return Ok(true);
+                }
+            } else if has_stake_mega {
+                return Ok(true);
+            }
+        }
+        // Not eligible. Check the next event.
+        cursor += 1;
+    }
+
+    Ok(false)
 }
 
 pub fn token(acc_info: &AccountInfo, authority: &Pubkey) -> Result<TokenAccount, RegistryError> {
     let token = token_account(acc_info)?;
     if token.owner != *authority {
-        return Err(RegistryErrorCode::InvalidOwner)?;
+        return Err(RegistryErrorCode::InvalidOwner.into());
     }
     Ok(token)
 }
 
 pub fn token_account(acc_info: &AccountInfo) -> Result<TokenAccount, RegistryError> {
     if *acc_info.owner != spl_token::ID {
-        return Err(RegistryErrorCode::InvalidAccountOwner)?;
+        return Err(RegistryErrorCode::InvalidAccountOwner.into());
     }
     let token = TokenAccount::unpack(&acc_info.try_borrow_data()?)?;
     if token.state != spl_token::state::AccountState::Initialized {
-        return Err(RegistryErrorCode::NotInitialized)?;
+        return Err(RegistryErrorCode::NotInitialized.into());
     }
     Ok(token)
 }
 
 pub fn rent(acc_info: &AccountInfo) -> Result<Rent, RegistryError> {
     if *acc_info.key != solana_sdk::sysvar::rent::id() {
-        return Err(RegistryErrorCode::InvalidRentSysvar)?;
+        return Err(RegistryErrorCode::InvalidRentSysvar.into());
     }
     Rent::from_account_info(acc_info).map_err(Into::into)
 }
 
 pub fn clock(acc_info: &AccountInfo) -> Result<Clock, RegistryError> {
     if *acc_info.key != solana_sdk::sysvar::clock::id() {
-        return Err(RegistryErrorCode::InvalidClockSysvar)?;
+        return Err(RegistryErrorCode::InvalidClockSysvar.into());
     }
     Clock::from_account_info(acc_info).map_err(Into::into)
 }
 
 pub fn mint(acc_info: &AccountInfo) -> Result<Mint, RegistryError> {
     if *acc_info.owner != spl_token::ID {
-        return Err(RegistryErrorCode::InvalidAccountOwner)?;
+        return Err(RegistryErrorCode::InvalidAccountOwner.into());
     }
 
     Mint::unpack(&acc_info.try_borrow_data()?).map_err(Into::into)
@@ -681,4 +720,9 @@ pub struct BalanceSandboxAccInfo<'a, 'b> {
     pub vault_stake_mega_acc_info: &'a AccountInfo<'b>,
     pub vault_pw_acc_info: &'a AccountInfo<'b>,
     pub vault_pw_mega_acc_info: &'a AccountInfo<'b>,
+}
+
+pub struct StakeAssets {
+    pub spt: TokenAccount,
+    pub spt_mega: TokenAccount,
 }

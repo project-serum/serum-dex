@@ -17,12 +17,10 @@ pub mod instruction {
         /// Accounts:
         ///
         /// 0. `[writable]` Registrar.
-        /// 1. `[]`         Vault.
-        /// 2. `[]`         Mega vault.
-        /// 3. `[]`         Pool.
-        /// 4. `[]`         Mega pool.
-        /// 5. `[]`         Pool program.
-        /// 6. `[]`         Rent sysvar.
+        /// 1. `[]`         Pool mint.
+        /// 2. `[]`         Mega pool mint.
+        /// 3. `[]`         Reward event q.
+        /// 4. `[]`         Rent sysvar.
         Initialize {
             authority: Pubkey,
             mint: Pubkey,
@@ -47,14 +45,16 @@ pub mod instruction {
         /// Accounts:
         ///
         /// 0. `[writable]` Entity.
-        /// 1. `[signer]`   Entity leader.
+        /// 1. `[signer]`   Leader.
         /// 2. `[]`         Registrar.
         /// 3. `[]`         Rent sysvar.
-        CreateEntity { metadata: Pubkey },
+        CreateEntity {
+            metadata: Pubkey,
+        },
         /// Accounts:
         ///
         /// 0. `[writable]` Entity account.
-        /// 1. `[signer]`   Entity leader.
+        /// 1. `[signer]`   Leader.
         /// 2. `[]`         Registrar.
         UpdateEntity {
             leader: Option<Pubkey>,
@@ -66,15 +66,18 @@ pub mod instruction {
         /// 1. `[writable]` Member.
         /// 2. `[]`         Entity to join.
         /// 3. `[]`         Registrar.
-        /// 2. `[]`         Staking pool token.
-        /// 3. `[]`         Mega staking pool token.
-        /// 4. `[]`         Rent sysvar.
+        /// 4. `[]`         Registrar signer/vault authority.
+        /// 5. `[]`         Token program.
+        /// 6. `[]`         Rent sysvar.
+        /// ..              Balance sandboxes.
         CreateMember,
         /// Accounts:
         ///
         /// 0. `[writable]` Member.
         /// 1. `[signer]`   Beneficiary.
-        UpdateMember { metadata: Option<Pubkey> },
+        UpdateMember {
+            metadata: Option<Pubkey>,
+        },
         /// Accounts:
         ///
         /// 0. `[writable]` Member.
@@ -83,79 +86,113 @@ pub mod instruction {
         /// 3. `[writable]` Current entity.
         /// 4. `[writable]` New entity.
         /// 5. `[]`         Clock sysvar.
-        ///
-        /// ..              GetBasket pool accounts.
+        /// 6. `[]`         Vault authority.
+        /// 7. `[]`         Reward q.
+        /// .. `[]`         Stake assets.
         SwitchEntity,
         /// Accounts:
         ///
-        /// Lockup whitelist relay interface (funds flow *from* lockup program):
+        /// Lockup whitelist relay interface (funds can flow *from* lockup program):
         ///
-        /// 0. `[writable]`  Depositor token account.
-        /// 1. `[]`          Depositor token authority.
-        /// 2. `[]`          Token program.
+        /// 0. `[]`          Vesting account (unused dummy account).
+        /// 1. `[writable]`  Depositor token account.
+        /// 2. `[signer]`    Depositor token authority.
+        /// 3. `[]`          Token program.
+        /// 4. `[writable]`  Member vault.
+        /// 5. `[]`          Member vault authority.
         ///
         /// Program specific.
         ///
-        /// 3. `[writable]` Member.
-        /// 4. `[signer]`   Beneficiary.
-        /// 5. `[writable]` Entity.
-        /// 6. `[]`         Registrar.
-        /// 7. `[]`         Clock.
-        /// 8. `[]`         Vault (either the MSRM or SRM vault depending on
-        ///                 depositor's mint).
-        Deposit { amount: u64 },
+        /// 6. `[writable]` Member.
+        /// 7. `[signer]`   Beneficiary.
+        /// 8. `[writable]` Entity.
+        /// 9. `[]`         Registrar.
+        Deposit {
+            amount: u64,
+        },
         /// Accounts:
         ///
-        /// Lockup whitelist relay interface (funds flow *to* lockup program):
+        /// Lockup whitelist relay interface (funds can flow *to* lockup program):
         ///
-        /// 0. `[writable]`  Depositor token account.
-        /// 1. `[]`          Depositor token authority.
-        /// 2. `[]`          Token program.
-        /// 3. `[]`          Vault authority.
+        /// 0. `[]`          Vesting account (unused dummy account).
+        /// 1. `[writable]`  Depositor token account.
+        /// 2. `[signer]`    Depositor token authority.
+        /// 3. `[]`          Token program.
+        /// 4. `[writable]`  Member vault.
+        /// 5. `[]`          Member vault authority.
         ///
         /// Program specific.
         ///
-        /// 4. `[writable]` Member.
-        /// 5. `[signer]`   Beneficiary.
-        /// 6. `[writable]` Entity.
-        /// 7. `[]`         Registrar.
-        /// 8. `[]`         Clock.
-        /// 9. `[]`         Vault (either the MSRM or SRM vault depending on
-        ///                 depositor's mint).
-        Withdraw { amount: u64 },
+        /// 6. `[writable]` Member.
+        /// 7. `[signer]`   Beneficiary.
+        /// 8. `[writable]` Entity.
+        /// 9. `[]`         Registrar.
+        Withdraw {
+            amount: u64,
+        },
         /// Accounts:
         ///
         /// 0. `[writable]` Member.
         /// 1. `[signer]`   Beneficiary.
         /// 2. `[writable]` Entity.
         /// 3. `[]`         Registrar.
-        /// 4. `[]`         Clock sysvar.
-        /// 5. `[]`         Token program.
-        Stake { amount: u64, balance_id: Pubkey },
+        /// 4. `[writable]` Deposit vault.
+        /// 5. `[]`         Vault authority.
+        /// 6. `[writable]` Stake vault.
+        /// 7. `[writable]` Stake pool token mint.
+        /// 8. `[writable]` Stake pool token.
+        /// 9. `[]`         Reward q.
+        /// 10. `[]`        Clock sysvar.
+        /// 11. `[]`        Token program.
+        /// ..  `[]         Stake assets.
+        Stake {
+            amount: u64,
+            balance_id: Pubkey,
+        },
         /// Accounts:
         ///
         /// 0. `[writable]  PendingWithdrawal.
-        /// 1. `[writable]` Member.
+        /// 1. `[]`         Member.
         /// 2  `[signed]`   Benficiary.
         /// 3. `[writable]` Entity.
-        /// 4. `[writable]` Registrar.
-        /// 5. `[]`         Vault authority.
-        /// 7. `[]`         Token program.
-        /// 8. `[]`         Clock sysvar.
-        /// 9. `[]`         Rent sysvar.
-        StartStakeWithdrawal { amount: u64, balance_id: Pubkey },
+        /// 4. `[]`         Registrar.
+        /// 5. `[writable]` Pending vault.
+        /// 6. `[]`         Vault authority.
+        /// 7. `[writable]` Stake vault.
+        /// 8. `[writable]` Stake pool token mint.
+        /// 9. `[writable]` Stake pool token.
+        /// 10. `[]`        Token program.
+        /// 11. `[]`        Rent sysvar.
+        /// 12. `[]`        Reward q.
+        /// ..  `[]`        Stake assets.
+        StartStakeWithdrawal {
+            amount: u64,
+            balance_id: Pubkey,
+        },
         /// Accounts:
         ///
         /// 0. `[writable]  PendingWithdrawal.
         /// 1. `[writable]` Member.
-        /// 2. `[signed]`   Beneficiary.
-        /// 3. `[writable]` Entity.
-        /// 4. `[]`         Registrar.
-        /// 5. `[]`         Clock.
+        /// 2. `[writable]` Deposit vault.
+        /// 3. `[writable]` Pending vault.
+        /// 4. `[]`         Vault authority.
+        /// 5. `[signed]`   Beneficiary.
+        /// 6. `[]`         Entity.
+        /// 7. `[]`         Token program.
+        /// 8. `[]`         Registrar.
+        /// 9. `[]`         Clock.
         EndStakeWithdrawal,
-        /// Accounts: TODO
+        /// Accounts:
         ///
-        ///
+        /// 0. `[writable]` Reward q.
+        /// 1. `[]`         Registrar.
+        /// 2. `[writable]` Depositing token account.
+        /// 3. `[signer]`   Depositing token account owner.
+        /// 4. `[]`         Pool token mint.
+        /// 5. `[writable]` Locked reward vendor.
+        /// 6. `[writable]` Locked reward vendor vault.
+        /// 7. `[]`         Token program.
+        /// 8. `[]`         Clock sysvar.
         DropLockedReward {
             total: u64,
             end_ts: i64,
@@ -164,23 +201,30 @@ pub mod instruction {
             period_count: u64,
             nonce: u8,
         },
-        /// Accounts: TODO
+        /// Accounts:
         ///
-        ///
+        /// 0. `[writable]` Reward q.
+        /// 1. `[]`         Registrar.
+        /// 2. `[writable]` Depositing token account.
+        /// 3. `[signer]`   Depositing token account owner.
+        /// 4. `[]`         Pool token mint.
+        /// 5. `[writable]` Unlocked reward vendor.
+        /// 6. `[writable]` Unlocked reward vendor vault.
+        /// 7. `[]`         Token program.
+        /// 8. `[]`         Clock sysvar.
         DropUnlockedReward {
             total: u64,
             expiry_ts: i64,
             expiry_receiver: Pubkey,
             nonce: u8,
         },
-        /// Accounts: TODO
-        ///
-        ///
-        ClaimLockedReward { cursor: u32, nonce: u8 },
-        /// Accounts: TODO
-        ///
-        ///
-        ClaimUnlockedReward { cursor: u32 },
+        ClaimLockedReward {
+            cursor: u32,
+            nonce: u8,
+        },
+        ClaimUnlockedReward {
+            cursor: u32,
+        },
         /// Accounts:
         ///
         /// 0. `[signer]`   Expiry receiver.

@@ -39,7 +39,7 @@ pub fn handler(
     let clock_acc_info = next_account_info(acc_infos)?;
 
     let mut spt_acc_infos = vec![];
-    // 2: Main and locked balances.
+    // 2: Main and locked stake pool tokens for a given pool.
     for _ in 0..2 {
         spt_acc_infos.push(next_account_info(acc_infos)?);
     }
@@ -120,7 +120,7 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
     }
 
     // Account validation.
-    let member = access_control::member_belongs_to(
+    let member = access_control::member_registrar_entity(
         member_acc_info,
         registrar_acc_info,
         entity_acc_info,
@@ -146,11 +146,12 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
         })
         .collect::<Result<_, _>>()?;
 
-    // ClaimLockedReward specific.
-    //
     // Is the cursor valid?
     if vendor.reward_event_q_cursor != cursor {
         return Err(RegistryErrorCode::InvalidCursor)?;
+    }
+    if vendor.expired {
+        return Err(RegistryErrorCode::VendorAlreadyExpired)?;
     }
     // Has the member account processed this cursor already?
     if member.rewards_cursor > cursor {
@@ -195,7 +196,7 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
         clock,
     } = req;
 
-    // Move member rewards cursor.
+    // Move rewards cursor.
     member.rewards_cursor = cursor + 1;
 
     if vendor.expired {
@@ -217,8 +218,8 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
         return Err(RegistryErrorCode::Unknown)?;
     }
 
-    // Lockup program requires the timestamp to be <= clock's timestamp.
-    // So update if the time has already passed.
+    // Lockup program requires the timestamp to be >= clock's timestamp.
+    // So update if the time has already passed. 60 seconds is arbitrary.
     let end_ts = {
         if vendor.end_ts <= clock.unix_timestamp + 60 {
             clock.unix_timestamp + 60

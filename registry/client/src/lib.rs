@@ -44,7 +44,7 @@ impl Client {
         let (registrar_vault_authority, nonce) =
             Pubkey::find_program_address(&[registrar_kp.pubkey().as_ref()], self.inner.program());
 
-        let decimals = 6; // TODO: decide on this.
+        let decimals = 0;
         let pool_mint = rpc::new_mint(
             self.rpc(),
             self.inner.payer(),
@@ -674,8 +674,15 @@ impl Client {
             AccountMeta::new(vault_stake, false),
             AccountMeta::new(pool_mint, false),
             AccountMeta::new(spt, false),
+            AccountMeta::new_readonly(r.reward_event_q, false),
             AccountMeta::new_readonly(solana_sdk::sysvar::clock::ID, false),
             AccountMeta::new_readonly(spl_token::ID, false),
+            AccountMeta::new_readonly(m.balances[0].owner, false),
+            AccountMeta::new_readonly(m.balances[0].spt, false),
+            AccountMeta::new_readonly(m.balances[0].spt_mega, false),
+            AccountMeta::new_readonly(m.balances[1].owner, false),
+            AccountMeta::new_readonly(m.balances[1].spt, false),
+            AccountMeta::new_readonly(m.balances[1].spt_mega, false),
         ];
 
         let signers = [self.payer(), beneficiary];
@@ -742,6 +749,13 @@ impl Client {
             AccountMeta::new_readonly(solana_sdk::sysvar::clock::ID, false),
             AccountMeta::new_readonly(spl_token::ID, false),
             AccountMeta::new_readonly(solana_sdk::sysvar::rent::ID, false),
+            AccountMeta::new_readonly(r.reward_event_q, false),
+            AccountMeta::new_readonly(m.balances[0].owner, false),
+            AccountMeta::new_readonly(m.balances[0].spt, false),
+            AccountMeta::new_readonly(m.balances[0].spt_mega, false),
+            AccountMeta::new_readonly(m.balances[1].owner, false),
+            AccountMeta::new_readonly(m.balances[1].spt, false),
+            AccountMeta::new_readonly(m.balances[1].spt_mega, false),
         ];
 
         let instructions = {
@@ -877,6 +891,7 @@ impl Client {
             beneficiary,
             registrar,
         } = req;
+        let r = self.registrar(&registrar)?;
         let m = self.member(&member)?;
         let accs = vec![
             AccountMeta::new(member, false),
@@ -886,6 +901,7 @@ impl Client {
             AccountMeta::new(new_entity, false),
             AccountMeta::new_readonly(solana_sdk::sysvar::clock::ID, false),
             AccountMeta::new_readonly(self.vault_authority(&registrar)?, false),
+            AccountMeta::new_readonly(r.reward_event_q, false),
             AccountMeta::new_readonly(m.balances[0].owner, false),
             AccountMeta::new_readonly(m.balances[0].spt, false),
             AccountMeta::new_readonly(m.balances[0].spt_mega, false),

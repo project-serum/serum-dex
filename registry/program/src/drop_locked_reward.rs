@@ -43,6 +43,7 @@ pub fn handler(
         ref clock,
     } = access_control(AccessControlRequest {
         program_id,
+        reward_event_q_acc_info,
         registrar_acc_info,
         pool_mint_acc_info,
         vendor_acc_info,
@@ -88,6 +89,7 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
 
     let AccessControlRequest {
         program_id,
+        reward_event_q_acc_info,
         registrar_acc_info,
         pool_mint_acc_info,
         vendor_acc_info,
@@ -103,17 +105,19 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
 
     // Account validation.
     let clock = access_control::clock(clock_acc_info)?;
-    //
-    // Registrar.
     let registrar = access_control::registrar(registrar_acc_info, program_id)?;
-    // Pool.
+    let _reward_q = access_control::reward_event_q(
+        reward_event_q_acc_info,
+        registrar_acc_info,
+        &registrar,
+        program_id,
+    )?;
     let pool_mint = access_control::mint(pool_mint_acc_info)?;
     if registrar.pool_mint != *pool_mint_acc_info.key
         && registrar.pool_mint_mega != *pool_mint_acc_info.key
     {
         return Err(RegistryErrorCode::InvalidPoolTokenMint)?;
     }
-    // Vault + nonce.
     let vendor_vault_authority = Pubkey::create_program_address(
         &[
             registrar_acc_info.key.as_ref(),
@@ -125,7 +129,6 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
     .map_err(|_| RegistryErrorCode::InvalidVaultAuthority)?;
     let _vault = access_control::token(vendor_vault_acc_info, &vendor_vault_authority)?;
 
-    // DropLockedReward specific.
     if LockedRewardVendor::initialized(vendor_acc_info)? {
         return Err(RegistryErrorCode::AlreadyInitialized)?;
     }
@@ -181,6 +184,7 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
         total,
         vendor: *vendor_acc_info.key,
         mint,
+        ts: clock.unix_timestamp,
     })?;
 
     // Transfer the reward to the vendor.
@@ -213,6 +217,7 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
 
 struct AccessControlRequest<'a, 'b> {
     program_id: &'a Pubkey,
+    reward_event_q_acc_info: &'a AccountInfo<'b>,
     registrar_acc_info: &'a AccountInfo<'b>,
     pool_mint_acc_info: &'a AccountInfo<'b>,
     vendor_acc_info: &'a AccountInfo<'b>,

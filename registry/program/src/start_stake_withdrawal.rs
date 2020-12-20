@@ -1,7 +1,8 @@
 use crate::common::entity::{with_entity, EntityContext};
+use crate::switch_entity::AssetAccInfos;
 use serum_common::pack::Pack;
 use serum_common::program::{invoke_burn_tokens, invoke_token_transfer};
-use serum_registry::access_control;
+use serum_registry::access_control::{self, StakeAssets};
 use serum_registry::accounts::vault;
 use serum_registry::accounts::{Entity, PendingWithdrawal, Registrar};
 use serum_registry::error::{RegistryError, RegistryErrorCode};
@@ -22,7 +23,6 @@ pub fn handler(
     let acc_infos = &mut accounts.iter();
 
     let pending_withdrawal_acc_info = next_account_info(acc_infos)?;
-
     let member_acc_info = next_account_info(acc_infos)?;
     let beneficiary_acc_info = next_account_info(acc_infos)?;
     let entity_acc_info = next_account_info(acc_infos)?;
@@ -35,6 +35,16 @@ pub fn handler(
     let clock_acc_info = next_account_info(acc_infos)?;
     let tok_program_acc_info = next_account_info(acc_infos)?;
     let rent_acc_info = next_account_info(acc_infos)?;
+    let reward_q_acc_info = next_account_info(acc_infos)?;
+    let mut asset_acc_infos = vec![];
+    while acc_infos.len() > 0 {
+        asset_acc_infos.push(AssetAccInfos {
+            owner_acc_info: next_account_info(acc_infos)?,
+            spt_acc_info: next_account_info(acc_infos)?,
+            spt_mega_acc_info: next_account_info(acc_infos)?,
+        });
+    }
+    let asset_acc_infos = &asset_acc_infos;
 
     let ctx = EntityContext {
         entity_acc_info,
@@ -58,6 +68,8 @@ pub fn handler(
             member_vault_stake_acc_info,
             pool_mint_acc_info,
             spt_acc_info,
+            reward_q_acc_info,
+            asset_acc_infos,
             registrar,
             balance_id,
         })?;
@@ -106,6 +118,8 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
         member_vault_stake_acc_info,
         pool_mint_acc_info,
         spt_acc_info,
+        reward_q_acc_info,
+        asset_acc_infos,
         registrar,
         balance_id,
     } = req;
@@ -116,7 +130,7 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
     }
 
     // Account validation.
-    let member = access_control::member_join(
+    let member = access_control::member_entity(
         member_acc_info,
         entity_acc_info,
         beneficiary_acc_info,
@@ -151,7 +165,7 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
     let _pool_mint = access_control::pool_mint(pool_mint_acc_info, &registrar, is_mega)?;
     let rent = access_control::rent(rent_acc_info)?;
 
-    // StartStakeWithdrawal specific.
+    // Pending withdrawal account.
     {
         let pw = PendingWithdrawal::unpack(&pending_withdrawal_acc_info.try_borrow_data()?)?;
         if pending_withdrawal_acc_info.owner != program_id {
@@ -166,6 +180,45 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
         ) {
             return Err(RegistryErrorCode::NotRentExempt)?;
         }
+    }
+
+    let _reward_q = access_control::reward_event_q(
+        reward_q_acc_info,
+        registrar_acc_info,
+        &registrar,
+        program_id,
+    )?;
+    let assets = {
+        let mut assets = vec![];
+        for a in asset_acc_infos.iter() {
+            let (spt, is_mega) = access_control::member_spt(
+                &member,
+                a.spt_acc_info,
+                member_vault_authority_acc_info,
+                registrar_acc_info,
+                &registrar,
+                program_id,
+                a.owner_acc_info.key,
+            )?;
+            assert!(!is_mega);
+            let (spt_mega, is_mega) = access_control::member_spt(
+                &member,
+                a.spt_mega_acc_info,
+                member_vault_authority_acc_info,
+                registrar_acc_info,
+                &registrar,
+                program_id,
+                a.owner_acc_info.key,
+            )?;
+            assert!(is_mega);
+            assets.push(StakeAssets { spt, spt_mega });
+        }
+        assets
+    };
+    // Does the Member account have any unprocessed rewards?
+    if access_control::reward_cursor_needs_update(reward_q_acc_info, &member, &assets, &registrar)?
+    {
+        return Err(RegistryErrorCode::RewardCursorNeedsUpdate)?;
     }
 
     Ok(AccessControlResponse { is_mega })
@@ -224,7 +277,7 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
     )?;
 
     // Bookeeping.
-    entity.spt_did_unstake_start(spt_amount, is_mega);
+    entity.spt_did_unstake(spt_amount, is_mega);
 
     // Print pending withdrawal receipt.
     pending_withdrawal.initialized = true;
@@ -251,6 +304,8 @@ struct AccessControlRequest<'a, 'b, 'c> {
     member_vault_stake_acc_info: &'a AccountInfo<'b>,
     pool_mint_acc_info: &'a AccountInfo<'b>,
     spt_acc_info: &'a AccountInfo<'b>,
+    reward_q_acc_info: &'a AccountInfo<'b>,
+    asset_acc_infos: &'c [AssetAccInfos<'a, 'b>],
     program_id: &'a Pubkey,
     registrar: &'c Registrar,
     balance_id: &'c Pubkey,

@@ -13,12 +13,24 @@ use solana_client_gen::solana_sdk::pubkey::Pubkey;
 use solana_client_gen::solana_sdk::signature::{Keypair, Signer};
 use spl_token::state::Account as TokenAccount;
 
-#[test]
-fn lifecycle() {
-    let meta_entity_program_id: Pubkey = std::env::var("TEST_META_ENTITY_PROGRAM_ID")
+lazy_static::lazy_static! {
+    static ref META_ENTITY_PROGRAM_ID: Pubkey = std::env::var("TEST_META_ENTITY_PROGRAM_ID")
         .unwrap()
         .parse()
         .unwrap();
+
+    static ref LOCKUP_PROGRAM_ID: Pubkey = std::env::var("TEST_LOCKUP_PROGRAM_ID")
+        .unwrap()
+        .parse()
+        .unwrap();
+}
+
+const WITHDRAWAL_TIMELOCK: i64 = 10;
+const DEACTIVATION_TIMELOCK: i64 = 10;
+const MAX_STAKE_PER_ENTITY: u64 = 100_000_000_000_000;
+
+#[test]
+fn lifecycle() {
     // First test initiailze.
     let (client, genesis) = serum_common_tests::genesis::<Client>();
 
@@ -31,9 +43,6 @@ fn lifecycle() {
     } = genesis;
 
     // Initialize the registrar.
-    let withdrawal_timelock = 10;
-    let deactivation_timelock = 10;
-    let max_stake_per_entity = 100_000_000_000_000;
     let registrar_authority = Keypair::generate(&mut OsRng);
 
     let InitializeResponse {
@@ -41,13 +50,13 @@ fn lifecycle() {
     } = client
         .initialize(InitializeRequest {
             registrar_authority: registrar_authority.pubkey(),
-            withdrawal_timelock,
-            deactivation_timelock,
             mint: srm_mint,
             mega_mint: msrm_mint,
-            max_stake_per_entity,
             stake_rate: 1,
             stake_rate_mega: 1,
+            withdrawal_timelock: WITHDRAWAL_TIMELOCK,
+            deactivation_timelock: DEACTIVATION_TIMELOCK,
+            max_stake_per_entity: MAX_STAKE_PER_ENTITY,
         })
         .unwrap();
 
@@ -59,11 +68,7 @@ fn lifecycle() {
     // Initialize the lockup program, vesting account, and whitelist the
     // registrar so that we can stake lockedacc srm.
     let (l_client, safe, vesting, vesting_beneficiary) = {
-        let l_pid: Pubkey = std::env::var("TEST_LOCKUP_PROGRAM_ID")
-            .unwrap()
-            .parse()
-            .unwrap();
-        let l_client = serum_common_tests::client_at::<LockupClient>(l_pid);
+        let l_client = serum_common_tests::client_at::<LockupClient>(*LOCKUP_PROGRAM_ID);
         // Initialize.
         let init_resp = l_client
             .initialize(LockupInitializeRequest {
@@ -115,7 +120,7 @@ fn lifecycle() {
                     name: "".to_string(),
                     about: "".to_string(),
                     image_url: "".to_string(),
-                    meta_entity_program_id,
+                    meta_entity_program_id: *META_ENTITY_PROGRAM_ID,
                 }),
             })
             .unwrap();
@@ -370,7 +375,7 @@ fn lifecycle() {
         assert_eq!(pending_withdrawal_acc.member, member);
         assert_eq!(
             pending_withdrawal_acc.end_ts,
-            pending_withdrawal_acc.start_ts + deactivation_timelock
+            pending_withdrawal_acc.start_ts + DEACTIVATION_TIMELOCK
         );
         assert_eq!(pending_withdrawal_acc.amount, current_deposit_amount);
         assert_eq!(pending_withdrawal_acc.pool, _registrar.pool_mint);
@@ -445,7 +450,7 @@ fn lifecycle() {
                     name: "".to_string(),
                     about: "".to_string(),
                     image_url: "".to_string(),
-                    meta_entity_program_id,
+                    meta_entity_program_id: *META_ENTITY_PROGRAM_ID,
                 }),
             })
             .unwrap();

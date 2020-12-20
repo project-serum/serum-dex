@@ -5,7 +5,9 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 // Largest reward variant size.
-const MAX_RING_ITEM_SIZE: u32 = 137;
+//
+// Don't forget to change the typescript when modifying this.
+const MAX_RING_ITEM_SIZE: u32 = 145;
 
 // Generate the Ring trait.
 serum_common::ring!(MAX_RING_ITEM_SIZE);
@@ -15,7 +17,8 @@ pub struct RewardEventQueue<'a> {
 }
 
 impl<'a> RewardEventQueue<'a> {
-    pub const RING_CAPACITY: u32 = 14598;
+    // Don't forget to change the typescript when modifying this.
+    pub const RING_CAPACITY: u32 = 13792;
 
     pub fn from(storage: Rc<RefCell<&'a mut [u8]>>) -> Self {
         Self { storage }
@@ -41,6 +44,7 @@ pub enum RewardEvent {
         pool: Pubkey,
         vendor: Pubkey,
         mint: Pubkey,
+        ts: i64,
     },
     UnlockedAlloc {
         from: Pubkey,
@@ -48,6 +52,7 @@ pub enum RewardEvent {
         pool: Pubkey,
         vendor: Pubkey,
         mint: Pubkey,
+        ts: i64,
     },
 }
 
@@ -64,7 +69,8 @@ mod tests {
             pool: Pubkey::new_unique(),
             vendor: Pubkey::new_unique(),
             mint: Pubkey::new_unique(),
+            ts: 0,
         };
-        println!("TEST: {:?}", e.try_to_vec().unwrap().len());
+        assert_eq!(e.try_to_vec().unwrap().len(), 145);
     }
 }

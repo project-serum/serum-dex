@@ -85,12 +85,12 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
         return Err(RegistryErrorCode::InvalidVault)?;
     }
     if &vendor.expiry_receiver != expiry_receiver_acc_info.key {
-        return Err(RegistryErrorCode::InvalidVault)?;
+        return Err(RegistryErrorCode::Unauthorized)?;
     }
     if &token.owner != expiry_receiver_acc_info.key {
         return Err(RegistryErrorCode::InvalidAccountOwner)?;
     }
-    if clock.unix_timestamp <= vendor.expiry_ts {
+    if clock.unix_timestamp < vendor.expiry_ts {
         return Err(RegistryErrorCode::VendorNotExpired)?;
     }
 

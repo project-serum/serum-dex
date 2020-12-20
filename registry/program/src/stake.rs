@@ -1,7 +1,8 @@
 use crate::common::entity::{with_entity, EntityContext};
+use crate::switch_entity::AssetAccInfos;
 use serum_common::pack::Pack;
 use serum_common::program::{invoke_mint_tokens, invoke_token_transfer};
-use serum_registry::access_control;
+use serum_registry::access_control::{self, StakeAssets};
 use serum_registry::accounts::{vault, Entity, Member, Registrar};
 use serum_registry::error::{RegistryError, RegistryErrorCode};
 use solana_program::msg;
@@ -29,8 +30,18 @@ pub fn handler(
     let member_vault_stake_acc_info = next_account_info(acc_infos)?;
     let pool_mint_acc_info = next_account_info(acc_infos)?;
     let spt_acc_info = next_account_info(acc_infos)?;
+    let reward_q_acc_info = next_account_info(acc_infos)?;
     let clock_acc_info = next_account_info(acc_infos)?;
     let token_program_acc_info = next_account_info(acc_infos)?;
+    let mut asset_acc_infos = vec![];
+    while acc_infos.len() > 0 {
+        asset_acc_infos.push(AssetAccInfos {
+            owner_acc_info: next_account_info(acc_infos)?,
+            spt_acc_info: next_account_info(acc_infos)?,
+            spt_mega_acc_info: next_account_info(acc_infos)?,
+        });
+    }
+    let asset_acc_infos = &asset_acc_infos;
 
     let ctx = EntityContext {
         entity_acc_info,
@@ -54,7 +65,9 @@ pub fn handler(
             member_vault_authority_acc_info,
             member_vault_stake_acc_info,
             pool_mint_acc_info,
+            reward_q_acc_info,
             spt_acc_info,
+            asset_acc_infos,
             balance_id,
         })?;
         Member::unpack_mut(
@@ -99,6 +112,8 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
         member_vault_stake_acc_info,
         spt_acc_info,
         pool_mint_acc_info,
+        reward_q_acc_info,
+        asset_acc_infos,
         balance_id,
     } = req;
 
@@ -110,8 +125,7 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
     }
 
     // Account validation.
-    access_control::entity_check(entity, entity_acc_info, registrar_acc_info, program_id)?;
-    let member = access_control::member_join(
+    let member = access_control::member_entity(
         member_acc_info,
         entity_acc_info,
         beneficiary_acc_info,
@@ -144,9 +158,58 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
         is_mega,
     )?;
     let _pool_mint = access_control::pool_mint(pool_mint_acc_info, &registrar, is_mega)?;
-
-    // Can only stake to active entities. Staking MSRM will activate.
+    let _reward_q = access_control::reward_event_q(
+        reward_q_acc_info,
+        registrar_acc_info,
+        &registrar,
+        program_id,
+    )?;
+    let assets = {
+        // Ensure the given asset ids are unique.
+        let mut balance_ids: Vec<Pubkey> = asset_acc_infos
+            .iter()
+            .map(|a| *a.owner_acc_info.key)
+            .collect();
+        balance_ids.sort();
+        balance_ids.dedup();
+        if balance_ids.len() != member.balances.len() {
+            return Err(RegistryErrorCode::InvalidAssetsLen)?;
+        }
+        // Validate each asset.
+        let mut assets = vec![];
+        for a in asset_acc_infos.iter() {
+            let (spt, is_mega) = access_control::member_spt(
+                &member,
+                a.spt_acc_info,
+                member_vault_authority_acc_info,
+                registrar_acc_info,
+                &registrar,
+                program_id,
+                a.owner_acc_info.key,
+            )?;
+            assert!(!is_mega);
+            let (spt_mega, is_mega) = access_control::member_spt(
+                &member,
+                a.spt_mega_acc_info,
+                member_vault_authority_acc_info,
+                registrar_acc_info,
+                &registrar,
+                program_id,
+                a.owner_acc_info.key,
+            )?;
+            assert!(is_mega);
+            assets.push(StakeAssets { spt, spt_mega });
+        }
+        assets
+    };
+    // Does the Member account have any unprocessed rewards?
+    if access_control::reward_cursor_needs_update(reward_q_acc_info, &member, &assets, &registrar)?
+    {
+        return Err(RegistryErrorCode::RewardCursorNeedsUpdate)?;
+    }
+    // Can only stake to active entities.
     if !entity.meets_activation_requirements() {
+        // Staking MSRM will activate, so allow it.
         if !is_mega {
             return Err(RegistryErrorCode::EntityNotActivated)?;
         }
@@ -226,6 +289,8 @@ struct AccessControlRequest<'a, 'b, 'c> {
     member_vault_stake_acc_info: &'a AccountInfo<'b>,
     spt_acc_info: &'a AccountInfo<'b>,
     pool_mint_acc_info: &'a AccountInfo<'b>,
+    reward_q_acc_info: &'a AccountInfo<'b>,
+    asset_acc_infos: &'c [AssetAccInfos<'a, 'b>],
     program_id: &'a Pubkey,
     registrar: &'c Registrar,
     entity: &'c Entity,

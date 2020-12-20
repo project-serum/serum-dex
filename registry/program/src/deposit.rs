@@ -76,7 +76,8 @@ fn access_control(req: AccessControlRequest) -> Result<(), RegistryError> {
     // Account validation.
     let registrar = access_control::registrar(registrar_acc_info, program_id)?;
     let _depositor = access_control::token(depositor_acc_info, depositor_authority_acc_info.key)?;
-    let member = access_control::member_join(
+    let _entity = access_control::entity(entity_acc_info, registrar_acc_info, program_id)?;
+    let member = access_control::member_entity(
         member_acc_info,
         entity_acc_info,
         beneficiary_acc_info,

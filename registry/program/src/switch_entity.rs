@@ -1,12 +1,11 @@
 use serum_common::pack::*;
-use serum_registry::access_control;
-use serum_registry::accounts::{Entity, EntityState, Member, Registrar};
+use serum_registry::access_control::{self, StakeAssets};
+use serum_registry::accounts::{Entity, Member, Registrar};
 use serum_registry::error::{RegistryError, RegistryErrorCode};
 use solana_program::msg;
 use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::sysvar::clock::Clock;
-use spl_token::state::Account as TokenAccount;
 use std::convert::Into;
 
 #[inline(never)]
@@ -22,6 +21,7 @@ pub fn handler(program_id: &Pubkey, accounts: &[AccountInfo]) -> Result<(), Regi
     let new_entity_acc_info = next_account_info(acc_infos)?;
     let clock_acc_info = next_account_info(acc_infos)?;
     let vault_authority_acc_info = next_account_info(acc_infos)?;
+    let reward_q_acc_info = next_account_info(acc_infos)?;
     let mut asset_acc_infos = vec![];
     while acc_infos.len() > 0 {
         asset_acc_infos.push(AssetAccInfos {
@@ -45,6 +45,7 @@ pub fn handler(program_id: &Pubkey, accounts: &[AccountInfo]) -> Result<(), Regi
         clock_acc_info,
         asset_acc_infos,
         vault_authority_acc_info,
+        reward_q_acc_info,
     })?;
 
     Member::unpack_mut(
@@ -90,6 +91,7 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
         clock_acc_info,
         asset_acc_infos,
         vault_authority_acc_info,
+        reward_q_acc_info,
     } = req;
 
     // Beneficiary authorization.
@@ -100,48 +102,63 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
     // Account validation.
     let clock = access_control::clock(clock_acc_info)?;
     let registrar = access_control::registrar(registrar_acc_info, program_id)?;
-    let member = access_control::member_join(
+    let _curr = access_control::entity(curr_entity_acc_info, registrar_acc_info, program_id)?;
+    let _new = access_control::entity(new_entity_acc_info, registrar_acc_info, program_id)?;
+    let member = access_control::member_entity(
         member_acc_info,
         curr_entity_acc_info,
         beneficiary_acc_info,
         program_id,
     )?;
-    let _curr_entity =
-        access_control::entity(curr_entity_acc_info, registrar_acc_info, program_id)?;
-    let _new_entity = access_control::entity(new_entity_acc_info, registrar_acc_info, program_id)?;
-    let mut balance_ids: Vec<Pubkey> = asset_acc_infos
-        .iter()
-        .map(|a| *a.owner_acc_info.key)
-        .collect();
-    balance_ids.sort();
-    balance_ids.dedup();
-    if balance_ids.len() != member.balances.len() {
-        return Err(RegistryErrorCode::InvalidAssetsLen)?;
-    }
-    // BPF exploads when mapping so use a for loop.
-    let mut assets = vec![];
-    for a in &asset_acc_infos {
-        let (spt, is_mega) = access_control::member_spt(
-            &member,
-            a.spt_acc_info,
-            vault_authority_acc_info,
-            registrar_acc_info,
-            &registrar,
-            program_id,
-            a.owner_acc_info.key,
-        )?;
-        assert!(!is_mega);
-        let (spt_mega, is_mega) = access_control::member_spt(
-            &member,
-            a.spt_mega_acc_info,
-            vault_authority_acc_info,
-            registrar_acc_info,
-            &registrar,
-            program_id,
-            a.owner_acc_info.key,
-        )?;
-        assert!(is_mega);
-        assets.push(Assets { spt, spt_mega });
+    let _reward_q = access_control::reward_event_q(
+        reward_q_acc_info,
+        registrar_acc_info,
+        &registrar,
+        program_id,
+    )?;
+    let assets = {
+        // Ensure the given asset ids are unique.
+        let mut balance_ids: Vec<Pubkey> = asset_acc_infos
+            .iter()
+            .map(|a| *a.owner_acc_info.key)
+            .collect();
+        balance_ids.sort();
+        balance_ids.dedup();
+        if balance_ids.len() != member.balances.len() {
+            return Err(RegistryErrorCode::InvalidAssetsLen)?;
+        }
+        // Validate each asset.
+        let mut assets = vec![];
+        for a in &asset_acc_infos {
+            let (spt, is_mega) = access_control::member_spt(
+                &member,
+                a.spt_acc_info,
+                vault_authority_acc_info,
+                registrar_acc_info,
+                &registrar,
+                program_id,
+                a.owner_acc_info.key,
+            )?;
+            assert!(!is_mega);
+            let (spt_mega, is_mega) = access_control::member_spt(
+                &member,
+                a.spt_mega_acc_info,
+                vault_authority_acc_info,
+                registrar_acc_info,
+                &registrar,
+                program_id,
+                a.owner_acc_info.key,
+            )?;
+            assert!(is_mega);
+            assets.push(StakeAssets { spt, spt_mega });
+        }
+        assets
+    };
+
+    // Does the Member account have any unprocessed rewards?
+    if access_control::reward_cursor_needs_update(reward_q_acc_info, &member, &assets, &registrar)?
+    {
+        return Err(RegistryErrorCode::RewardCursorNeedsUpdate)?;
     }
 
     Ok(AccessControlResponse {
@@ -167,9 +184,7 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
 
     // Bump the last stake timestamp to prevent people from switching from
     // inactive to active entities to retrieve a reward when they shouldn't.
-    if curr_entity.state == EntityState::Inactive {
-        member.last_stake_ts = clock.unix_timestamp;
-    }
+    member.last_stake_ts = clock.unix_timestamp;
 
     // Bookepping.
     //
@@ -188,7 +203,7 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
 
     member.entity = *new_entity_acc_info.key;
 
-    // Trigger activation FSM.
+    // Trigger activation updates.
     curr_entity.transition_activation_if_needed(registrar, clock);
     new_entity.transition_activation_if_needed(registrar, clock);
 
@@ -203,6 +218,7 @@ struct AccessControlRequest<'a, 'b> {
     new_entity_acc_info: &'a AccountInfo<'b>,
     clock_acc_info: &'a AccountInfo<'b>,
     vault_authority_acc_info: &'a AccountInfo<'b>,
+    reward_q_acc_info: &'a AccountInfo<'b>,
     program_id: &'a Pubkey,
     asset_acc_infos: Vec<AssetAccInfos<'a, 'b>>,
 }
@@ -210,7 +226,7 @@ struct AccessControlRequest<'a, 'b> {
 struct AccessControlResponse {
     registrar: Registrar,
     clock: Clock,
-    assets: Vec<Assets>,
+    assets: Vec<StakeAssets>,
 }
 
 struct StateTransitionRequest<'a, 'b, 'c> {
@@ -220,16 +236,11 @@ struct StateTransitionRequest<'a, 'b, 'c> {
     new_entity: &'c mut Entity,
     member: &'c mut Member,
     clock: &'c Clock,
-    assets: &'c [Assets],
+    assets: &'c [StakeAssets],
 }
 
-struct Assets {
-    spt: TokenAccount,
-    spt_mega: TokenAccount,
-}
-
-struct AssetAccInfos<'a, 'b> {
-    owner_acc_info: &'a AccountInfo<'b>,
-    spt_acc_info: &'a AccountInfo<'b>,
-    spt_mega_acc_info: &'a AccountInfo<'b>,
+pub struct AssetAccInfos<'a, 'b> {
+    pub owner_acc_info: &'a AccountInfo<'b>,
+    pub spt_acc_info: &'a AccountInfo<'b>,
+    pub spt_mega_acc_info: &'a AccountInfo<'b>,
 }

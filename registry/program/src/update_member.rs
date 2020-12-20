@@ -51,7 +51,8 @@ fn access_control(req: AccessControlRequest) -> Result<(), RegistryError> {
     }
 
     // Account validation.
-    let _member = access_control::member(member_acc_info, beneficiary_acc_info, program_id)?;
+    let _member =
+        access_control::member_beneficiary(member_acc_info, beneficiary_acc_info, program_id)?;
 
     Ok(())
 }

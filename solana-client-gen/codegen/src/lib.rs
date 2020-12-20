@@ -328,6 +328,7 @@ fn enum_to_methods(
             // enum variant.
             let instruction_method = {
                 quote! {
+                    #[allow(too_many_arguments)]
                     pub fn #method_name(program_id: Pubkey, accounts: &[AccountMeta], #method_args) -> Instruction {
                         // Create the instruction enum.
                         let instruction = #instruction_enum;
@@ -357,6 +358,7 @@ fn enum_to_methods(
             // instruction.
             let client_method = quote! {
                 // Invokes the rpc with the client's payer as the only signer.
+                #[allow(too_many_arguments)]
                 pub fn #method_name(&self, accounts: &[AccountMeta], #method_args) -> Result<Signature, ClientError> {
                     self.#method_name_with_signers(&[&self.payer], accounts, #method_arg_idents)
                 }
@@ -364,6 +366,7 @@ fn enum_to_methods(
                 //
                 // Make sure to add the payer configured on the client to the list
                 // of signers if you're to use this method.
+                #[allow(too_many_arguments)]
                 pub fn #method_name_with_signers<T: Signers>(&self, signers: &T, accounts: &[AccountMeta], #method_args) -> Result<Signature, ClientError> {
                     let instructions = vec![
                         super::instruction::#method_name(

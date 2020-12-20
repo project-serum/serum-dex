@@ -23,7 +23,7 @@ pub struct Registrar {
     /// Number of seconds that must pass for a withdrawal to complete.
     pub withdrawal_timelock: i64,
     /// Number of seconds it takes for an Entity to be "deactivated", from the
-    /// moment it's SRM/MSRM amount drops below the required threshold.
+    /// moment it's MSRM amount drops below the required threshold.
     pub deactivation_timelock: i64,
     /// Global event queue for reward vendoring.
     pub reward_event_q: Pubkey,

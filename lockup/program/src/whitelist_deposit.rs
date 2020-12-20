@@ -157,7 +157,7 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), LockupError> {
         vault.amount
     };
 
-    // Invoke relay, signing with the program-derived-address.
+    // Invoke relay.
     {
         let mut meta_accounts = vec![
             AccountMeta::new_readonly(*vesting_acc_info.key, false),
