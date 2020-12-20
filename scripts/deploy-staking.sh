@@ -25,7 +25,7 @@ elif [ "$CLUSTER" = "mainnet" ]; then
     echo "Deploying to Mainnet..."
     FAUCET_FLAG=""
     CONFIG_FILE=~/.config/serum/cli/mainnet.yaml
-    CLUSTER_URL="https://api.mainnet-beta.solana.com"
+    CLUSTER_URL="https://solana-api.projectserum.com"
 elif [ "$CLUSTER" = "localnet" ]; then
     echo "Deploying to Localnet..."
     FAUCET_FLAG=""
@@ -37,6 +37,13 @@ else
 fi
 
 #
+# Mainnet addresses.
+#
+MAINNET_DEX_PID="EUqojwWA2rd19FZrzeBncJsm38Jm1hEhE3zsmX3bRc2o"
+MAINNET_SRM_MINT="SRMuApVNdxXokk5GT7XD5cUUgXMBCoAz2LHeuAoKWRt"
+MAINNET_MSRM_MINT="MSRMcoVyrFxnSgo5uXwone5SKcGhT1KEJMFEkMEWf9L"
+
+#
 # Seconds.
 #
 DEACTIVATION_TIMELOCK=120
@@ -46,11 +53,11 @@ WITHDRAWAL_TIMELOCK=60
 #
 MAX_STAKE_PER_ENTITY=100000000000000
 #
-# 1 SRM (6 decimals) to stake.
+# SRM (6 decimals) to stake.
 #
-STAKE_RATE=1000000000
+STAKE_RATE=10000000
 #
-# 1 MSRM (0 decimals) to stake.
+# MSRM (0 decimals) to stake.
 #
 STAKE_RATE_MEGA=1
 #
@@ -89,13 +96,16 @@ main() {
     local lockup_pid=$(echo $pids | jq .lockupProgramId -r)
     local meta_entity_pid=$(echo $pids | jq .metaEntityProgramId -r)
     local rewards_pid=$(echo $rewards_pids | jq .rewardsProgramId -r)
-    local dex_pid=$(echo $rewards_pids | jq .dexProgramId -r)
+    local dex_pid=$MAINNET_DEX_PID
+    if [ "$CLUSTER" != "mainnet" ]; then
+        dex_pid=$(echo $rewards_pids | jq .dexProgramId -r)
+    fi
 
     #
     # Generate genesis state. Use dummy accounts, if needed.
     #
-    local srm_mint="SRMuApVNdxXokk5GT7XD5cUUgXMBCoAz2LHeuAoKWRt"
-    local msrm_mint="MSRMcoVyrFxnSgo5uXwone5SKcGhT1KEJMFEkMEWf9L"
+    local srm_mint=$MAINNET_SRM_MINT
+    local msrm_mint=$MAINNET_MSRM_MINT
     local god="FhmUh2PEpTzUwBWPt4qgDBeqfmb2ES3T64CkT1ZiktSS"       # Dummy.
     local god_msrm="FhmUh2PEpTzUwBWPt4qgDBeqfmb2ES3T64CkT1ZiktSS"  # Dummy.
     local srm_faucet="null"

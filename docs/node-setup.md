@@ -50,7 +50,30 @@ To verify the installation worked, run `serum -h`.
 
 ## Setup your CLI Config
 
-Add your YAML config for Devnet at `~/.config/serum/cli/config.yaml`.
+Add your YAML config for Mainnet Beta at `~/.config/serum/cli/config.yaml`.
+
+For Mainnet Beta
+
+```yaml
+---
+network:
+  cluster: mainnet
+
+mints:
+  srm: SRMuApVNdxXokk5GT7XD5cUUgXMBCoAz2LHeuAoKWRt
+  msrm: MSRMcoVyrFxnSgo5uXwone5SKcGhT1KEJMFEkMEWf9L
+
+programs:
+  rewards_pid: A6owGf3tHCcj7BfJe5MHQmoLNYjTZhrGYXo4HeAvJVbP
+  registry_pid: Gw1XNGbSnx7PJcHTTuxxhWfkjjPmq29Qkv1hWbVFnrDp
+  meta_entity_pid: 9etE5ZjHZTrZ2wQfyfTSp5WBxjpvaakNJa5fSVToZn17
+  lockup_pid: 6GSn1woRF541HaiEWqNofYn8quzJuRBPi1nwoho8zNnh
+  dex_pid: EUqojwWA2rd19FZrzeBncJsm38Jm1hEhE3zsmX3bRc2o
+```
+
+When operating over multiple networks, you can specify your config file with the
+`serum --config <path>` option. For example, one might want to test
+against Devnet with the following config
 
 ```yaml
 ---
@@ -68,9 +91,6 @@ programs:
   lockup_pid: CiNaYvdnQ42BNdbKvvAapHxiP18pvc3Vk5WuZ59ia64x
   dex_pid: F9b23Ph1JdBev2fULXTZLzaxVh2nYVdMVq9CTEaEZrid
 ```
-
-When operating over multiple networks, you can specify your config file with the
-`serum --config <path>` option.
 
 ## Cranking a market
 
