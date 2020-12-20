@@ -15,8 +15,7 @@ pub struct Vesting {
     pub initialized: bool,
     /// The Safe instance this account is associated with.
     pub safe: Pubkey,
-    /// The owner of this Vesting account. If not set, then the account
-    /// is allocated but needs to be assigned.
+    /// The owner of this Vesting account.
     pub beneficiary: Pubkey,
     /// The mint of the SPL token locked up.
     pub mint: Pubkey,
