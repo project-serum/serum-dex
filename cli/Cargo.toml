@@ -16,7 +16,7 @@ default = []
 [dependencies]
 anyhow = "1.0.32"
 clap = { version = "3.0.0-beta.2", features = ["yaml"] }
-crank = { path = "../crank" }
+crank = { path = "../dex/crank" }
 serum-lockup-cli = { path = "../lockup/cli" }
 serum-registry-cli = { path = "../registry/cli" }
 serum-context = { path = "../context" }

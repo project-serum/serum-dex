@@ -38,7 +38,7 @@ dex_whole_shebang() {
     #
     # Run the whole-shebang.
     #
-    pushd crank
+    pushd dex/crank
     cargo run -- $CLUSTER whole-shebang $KEYPAIR_FILE $dex_program_id
     popd
 }
