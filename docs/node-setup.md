@@ -80,10 +80,6 @@ against Devnet with the following config
 network:
   cluster: devnet
 
-#
-# SRM Faucet:  new PublicKey('4qfd8QDCFXgvcaBfA2KYfQaobBQbRDn4gJxg86NhZRgD')
-# MSRM Faucet: new PublicKey('7C9R9UN5tvJ8CTVgEYnRKXtSaVCYd14k98D4hDQf6gT7')
-#
 mints:
   srm: 5ya5rnzm5MkvCXhLDCJqAUzT16A37ks2DekkfoNnwNMn
   msrm: 3fHm9sEBS3CukUX366mwzn3YwEc5zWNzR4JcGK6EVQad
@@ -115,7 +111,7 @@ If the given `--rewards.registry-entity` is properly staked, and if the given
 
 ## Finding a market to crank
 
-You can crank any market of your choosing. To find all markets one can use the `getProgramAccounts`
+You can crank any market of your choosing. To find all market addresses one can use the `getProgramAccounts`
 API exposed by the Solana JSON RPC. In python,
 
 ```python
