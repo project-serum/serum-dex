@@ -4,8 +4,8 @@ members = [
     "solana-client-gen",
     "common",
     "common/tests",
-    "crank",
     "context",
+    "dex/crank",
     "pool",
     "pool/schema",
     "pool/examples/admin-controlled",
@@ -18,10 +18,6 @@ members = [
     "lockup",
     "lockup/cli",
     "lockup/client",
-    "node",
-    "node/json-rpc",
-    "node/logging",
-    "node/crank",
     "cli"
 ]
 exclude = [
