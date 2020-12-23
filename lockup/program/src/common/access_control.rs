@@ -24,6 +24,9 @@ pub fn governance(
     if safe.authority != *safe_authority_acc_info.key {
         return Err(LockupErrorCode::Unauthorized.into());
     }
+    if safe.authority == Pubkey::new_from_array([0; 32]) {
+        return Err(LockupErrorCode::Unauthorized.into());
+    }
     Ok(safe)
 }
 
