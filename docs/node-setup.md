@@ -64,7 +64,7 @@ mints:
   msrm: MSRMcoVyrFxnSgo5uXwone5SKcGhT1KEJMFEkMEWf9L
 
 programs:
-  rewards_pid: A6owGf3tHCcj7BfJe5MHQmoLNYjTZhrGYXo4HeAvJVbP
+  rewards_pid: 8xYo1X6uw7SBngXgPzib8jghWb8BhiiVxv5yV799Tw3G
   registry_pid: Gw1XNGbSnx7PJcHTTuxxhWfkjjPmq29Qkv1hWbVFnrDp
   meta_entity_pid: 9etE5ZjHZTrZ2wQfyfTSp5WBxjpvaakNJa5fSVToZn17
   lockup_pid: 6GSn1woRF541HaiEWqNofYn8quzJuRBPi1nwoho8zNnh
@@ -75,21 +75,25 @@ When operating over multiple networks, you can specify your config file with the
 `serum --config <path>` option. For example, one might want to test
 against Devnet with the following config
 
-```yaml
+```
 ---
 network:
   cluster: devnet
 
+#
+# SRM Faucet:  new PublicKey('4qfd8QDCFXgvcaBfA2KYfQaobBQbRDn4gJxg86NhZRgD')
+# MSRM Faucet: new PublicKey('7C9R9UN5tvJ8CTVgEYnRKXtSaVCYd14k98D4hDQf6gT7')
+#
 mints:
-  srm: 4Ghge2MMPmWXeD2FR541akGhjjgUi7RUtk7DBP5bTwGB
-  msrm: 5PsAVQLCrgtKqZpLdg7HsTXHMcvVCQ1c4bFHHej8Axxn
+  srm: 5ya5rnzm5MkvCXhLDCJqAUzT16A37ks2DekkfoNnwNMn
+  msrm: 3fHm9sEBS3CukUX366mwzn3YwEc5zWNzR4JcGK6EVQad
 
 programs:
-  rewards_pid: nwEt8jsBDCjV5vNg9c5YN9ktyak314DCwVTTuA3Swd9
-  registry_pid: FigXetJcXogqm94qfmyKWy6U5KJAwtxSgJMjUHercVQp
-  meta_entity_pid: 8wfM5sd5Yivn4WWkcSp4pNua7ytDvjeyLVLaU3QWiLAT
-  lockup_pid: CiNaYvdnQ42BNdbKvvAapHxiP18pvc3Vk5WuZ59ia64x
-  dex_pid: F9b23Ph1JdBev2fULXTZLzaxVh2nYVdMVq9CTEaEZrid
+  rewards_pid: EXzpf5GBfUQkwLeLEJXLmVKxGpxyMQWxpudYxogW4ad8
+  registry_pid: 3ofaHrxu7RdqH8m1wXfVrsTqgwctmx2NsHPv6m7oh1dy
+  meta_entity_pid: 8v8hwdeyBhmV4y235F9XQ7g5Vz2EYvJTkGqTfrh3Hz5f
+  lockup_pid: Az4dD6YeA4akzz4Qx3RuQqaCtLEaDiBT8u7mDL24sbAu
+  dex_pid: DiDDva9iDSXTtJ4CeWXbKdDvQ3M6g5G87PZGUGvxi3eV
 ```
 
 ## Cranking a market

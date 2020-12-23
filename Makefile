@@ -1,9 +1,18 @@
-# This is the parent Makefile used by Solana program crates. It's expected
-# this is included in child Makefiles with commands overriden as desired
-# (this is why all the targets here end with % wildcards). In addition to
-# override targets, one can customize the behavior, by override following
-# variables in a child Makefile. See `lockup/Makefile` for an example of
+################################################################################
+#
+# This is the parent Makefile used by Solana program crates, particularly when
+# a program builds and tests against multiple composable Solana programs.
+#
+# If composing is not required for local development, it's suggested to use
+# the `./do.sh` or the new and improved `cargo build-bpf` command, instead.
+#
+# It's expected this is included in child Makefiles with commands overriden as
+# desired (this is why all the targets here end with % wildcards). In addition
+# to overriding targets, one can customize the behavior, by override following
+# variables in a child Makefile. See `registry/Makefile` for an example of
 # a child.
+#
+################################################################################
 
 #
 # Path to your local solana keypair.
