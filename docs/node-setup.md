@@ -75,7 +75,7 @@ When operating over multiple networks, you can specify your config file with the
 `serum --config <path>` option. For example, one might want to test
 against Devnet with the following config
 
-```
+```yaml
 ---
 network:
   cluster: devnet
