@@ -2,7 +2,7 @@ use crate::access_control;
 use serum_common::pack::Pack;
 use serum_registry_rewards::accounts::Instance;
 use serum_registry_rewards::error::{RewardsError, RewardsErrorCode};
-use solana_program::info;
+use solana_program::msg;
 use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::pubkey::Pubkey;
 use std::convert::Into;
@@ -16,7 +16,7 @@ pub fn handler(
     authority: Pubkey,
     fee_rate: u64,
 ) -> Result<(), RewardsError> {
-    info!("handler: initialize");
+    msg!("handler: initialize");
 
     let acc_infos = &mut accounts.iter();
 
@@ -57,7 +57,7 @@ pub fn handler(
 }
 
 fn access_control(req: AccessControlRequest) -> Result<(), RewardsError> {
-    info!("access-control: initialize");
+    msg!("access-control: initialize");
 
     let AccessControlRequest {
         instance_acc_info,
@@ -93,7 +93,7 @@ fn access_control(req: AccessControlRequest) -> Result<(), RewardsError> {
 }
 
 fn state_transition(req: StateTransitionRequest) -> Result<(), RewardsError> {
-    info!("state-transition: initialize");
+    msg!("state-transition: initialize");
 
     let StateTransitionRequest {
         instance,

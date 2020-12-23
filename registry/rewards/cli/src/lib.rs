@@ -48,8 +48,17 @@ pub enum GovCommand {
     },
     /// Sets a new authority on the instance.
     SetAuthority {
+        #[clap(short, long)]
         new_authority: Pubkey,
+        #[clap(short, long)]
         instance: Pubkey,
+    },
+    /// Sets the new fee rate.
+    SetFeeRate {
+        #[clap(short, long)]
+        instance: Pubkey,
+        #[clap(short, long)]
+        fee_rate: u64,
     },
     /// Migrates all funds to the given address.
     Migrate { instance: Pubkey, receiver: Pubkey },
@@ -103,11 +112,20 @@ fn gov_cmd(ctx: &Context, cmd: GovCommand) -> Result<()> {
             new_authority,
             instance,
         } => {
-            client.set_authority(SetAuthorityRequest {
+            let SetAuthorityResponse { tx } = client.set_authority(SetAuthorityRequest {
                 instance,
                 new_authority,
                 authority: &wallet,
             })?;
+            println!("Authority updated: {:?}", tx);
+        }
+        GovCommand::SetFeeRate { instance, fee_rate } => {
+            let SetFeeRateResponse { tx } = client.set_fee_rate(SetFeeRateRequest {
+                instance,
+                fee_rate,
+                authority: &wallet,
+            })?;
+            println!("Fee rate updated: {:?}", tx);
         }
         GovCommand::Migrate { instance, receiver } => {
             client.migrate(MigrateRequest {

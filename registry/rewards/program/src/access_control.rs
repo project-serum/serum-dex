@@ -9,7 +9,6 @@ use solana_sdk::sysvar::Sysvar;
 use spl_token::state::Account as TokenAccount;
 
 pub fn governance(
-    program_id: &Pubkey,
     instance_authority_acc_info: &AccountInfo,
     instance: &Instance,
 ) -> Result<(), RewardsError> {

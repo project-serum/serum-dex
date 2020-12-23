@@ -5,14 +5,13 @@ use serum_registry_rewards::error::RewardsError;
 use solana_program::msg;
 use solana_sdk::account_info::{next_account_info, AccountInfo};
 use solana_sdk::pubkey::Pubkey;
-use std::convert::Into;
 
 pub fn handler(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    new_authority: Pubkey,
+    fee_rate: u64,
 ) -> Result<(), RewardsError> {
-    msg!("handler: set_authority");
+    msg!("handler: set_fee_rate");
 
     let acc_infos = &mut accounts.iter();
 
@@ -25,22 +24,14 @@ pub fn handler(
         instance_authority_acc_info,
     })?;
 
-    Instance::unpack_mut(
-        &mut instance_acc_info.try_borrow_mut_data()?,
-        &mut |instance: &mut Instance| {
-            state_transition(StateTransitionRequest {
-                instance,
-                new_authority,
-            })
-            .map_err(Into::into)
-        },
-    )?;
-
-    Ok(())
+    state_transition(StateTransitionRequest {
+        instance_acc_info,
+        fee_rate,
+    })
 }
 
 fn access_control(req: AccessControlRequest) -> Result<(), RewardsError> {
-    msg!("access-control: set_authority");
+    msg!("access-control: set_fee_rate");
 
     let AccessControlRequest {
         program_id,
@@ -49,20 +40,27 @@ fn access_control(req: AccessControlRequest) -> Result<(), RewardsError> {
     } = req;
 
     let instance = access_control::instance(instance_acc_info, program_id)?;
+    // Authorization.
     access_control::governance(instance_authority_acc_info, &instance)?;
 
     Ok(())
 }
 
 fn state_transition(req: StateTransitionRequest) -> Result<(), RewardsError> {
-    msg!("state-transition: set_authority");
+    msg!("state-transition: set_fee_rate");
 
     let StateTransitionRequest {
-        instance,
-        new_authority,
+        instance_acc_info,
+        fee_rate,
     } = req;
 
-    instance.authority = new_authority;
+    Instance::unpack_mut(
+        &mut instance_acc_info.try_borrow_mut_data()?,
+        &mut |instance: &mut Instance| {
+            instance.fee_rate = fee_rate;
+            Ok(())
+        },
+    )?;
 
     Ok(())
 }
@@ -73,7 +71,7 @@ struct AccessControlRequest<'a, 'b> {
     instance_authority_acc_info: &'a AccountInfo<'b>,
 }
 
-struct StateTransitionRequest<'a> {
-    instance: &'a mut Instance,
-    new_authority: Pubkey,
+struct StateTransitionRequest<'a, 'b> {
+    instance_acc_info: &'a AccountInfo<'b>,
+    fee_rate: u64,
 }
