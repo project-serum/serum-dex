@@ -135,6 +135,24 @@ impl Client {
         Ok(SetAuthorityResponse { tx })
     }
 
+    pub fn set_fee_rate(&self, req: SetFeeRateRequest) -> Result<SetFeeRateResponse, ClientError> {
+        let SetFeeRateRequest {
+            instance,
+            fee_rate,
+            authority,
+        } = req;
+        let i = self.instance(instance)?;
+        let accounts = [
+            AccountMeta::new_readonly(i.authority, false),
+            AccountMeta::new(instance, false),
+        ];
+        let signers = [authority, self.payer()];
+        let tx = self
+            .inner
+            .set_fee_rate_with_signers(&signers, &accounts, fee_rate)?;
+        Ok(SetFeeRateResponse { tx })
+    }
+
     pub fn migrate(&self, req: MigrateRequest) -> Result<MigrateResponse, ClientError> {
         let MigrateRequest {
             authority,
@@ -244,6 +262,16 @@ pub struct SetAuthorityRequest<'a> {
 }
 
 pub struct SetAuthorityResponse {
+    pub tx: Signature,
+}
+
+pub struct SetFeeRateRequest<'a> {
+    pub instance: Pubkey,
+    pub fee_rate: u64,
+    pub authority: &'a Keypair,
+}
+
+pub struct SetFeeRateResponse {
     pub tx: Signature,
 }
 

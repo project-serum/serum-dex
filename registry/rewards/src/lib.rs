@@ -51,6 +51,11 @@ pub mod instruction {
         /// 0. `[signed]`   Instance authority.
         /// 1. `[writable]` Instance.
         SetAuthority { authority: Pubkey },
+        /// Accounts:
+        ///
+        /// 0. `[signed]`   Instance authority.
+        /// 1. `[writable]` Instance.
+        SetFeeRate { fee_rate: u64 },
         /// Moves funds to the new address.
         ///
         /// Accounts:

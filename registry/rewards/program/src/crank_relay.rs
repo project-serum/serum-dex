@@ -1,7 +1,6 @@
 use crate::access_control;
-use serum_common::pack::Pack;
 use serum_common::program::invoke_token_transfer;
-use serum_registry::accounts::{EntityState, Registrar};
+use serum_registry::accounts::EntityState;
 use serum_registry_rewards::accounts::{vault, Instance};
 use serum_registry_rewards::error::{RewardsError, RewardsErrorCode};
 use serum_registry_rewards::logs;
@@ -53,7 +52,6 @@ pub fn handler(
         remaining_relay_accs,
         dex_instruction_data,
         event_q_acc_info,
-        registrar_acc_info,
         vault_acc_info,
         vault_authority_acc_info,
         token_acc_info,
@@ -141,7 +139,6 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), RewardsError> {
         remaining_relay_accs,
         dex_instruction_data,
         event_q_acc_info,
-        registrar_acc_info,
         vault_acc_info,
         vault_authority_acc_info,
         token_acc_info,
@@ -181,6 +178,7 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), RewardsError> {
     let after_event_count = event_q_len(&event_q_acc_info.try_borrow_data()?);
 
     // Calculate payout amount.
+    assert!(before_event_count >= after_event_count);
     let amount = (before_event_count - after_event_count) * instance.fee_rate;
 
     if vault.amount < amount {
@@ -235,7 +233,6 @@ struct StateTransitionRequest<'a, 'b> {
     dex_program_acc_info: &'a AccountInfo<'b>,
     remaining_relay_accs: Vec<&'a AccountInfo<'b>>,
     event_q_acc_info: &'a AccountInfo<'b>,
-    registrar_acc_info: &'a AccountInfo<'b>,
     dex_instruction_data: Vec<u8>,
     vault_acc_info: &'a AccountInfo<'b>,
     vault_authority_acc_info: &'a AccountInfo<'b>,

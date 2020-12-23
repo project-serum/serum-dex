@@ -3,7 +3,6 @@
 use serum_common::pack::Pack;
 use serum_registry_rewards::error::{RewardsError, RewardsErrorCode};
 use serum_registry_rewards::instruction::RewardsInstruction;
-use solana_program::info;
 use solana_sdk::account_info::AccountInfo;
 use solana_sdk::entrypoint::ProgramResult;
 use solana_sdk::pubkey::Pubkey;
@@ -14,6 +13,7 @@ mod crank_relay;
 mod initialize;
 mod migrate;
 mod set_authority;
+mod set_fee_rate;
 
 solana_sdk::entrypoint!(entry);
 fn entry(program_id: &Pubkey, accounts: &[AccountInfo], instruction_data: &[u8]) -> ProgramResult {
@@ -41,6 +41,9 @@ fn entry(program_id: &Pubkey, accounts: &[AccountInfo], instruction_data: &[u8])
         }
         RewardsInstruction::SetAuthority { authority } => {
             set_authority::handler(program_id, accounts, authority)
+        }
+        RewardsInstruction::SetFeeRate { fee_rate } => {
+            set_fee_rate::handler(program_id, accounts, fee_rate)
         }
         RewardsInstruction::Migrate => migrate::handler(program_id, accounts),
     };

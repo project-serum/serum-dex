@@ -5,7 +5,6 @@ use serum_registry_rewards::accounts::{vault, Instance};
 use serum_registry_rewards::error::RewardsError;
 use solana_program::msg;
 use solana_sdk::account_info::{next_account_info, AccountInfo};
-use solana_sdk::program_pack::Pack as TokenPack;
 use solana_sdk::pubkey::Pubkey;
 use spl_token::state::Account as TokenAccount;
 
@@ -61,7 +60,7 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Re
     )?;
 
     // Authorization.
-    access_control::governance(program_id, instance_authority_acc_info, &instance)?;
+    access_control::governance(instance_authority_acc_info, &instance)?;
 
     Ok(AccessControlResponse { instance, vault })
 }
