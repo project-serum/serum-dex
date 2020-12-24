@@ -9,7 +9,6 @@ lazy_static::lazy_static! {
                 .expect("Registrar has a fixed size");
 }
 
-/// Registry defines the account representing an instance of the program.
 #[derive(Clone, Debug, Default, PartialEq, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub struct Registrar {
     /// Set by the program on initialization.

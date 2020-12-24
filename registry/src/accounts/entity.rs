@@ -101,8 +101,8 @@ impl Entity {
 
     pub fn meets_activation_requirements(&self) -> bool {
         // Re-enable once community testing completes.
-        // self.balances.spt_mega_amount >= 1
-        true
+        self.balances.spt_mega_amount >= 1
+        //true
     }
 
     pub fn stake_will_max(&self, spt_amount: u64, is_mega: bool, registrar: &Registrar) -> bool {

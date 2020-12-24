@@ -30,15 +30,17 @@ pub enum Command {
     },
     /// Creates a node entity, setting the active wallet as leader.
     CreateEntity {
-        /// Registrar account address.
-        #[clap(short, long)]
-        registrar: Pubkey,
         #[clap(short, long)]
         name: String,
         #[clap(short, long)]
         about: String,
         #[clap(short, long)]
         image_url: Option<String>,
+    },
+    /// Creates a member account with the given entity.
+    CreateMember {
+        #[clap(short, long)]
+        entity: Pubkey,
     },
     /// Updates an entity. Active wallet must be the node leader.
     UpdateEntity {
@@ -59,8 +61,6 @@ pub enum Command {
         token: Pubkey,
         #[clap(long)]
         vendor: Pubkey,
-        #[clap(short, long)]
-        registrar: Pubkey,
     },
     /// Sends all unclaimed funds from an expired locked reward vendor to a given
     /// account.
@@ -70,8 +70,6 @@ pub enum Command {
         token: Pubkey,
         #[clap(long)]
         vendor: Pubkey,
-        #[clap(short, long)]
-        registrar: Pubkey,
     },
 }
 
@@ -126,41 +124,33 @@ pub fn run(ctx: Context, cmd: Command) -> Result<()> {
             stake_rate_mega,
         ),
         Command::CreateEntity {
-            registrar,
             name,
             about,
             image_url,
-        } => create_entity_cmd(&ctx, registry_pid, registrar, name, about, image_url),
+        } => create_entity_cmd(&ctx, registry_pid, ctx.registrar, name, about, image_url),
+        Command::CreateMember { entity } => create_member_cmd(&ctx, entity),
         Command::UpdateEntity {
             name,
             about,
             image_url,
             entity,
         } => update_entity_cmd(&ctx, name, about, image_url, entity),
-        Command::ExpireUnlockedReward {
-            token,
-            vendor,
-            registrar,
-        } => {
+        Command::ExpireUnlockedReward { token, vendor } => {
             let client = ctx.connect::<Client>(registry_pid)?;
             let resp = client.expire_unlocked_reward(ExpireUnlockedRewardRequest {
                 token,
                 vendor,
-                registrar,
+                registrar: ctx.registrar,
             })?;
             println!("Transaction executed: {:?}", resp.tx);
             Ok(())
         }
-        Command::ExpireLockedReward {
-            token,
-            vendor,
-            registrar,
-        } => {
+        Command::ExpireLockedReward { token, vendor } => {
             let client = ctx.connect::<Client>(registry_pid)?;
             let resp = client.expire_locked_reward(ExpireLockedRewardRequest {
                 token,
                 vendor,
-                registrar,
+                registrar: ctx.registrar,
             })?;
             println!("Transaction executed: {:?}", resp.tx);
             Ok(())
@@ -191,6 +181,26 @@ fn create_entity_cmd(
     })?;
 
     println!("{}", serde_json::json!({"entity": entity.to_string()}));
+
+    Ok(())
+}
+
+fn create_member_cmd(ctx: &Context, entity: Pubkey) -> Result<()> {
+    let beneficiary = ctx.wallet()?;
+    let client = ctx.connect::<Client>(ctx.registry_pid)?;
+    // Vesting vault authority.
+    let (delegate, _nonce) = Pubkey::find_program_address(
+        &[ctx.safe.as_ref(), beneficiary.pubkey().as_ref()],
+        &ctx.lockup_pid,
+    );
+    let CreateMemberResponse { member, .. } = client.create_member(CreateMemberRequest {
+        entity,
+        beneficiary: &beneficiary,
+        delegate,
+        registrar: ctx.registrar,
+    })?;
+
+    println!("Member created: {}", member.to_string());
 
     Ok(())
 }

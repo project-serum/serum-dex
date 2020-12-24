@@ -15,11 +15,11 @@ The way cranking rewards work is simple, instead of sending transactions directl
 a cranker sends transactions to a cranking rewards vendor, which is an on-chain
 Solana program that proxies all requests to the DEX, recording the amount of events
 cranked, and then sends a reward to the cranker's wallet as a function of the number
-of events processed and the reward vendor's fee rate.
+of events processed and the reward vendor's fee rate. This proxy program can be found [here](../registry/rewards/program).
 
-(Note that, although similar in spirit, the cranking rewards vendor is an entirely different
+Note that, although similar in spirit, the cranking rewards vendor is an entirely different
 program and account from the **Registry**'s reward vendors. Only node leaders are eligible
-to crank.)
+to crank.
 
 If the rewards vendor's vault becomes empty or if the node leader's Entity stake
 balance ever transitions to **inactive**, then the vendor will refuse to pay
@@ -39,7 +39,6 @@ sudo apt-get install -y pkg-config build-essential python3-pip jq
 
 ## Install the CLI
 
-The CLI is a work in progress, so there's not yet a proper installer.
 For now, we can use Cargo.
 
 ```bash
@@ -50,30 +49,7 @@ To verify the installation worked, run `serum -h`.
 
 ## Setup your CLI Config
 
-Add your YAML config for Mainnet Beta at `~/.config/serum/cli/config.yaml`.
-
-For Mainnet Beta
-
-```yaml
----
-network:
-  cluster: mainnet
-
-mints:
-  srm: SRMuApVNdxXokk5GT7XD5cUUgXMBCoAz2LHeuAoKWRt
-  msrm: MSRMcoVyrFxnSgo5uXwone5SKcGhT1KEJMFEkMEWf9L
-
-programs:
-  rewards_pid: 8xYo1X6uw7SBngXgPzib8jghWb8BhiiVxv5yV799Tw3G
-  registry_pid: Gw1XNGbSnx7PJcHTTuxxhWfkjjPmq29Qkv1hWbVFnrDp
-  meta_entity_pid: 9etE5ZjHZTrZ2wQfyfTSp5WBxjpvaakNJa5fSVToZn17
-  lockup_pid: 6GSn1woRF541HaiEWqNofYn8quzJuRBPi1nwoho8zNnh
-  dex_pid: EUqojwWA2rd19FZrzeBncJsm38Jm1hEhE3zsmX3bRc2o
-```
-
-When operating over multiple networks, you can specify your config file with the
-`serum --config <path>` option. For example, one might want to test
-against Devnet with the following config
+Add your YAML config for Devnet at `~/.config/serum/cli/config.yaml`.
 
 ```yaml
 ---
@@ -81,35 +57,81 @@ network:
   cluster: devnet
 
 mints:
-  srm: 5ya5rnzm5MkvCXhLDCJqAUzT16A37ks2DekkfoNnwNMn
-  msrm: 3fHm9sEBS3CukUX366mwzn3YwEc5zWNzR4JcGK6EVQad
+  srm: CKPuQYkbfS3njnBeTJ1xeqrazeu8KW8cGSYRZL5XfRhm
+  msrm: 6AUfPRSV4bgM9ENTVmoDqvcBnEw8VPmPGxdxSph4MXqL
 
 programs:
-  rewards_pid: EXzpf5GBfUQkwLeLEJXLmVKxGpxyMQWxpudYxogW4ad8
-  registry_pid: 3ofaHrxu7RdqH8m1wXfVrsTqgwctmx2NsHPv6m7oh1dy
-  meta_entity_pid: 8v8hwdeyBhmV4y235F9XQ7g5Vz2EYvJTkGqTfrh3Hz5f
-  lockup_pid: Az4dD6YeA4akzz4Qx3RuQqaCtLEaDiBT8u7mDL24sbAu
-  dex_pid: DiDDva9iDSXTtJ4CeWXbKdDvQ3M6g5G87PZGUGvxi3eV
+  rewards_pid: Ae6WDT248u5ScyKceurB9gjzuvqx4Ru4mXpxf1J5y1uU
+  registry_pid: Gp8oGoGgdiuRjR4uCadJJ99PvCQ1Z15aNg2zaBjVKGjn
+  meta_entity_pid: CMBM3NbgXCWGWeKcbuz2toLvkSvijLtDuTDD3HeFaXHG
+  lockup_pid: 8dg5qUXA4aGXPv9A1C4mbx3bZyZSTTWVtvwAfAgySom3
+  dex_pid: 3Ursyu9TShGx18q2oAmyBp4ettnPKT4gMcQ99FMVJ9im
+
+accounts:
+  registrar: BBmCCkW499BsmNJtYnLeXAzhmKyk32Eig9rwXjUtd8vY
+  safe: 5iEQPtffgAtLrnucheuGhMFrcH3ytZDDtq6XrRFWaRQx
+  rewards_instance: 8uUw1gwbHcEbtU2MtrgRW85dDRBvV4Xhmb3BjK8GxAo9
+
 ```
 
-## Cranking a market
+If not specified, the `wallet` key will be searched for in the standard location:
+`~/.config/solana/id.json` and used as the **payer** for all transactions initiated
+by the CLI.
+
+## Create a Node Entity
+
+Create a node entity with the **Registrar**.
+
+```bash
+serum registry create-entity --name <string> --about <string>
+```
+
+Entering your node's `name` and `about` info, which can be displayed in UIs. Note that, by default,
+the wallet creating the entity will be tagged as the node leader, which is the address eligible for
+earning crank rewards.
+
+## Create a Member
+
+After creating a node entity, use your new **Entity** address to create a member account, which will
+allow you to stake.
+
+```bash
+serum registry create-member --entity <address>
+```
+
+## Activate your Node
+
+Once created, one must "activate" a node by staking MSRM before being able to earn rewards. Any **Member**
+associated with the **Entity** can stake this MSRM.
+
+For now, it's recommended to do this through the UI at https://project-serum.github.io/serum-ts/stake-ui,
+where you can
+
+* Select a network.
+* Connect your wallet.
+* Deposit 1 MSRM into your **Member** account via the **Deposit** button. If you're on Devnet,
+  [airdrop](https://www.spl-token-ui.com/#/token-faucets) yourself tokens. The faucet address can be found in the **Environment** tab of the UI.
+* Stake the newly deposited 1 MSRM via the **Stake** tab into the **Mega Stake Pool**.
+
+You should see that your Entity is now in the `Active` state making it eligible for rewards.
+
+## Cranking a Market
 
 Finally you can run your crank. Pick a market and run
 
 ```bash
-  serum crank consume-event-rewards \
-    --market <address>  \
-    --log-directory <path> \
-    --rewards.receiver <address> \
-    --rewards.registry-entity <address> \
-    --rewards.instance <address>
+serum crank consume-event-rewards \
+  --market <address>  \
+  --log-directory <path> \
+  --rewards.receiver <address> \
+  --rewards.registry-entity <address>
 ```
 
-If the given `--rewards.registry-entity` is properly staked, and if the given
-`--rewards.instance` is funded, then you should see your token account
+If the given `--rewards.registry-entity` is properly staked, and if the configured
+rewards `instance` is funded, then you should see your SPL token account
 `--rewards.receiver` start to receive rewards with each event consumed.
 
-## Finding a market to crank
+## Finding a Market to Crank
 
 You can crank any market of your choosing. To find all market addresses one can use the `getProgramAccounts`
 API exposed by the Solana JSON RPC. In python,
@@ -132,4 +154,27 @@ def find_market_addresses(program_id: str):
         ],
     }).json()
     return [info['pubkey'] for info in resp['result']]
+```
+
+## Switching to Mainnet Beta
+
+When operating over multiple networks, you can specify your config file with the
+`serum --config <path>` option. For example, when switching to Mainnet Beta,
+one can use the following config.
+
+```yaml
+---
+network:
+  cluster: mainnet
+
+mints:
+  srm: SRMuApVNdxXokk5GT7XD5cUUgXMBCoAz2LHeuAoKWRt
+  msrm: MSRMcoVyrFxnSgo5uXwone5SKcGhT1KEJMFEkMEWf9L
+
+programs:
+  rewards_pid: 8xYo1X6uw7SBngXgPzib8jghWb8BhiiVxv5yV799Tw3G
+  registry_pid: Gw1XNGbSnx7PJcHTTuxxhWfkjjPmq29Qkv1hWbVFnrDp
+  meta_entity_pid: 9etE5ZjHZTrZ2wQfyfTSp5WBxjpvaakNJa5fSVToZn17
+  lockup_pid: 6GSn1woRF541HaiEWqNofYn8quzJuRBPi1nwoho8zNnh
+  dex_pid: EUqojwWA2rd19FZrzeBncJsm38Jm1hEhE3zsmX3bRc2o
 ```

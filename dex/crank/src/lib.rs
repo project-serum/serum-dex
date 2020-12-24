@@ -210,15 +210,14 @@ pub enum Command {
 
 #[derive(Debug, Clap, Clone)]
 pub struct RewardsContext {
-    /// Account controlling the rewards vault for crankers.
-    #[clap(long = "rewards.instance")]
-    pub instance: Pubkey,
     /// Token account rewards are sent to when cranking.
     #[clap(long = "rewards.receiver")]
     pub receiver: Pubkey,
     /// Entity the cranker is the node leader for.
     #[clap(long = "rewards.registry-entity")]
     pub registry_entity: Pubkey,
+    #[clap(skip)]
+    pub instance: Pubkey,
     #[clap(skip)]
     pub url: String,
     #[clap(skip)]
@@ -337,6 +336,7 @@ pub fn start(ctx: Option<Context>, opts: Opts) -> Result<()> {
             let ctx = ctx.expect("context must exist when consuming rewards");
             r_ctx.url = opts.cluster.url().to_string();
             r_ctx.program_id = ctx.rewards_pid;
+            r_ctx.instance = ctx.rewards_instance;
             init_logger(log_directory);
 
             // Unused by the DEX. Nevertheless required to be passed in.
