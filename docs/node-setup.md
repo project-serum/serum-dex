@@ -170,9 +170,14 @@ mints:
   msrm: MSRMcoVyrFxnSgo5uXwone5SKcGhT1KEJMFEkMEWf9L
 
 programs:
-  rewards_pid: 8xYo1X6uw7SBngXgPzib8jghWb8BhiiVxv5yV799Tw3G
-  registry_pid: Gw1XNGbSnx7PJcHTTuxxhWfkjjPmq29Qkv1hWbVFnrDp
-  meta_entity_pid: 9etE5ZjHZTrZ2wQfyfTSp5WBxjpvaakNJa5fSVToZn17
-  lockup_pid: 6GSn1woRF541HaiEWqNofYn8quzJuRBPi1nwoho8zNnh
+  rewards_pid: 4bcHoAgLP9NBje1oVo9WKRDYkvSxcqtJeTSXMRFX5AdZ
+  registry_pid: 6J7ZoSxtKJUjVLpGRcBrEtvE2T3YVf9mfKUaicndzpCc
+  meta_entity_pid: 68gpi9be8NNVTDViQxSYtbM1788uebczX2Vz7obSnQRz
+  lockup_pid: 4nvqpaMz7H12VgHSABjEDFmH62MoWP3BxfMG3BAFQiBo
   dex_pid: EUqojwWA2rd19FZrzeBncJsm38Jm1hEhE3zsmX3bRc2o
+
+accounts:
+  registrar: 8ZS85GGfa92JH6vrmpy8fgQQEBLWwYUwWmpBhcA94fDH
+  safe: Dp5zzdTLnYNq9E6H81YQu1ucNLK3FzH3Ah3KedydiNgE
+  rewards_instance: BX1aNRFES78bz9G8GJWmrYSkRVWcV5wdnvSWfXJhTEkE
 ```
