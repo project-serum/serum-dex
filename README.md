@@ -30,10 +30,10 @@
 
 | Program | Devnet | Mainnet Beta |
 | --------|--------|------------- |
-| [DEX](/dex)     | `F9b23Ph1JdBev2fULXTZLzaxVh2nYVdMVq9CTEaEZrid` | `EUqojwWA2rd19FZrzeBncJsm38Jm1hEhE3zsmX3bRc2o` |
-| [Registry](/registry/program) | `FigXetJcXogqm94qfmyKWy6U5KJAwtxSgJMjUHercVQp` | `Gw1XNGbSnx7PJcHTTuxxhWfkjjPmq29Qkv1hWbVFnrDp` |
-| [Lockup](/lockup/program) | `CiNaYvdnQ42BNdbKvvAapHxiP18pvc3Vk5WuZ59ia64x` | `6GSn1woRF541HaiEWqNofYn8quzJuRBPi1nwoho8zNnh` |
-| [Crank Rewards](/registry/rewards/program) | `EXzpf5GBfUQkwLeLEJXLmVKxGpxyMQWxpudYxogW4ad8` | `8xYo1X6uw7SBngXgPzib8jghWb8BhiiVxv5yV799Tw3G`|
+| [DEX](/dex)     | `9MVDeYQnJmN2Dt7H44Z8cob4bET2ysdNu2uFJcatDJno` | `EUqojwWA2rd19FZrzeBncJsm38Jm1hEhE3zsmX3bRc2o` |
+| [Registry](/registry/program) | `CKKz2WYvneiLb2mzouWc4iPpKisuXs5XKYn7ZUrRjkeK` | `6J7ZoSxtKJUjVLpGRcBrEtvE2T3YVf9mfKUaicndzpCc` |
+| [Lockup](/lockup/program) | `8wreDpv5nuY1gee1X4wkqtRkzoGypVYzWBrMmzipAJKN` | `4nvqpaMz7H12VgHSABjEDFmH62MoWP3BxfMG3BAFQiBo` |
+| [Crank Rewards](/registry/rewards/program) | `7sXyzeu6GJqkXZz8VhjdsXvDg1xR1PEkXbbDaxMc186C` | `4bcHoAgLP9NBje1oVo9WKRDYkvSxcqtJeTSXMRFX5AdZ`|
 
 ## Note
 
