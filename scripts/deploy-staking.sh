@@ -55,7 +55,7 @@ MAX_STAKE_PER_ENTITY=100000000000000
 #
 # SRM (6 decimals) to stake.
 #
-STAKE_RATE=1000000000
+STAKE_RATE=10000000
 #
 # MSRM (0 decimals) to stake.
 #

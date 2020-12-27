@@ -9,17 +9,13 @@ when their node has at least 1 MSRM staked. These "cranking rewards"
 are effectively transaction fees earned for operating the DEX.
 
 For an introduction to the DEX and the idea of cranking, see
-[A technical introduction to the Serum DEX](https://docs.google.com/document/d/1isGJES4jzQutI0GtQGuqtrBUqeHxl_xJNXdtOv4SdII/edit). For an introduction to staking, see [Serum Stake](./staking.md).
+[A technical introduction to the Serum DEX](https://docs.google.com/document/d/1isGJES4jzQutI0GtQGuqtrBUqeHxl_xJNXdtOv4SdII/edit). For an introduction to staking, see [Serum Staking](./staking.md).
 
 The way cranking rewards work is simple, instead of sending transactions directly to the DEX,
 a cranker sends transactions to a cranking rewards vendor, which is an on-chain
 Solana program that proxies all requests to the DEX, recording the amount of events
 cranked, and then sends a reward to the cranker's wallet as a function of the number
 of events processed and the reward vendor's fee rate. This proxy program can be found [here](../registry/rewards/program).
-
-Note that, although similar in spirit, the cranking rewards vendor is an entirely different
-program and account from the **Registry**'s reward vendors. Only node leaders are eligible
-to crank.
 
 If the rewards vendor's vault becomes empty or if the node leader's Entity stake
 balance ever transitions to **inactive**, then the vendor will refuse to pay
