@@ -9,7 +9,7 @@ when their node has at least 1 MSRM staked. These "cranking rewards"
 are effectively transaction fees earned for operating the DEX.
 
 For an introduction to the DEX and the idea of cranking, see
-[A technical introduction to the Serum DEX](https://docs.google.com/document/d/1isGJES4jzQutI0GtQGuqtrBUqeHxl_xJNXdtOv4SdII/edit).
+[A technical introduction to the Serum DEX](https://docs.google.com/document/d/1isGJES4jzQutI0GtQGuqtrBUqeHxl_xJNXdtOv4SdII/edit). For an introduction to staking, see [Serum Stake](./staking.md).
 
 The way cranking rewards work is simple, instead of sending transactions directly to the DEX,
 a cranker sends transactions to a cranking rewards vendor, which is an on-chain
@@ -57,30 +57,32 @@ network:
   cluster: devnet
 
 mints:
-  srm: CKPuQYkbfS3njnBeTJ1xeqrazeu8KW8cGSYRZL5XfRhm
-  msrm: 6AUfPRSV4bgM9ENTVmoDqvcBnEw8VPmPGxdxSph4MXqL
+  srm: Bap9SwT53SjGPeKq4LAC6i86fCzEzUGGHsYfRiCFSGyF
+  msrm: CmtL8e86367ZLiAuJELx4WqmDz7dRnD1oyaiq4TQDdEU
 
 programs:
-  rewards_pid: Ae6WDT248u5ScyKceurB9gjzuvqx4Ru4mXpxf1J5y1uU
-  registry_pid: Gp8oGoGgdiuRjR4uCadJJ99PvCQ1Z15aNg2zaBjVKGjn
-  meta_entity_pid: CMBM3NbgXCWGWeKcbuz2toLvkSvijLtDuTDD3HeFaXHG
-  lockup_pid: 8dg5qUXA4aGXPv9A1C4mbx3bZyZSTTWVtvwAfAgySom3
-  dex_pid: 3Ursyu9TShGx18q2oAmyBp4ettnPKT4gMcQ99FMVJ9im
+  rewards_pid: 7sXyzeu6GJqkXZz8VhjdsXvDg1xR1PEkXbbDaxMc186C
+  registry_pid: CKKz2WYvneiLb2mzouWc4iPpKisuXs5XKYn7ZUrRjkeK
+  meta_entity_pid: BsVgsh8mqi3qn8eKRiye1a4eF8Qwqot8p2n3ZMNdL2UY
+  lockup_pid: 8wreDpv5nuY1gee1X4wkqtRkzoGypVYzWBrMmzipAJKN
+  dex_pid: 9MVDeYQnJmN2Dt7H44Z8cob4bET2ysdNu2uFJcatDJno
 
 accounts:
-  registrar: BBmCCkW499BsmNJtYnLeXAzhmKyk32Eig9rwXjUtd8vY
-  safe: 5iEQPtffgAtLrnucheuGhMFrcH3ytZDDtq6XrRFWaRQx
-  rewards_instance: 8uUw1gwbHcEbtU2MtrgRW85dDRBvV4Xhmb3BjK8GxAo9
-
+  registrar: 7Tzf4D4BU1tzwitXbHeUf7bwMNSSVQXfzPsgnbM5RY7d
+  safe: CxiGCt8kVm5BuzmWycJdZwXsYt52iLB8Huty5r1xRvRZ
+  rewards_instance: 32qFc9QWX4wBU6EFZ9FzyxGthSHNwCUKaN7APn3GAH2X
 ```
 
 If not specified, the `wallet` key will be searched for in the standard location:
 `~/.config/solana/id.json` and used as the **payer** for all transactions initiated
 by the CLI.
 
-## Create a Node Entity
+## Create an Entity
 
-Create a node entity with the **Registrar**.
+An **Entity** is the on-chain Solana account representing a node and
+it's collective **Member** accounts.
+
+To create an **Entity**  with the **Registrar**, run
 
 ```bash
 serum registry create-entity --name <string> --about <string>
