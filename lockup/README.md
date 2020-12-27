@@ -1,6 +1,6 @@
 # Serum Lockup
 
-For a technical introduction to the Lockup program see [Serum Lockup](../docs/lockup.md).
+For a technical introduction to the Lockup program see [Serum Lockup](../docs/lockups.md).
 
 ## Developing
 

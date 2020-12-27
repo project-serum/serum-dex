@@ -77,7 +77,7 @@ git clone https://github.com/project-serum/serum-dex.git
 
 ### Build, deploy, and test programs
 
-See individual crates for documentation. For example, to build the dex see its [README](https://github.com/project-serum/serum-dex/tree/armani/readme/dex).
+See individual crates for documentation. For example, to build the dex see its [README](https://github.com/project-serum/serum-dex/tree/master/dex).
 
 ## Running a local Solana cluster
 
