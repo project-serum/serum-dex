@@ -106,7 +106,10 @@ fn gov_cmd(ctx: &Context, cmd: GovCommand) -> Result<()> {
                 fee_rate,
                 authority: wallet.pubkey(),
             })?;
-            println!("Rewards instance created: {:?}", resp.instance);
+            println!(
+                "{}",
+                serde_json::json!({"instance": resp.instance.to_string()})
+            );
         }
         GovCommand::SetAuthority {
             new_authority,

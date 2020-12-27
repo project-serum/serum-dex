@@ -27,6 +27,9 @@ pub struct Context {
     pub lockup_pid: Pubkey,
     pub dex_pid: Pubkey,
     pub faucet_pid: Option<Pubkey>,
+    pub registrar: Pubkey,
+    pub safe: Pubkey,
+    pub rewards_instance: Pubkey,
 }
 
 impl Context {
@@ -66,6 +69,7 @@ struct Config {
     pub network: Network,
     pub mints: Mints,
     pub programs: Programs,
+    pub accounts: Option<Accounts>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -87,6 +91,13 @@ struct Programs {
     pub lockup_pid: String,
     pub dex_pid: String,
     pub faucet_pid: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct Accounts {
+    pub registrar: String,
+    pub safe: String,
+    pub rewards_instance: String,
 }
 
 impl Config {
@@ -126,6 +137,18 @@ impl TryFrom<Config> for Context {
             meta_entity_pid: cfg.programs.meta_entity_pid.parse()?,
             dex_pid: cfg.programs.dex_pid.parse()?,
             faucet_pid,
+            registrar: cfg
+                .accounts
+                .as_ref()
+                .map_or(Ok(Default::default()), |a| a.registrar.parse::<Pubkey>())?,
+            safe: cfg
+                .accounts
+                .as_ref()
+                .map_or(Ok(Default::default()), |a| a.safe.parse())?,
+            rewards_instance: cfg
+                .accounts
+                .as_ref()
+                .map_or(Ok(Default::default()), |a| a.rewards_instance.parse())?,
         })
     }
 }

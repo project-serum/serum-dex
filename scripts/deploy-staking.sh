@@ -61,6 +61,10 @@ STAKE_RATE=10000000
 #
 STAKE_RATE_MEGA=1
 #
+# Unit of srm to pay crankers.
+#
+CRANK_FEE_RATE=1
+#
 # Must be built with the `dev` feature on.
 #
 serum=$(pwd)/target/debug/serum
@@ -158,7 +162,7 @@ EOM
     # Now intialize all the accounts.
     #
     echo "Initializing registrar..."
-    local rInit=$($serum --config $CONFIG_FILE \
+    local r_init=$($serum --config $CONFIG_FILE \
           registry init \
           --deactivation-timelock $DEACTIVATION_TIMELOCK \
           --withdrawal-timelock $WITHDRAWAL_TIMELOCK \
@@ -166,29 +170,15 @@ EOM
           --stake-rate $STAKE_RATE \
           --stake-rate-mega $STAKE_RATE_MEGA)
 
-    local registrar=$(echo $rInit | jq .registrar -r)
-    local registrar_nonce=$(echo $rInit | jq .nonce -r)
-    local reward_q=$(echo $rInit | jq .rewardEventQueue -r)
+    local registrar=$(echo $r_init | jq .registrar -r)
+    local registrar_nonce=$(echo $r_init | jq .nonce -r)
+    local reward_q=$(echo $r_init | jq .rewardEventQueue -r)
 
     echo "Initializing lockup..."
-    local lInit=$($serum --config $CONFIG_FILE \
+    local l_init=$($serum --config $CONFIG_FILE \
           lockup initialize)
 
-    local safe=$(echo $lInit | jq .safe -r)
-
-    #
-    # Initialize a node entity. Hack until we separate joining entities
-    # from creating member accounts.
-    #
-    echo "Creating the default node entity..."
-    local createEntity=$($serum --config $CONFIG_FILE \
-          registry create-entity \
-          --registrar $registrar \
-          --about "This the default entity all new members join." \
-          --image-url " " \
-          --name "Default" )
-
-    local entity=$(echo $createEntity | jq .entity -r)
+    local safe=$(echo $l_init | jq .safe -r)
 
     #
     # Add the registry to the lockup program whitelist.
@@ -201,6 +191,38 @@ EOM
     --instance $registrar \
     --nonce $registrar_nonce \
     --program-id $registry_pid
+
+    #
+    # Create a crank rewards instance.
+    #
+    local crank_rewards=$($serum --config $CONFIG_FILE rewards gov init \
+          --registrar $registrar \
+          --reward-mint $srm_mint \
+          --fee-rate $CRANK_FEE_RATE)
+    local rewards_instance=$(echo $crank_rewards | jq .instance -r)
+
+    #
+    # Append to the previously generated config file.
+    #
+    cat << EOM >> $CONFIG_FILE
+accounts:
+  registrar: $registrar
+  safe: $safe
+  rewards_instance: $rewards_instance
+EOM
+
+
+    #
+    # Initialize the default node entity.
+    #
+    echo "Creating the default node entity..."
+    local create_entity=$($serum --config $CONFIG_FILE \
+          registry create-entity \
+          --about "This the default entity all new members join." \
+          --image-url " " \
+          --name "Default" )
+
+    local entity=$(echo $create_entity | jq .entity -r)
 
     #
     # Log the generated TypeScript.
