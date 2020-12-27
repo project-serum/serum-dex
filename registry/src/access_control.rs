@@ -28,6 +28,9 @@ pub fn governance(
     if r.authority != *registrar_authority_acc_info.key {
         return Err(RegistryErrorCode::Unauthorized.into());
     }
+    if r.authority == Pubkey::new_from_array([0; 32]) {
+        return Err(RegistryErrorCode::Unauthorized.into());
+    }
     Ok(r)
 }
 

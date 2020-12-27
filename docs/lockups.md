@@ -53,8 +53,10 @@ ahead of schedule, so it's important to take great care when whitelisting any pr
 
 This of course begs the question, who approves the whitelist? The **Lockup** program doesn't
 care. There simply exists an **authority** key that can, for example, be a democratic multisig,
-a single admin, or the program itself (in which case the authority ceases to exist). Whoever controls
-that key controls the whitelist. So when using the **Lockup** program, one should always be
+a single admin, or the zero address--in which case the authority ceases to exist, as the
+program will reject transactions signing from that address. Although the **authority** can never
+move a **Vesting** account's funds,  whoever controls the **authority** key
+controls the whitelist. So when using the **Lockup** program, one should always be
 cognizant of it's whitelist governance, which ultimately anchors one's trust in the program,
 if any at all.
 
