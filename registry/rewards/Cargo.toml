@@ -34,5 +34,5 @@ serum-common-tests = { path = "../../common/tests" }
 serum-registry-rewards-client = { path = "./client" }
 serum-registry = { path = "../" }
 serum-registry-client = { path = "../client" }
-crank = { path = "../../crank" }
+crank = { path = "../../dex/crank" }
 serum_dex = { path = "../../dex", features = ["client"] }

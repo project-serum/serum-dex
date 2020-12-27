@@ -8,10 +8,10 @@ name = "crank"
 path = "src/bin/main.rs"
 
 [dependencies]
-serum_dex = { path = "../dex", default-features = false, features = ["client"] }
-serum-common = { path = "../common", features = ["client"] }
-serum-registry-rewards-client = { path = "../registry/rewards/client" }
-serum-context = { path = "../context" }
+serum_dex = { path = "../", default-features = false, features = ["client"] }
+serum-common = { path = "../../common", features = ["client"] }
+serum-registry-rewards-client = { path = "../../registry/rewards/client" }
+serum-context = { path = "../../context" }
 spl-token = { version = "3.0.0-pre1", features = ["no-entrypoint"], default-features = false }
 clap = "3.0.0-beta.1"
 solana-client = "1.4.4"
