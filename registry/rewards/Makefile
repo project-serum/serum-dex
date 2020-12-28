@@ -1,4 +1,4 @@
-include ../../Makefile
+include ../../common.mk
 
 LIB_NAME=serum_registry_rewards_program
 BPF_SDK=$(shell pwd)/../../bin/bpf-sdk
