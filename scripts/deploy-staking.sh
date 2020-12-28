@@ -31,6 +31,11 @@ elif [ "$CLUSTER" = "localnet" ]; then
     FAUCET_FLAG=""
     CONFIG_FILE=~/.config/serum/cli/localnet.yaml
     CLUSTER_URL="http://localhost:8899"
+elif [ "$CLUSTER" = "testnet" ]; then
+    echo "Deploying to Testnet..."
+    FAUCET_FLAG="--faucet"
+    CONFIG_FILE=~/.config/serum/cli/testnet.yaml
+    CLUSTER_URL="https://testnet.solana.com"
 else
     echo "Invalid cluster"
     exit 1

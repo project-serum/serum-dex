@@ -118,10 +118,7 @@ impl TryFrom<Config> for Context {
         let faucet_pid = cfg
             .programs
             .faucet_pid
-            .or_else(|| match &cluster {
-                Cluster::Devnet => Some("4bXpkKSV8swHSnwqtzuboGPaPDeEgAn4Vt8GfarV5rZt".to_string()),
-                _ => None,
-            })
+            .or_else(|| Some("4bXpkKSV8swHSnwqtzuboGPaPDeEgAn4Vt8GfarV5rZt".to_string()))
             .map(|f| f.parse().unwrap());
         Ok(Self {
             cluster,

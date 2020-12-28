@@ -28,12 +28,12 @@
 
 ## Program Deployments
 
-| Program | Devnet | Mainnet Beta |
-| --------|--------|------------- |
-| [DEX](/dex)     | `9MVDeYQnJmN2Dt7H44Z8cob4bET2ysdNu2uFJcatDJno` | `EUqojwWA2rd19FZrzeBncJsm38Jm1hEhE3zsmX3bRc2o` |
-| [Registry](/registry/program) | `CKKz2WYvneiLb2mzouWc4iPpKisuXs5XKYn7ZUrRjkeK` | `6J7ZoSxtKJUjVLpGRcBrEtvE2T3YVf9mfKUaicndzpCc` |
-| [Lockup](/lockup/program) | `8wreDpv5nuY1gee1X4wkqtRkzoGypVYzWBrMmzipAJKN` | `4nvqpaMz7H12VgHSABjEDFmH62MoWP3BxfMG3BAFQiBo` |
-| [Crank Rewards](/registry/rewards/program) | `7sXyzeu6GJqkXZz8VhjdsXvDg1xR1PEkXbbDaxMc186C` | `4bcHoAgLP9NBje1oVo9WKRDYkvSxcqtJeTSXMRFX5AdZ`|
+| Program | Mainnet Beta | Devnet | Testnet |
+| ------- | ------------ | ------ | ------- |
+| [DEX](/dex) | `EUqojwWA2rd19FZrzeBncJsm38Jm1hEhE3zsmX3bRc2o` | `9MVDeYQnJmN2Dt7H44Z8cob4bET2ysdNu2uFJcatDJno` | `EUqojwWA2rd19FZrzeBncJsm38Jm1hEhE3zsmX3bRc2o` |
+| [Registry](/registry/program) | `6J7ZoSxtKJUjVLpGRcBrEtvE2T3YVf9mfKUaicndzpCc` | `CKKz2WYvneiLb2mzouWc4iPpKisuXs5XKYn7ZUrRjkeK` | `6J7ZoSxtKJUjVLpGRcBrEtvE2T3YVf9mfKUaicndzpCc` |
+| [Lockup](/lockup/program) | `4nvqpaMz7H12VgHSABjEDFmH62MoWP3BxfMG3BAFQiBo` | `8wreDpv5nuY1gee1X4wkqtRkzoGypVYzWBrMmzipAJKN` | `4nvqpaMz7H12VgHSABjEDFmH62MoWP3BxfMG3BAFQiBo` |
+| [Crank Rewards](/registry/rewards/program) | `4bcHoAgLP9NBje1oVo9WKRDYkvSxcqtJeTSXMRFX5AdZ` | `7sXyzeu6GJqkXZz8VhjdsXvDg1xR1PEkXbbDaxMc186C` | `4bcHoAgLP9NBje1oVo9WKRDYkvSxcqtJeTSXMRFX5AdZ`|
 
 ## Note
 
