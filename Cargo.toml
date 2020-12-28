@@ -22,9 +22,7 @@ members = [
 ]
 exclude = [
     "dex",
-    "retbuf",
     "registry/program",
     "registry/meta-entity/program",
-    "retbuf",
     "lockup/program",
 ]
