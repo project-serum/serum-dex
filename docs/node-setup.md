@@ -154,6 +154,12 @@ def find_market_addresses(program_id: str):
     return [info['pubkey'] for info in resp['result']]
 ```
 
+## Running your own Solana Validator
+
+Cranking markets can place a lot of load on a Solana RPC server. As a result, it's highly recommended
+to run one's own validator. Otherwise, one is subject to any rate limits imposed by a given RPC node.
+An example and guide for setting up your own Solana validator can be found [here](https://github.com/project-serum/validators). Once setup is complete, one can specify its url with the `network.cluster` option in the CLI config.
+
 ## Switching to Mainnet Beta
 
 When operating over multiple networks, you can specify your config file with the
