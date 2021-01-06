@@ -72,7 +72,7 @@ fn _vesting(
     vesting_acc_info: &AccountInfo,
 ) -> Result<Vesting, LockupError> {
     let mut data: &[u8] = &vesting_acc_info.try_borrow_data()?;
-    let vesting = Vesting::unpack_unchecked(&mut data)?;
+    let vesting = Vesting::unpack(&mut data)?;
 
     if vesting_acc_info.owner != program_id {
         return Err(LockupErrorCode::InvalidAccount.into());

@@ -46,7 +46,7 @@ pub fn handler(
         nonce,
     })?;
 
-    Vesting::unpack_unchecked_mut(
+    Vesting::unpack_mut(
         &mut vesting_acc_info.try_borrow_mut_data()?,
         &mut |vesting: &mut Vesting| {
             state_transition(StateTransitionRequest {
@@ -102,7 +102,7 @@ fn access_control(req: AccessControlRequest) -> Result<AccessControlResponse, Lo
     // Vesting account (uninitialized).
     {
         let mut data: &[u8] = &vesting_acc_info.try_borrow_data()?;
-        let vesting = Vesting::unpack_unchecked(&mut data)?;
+        let vesting = Vesting::unpack(&mut data)?;
 
         if vesting_acc_info.owner != program_id {
             return Err(LockupErrorCode::NotOwnedByProgram)?;
