@@ -38,7 +38,7 @@ sudo apt-get install -y pkg-config build-essential python3-pip jq
 For now, we can use Cargo.
 
 ```bash
-cargo install --git https://github.com/project-serum/serum-dex serum-cli
+cargo install --git https://github.com/project-serum/serum-dex serum-cli --locked
 ```
 
 To verify the installation worked, run `serum -h`.
