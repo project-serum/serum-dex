@@ -30,7 +30,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 On Linux systems you may need to install additional dependencies. On Ubuntu,
 
 ```bash
-sudo apt-get install -y pkg-config build-essential python3-pip jq
+sudo apt-get install -y pkg-config build-essential libudev-dev libssl-dev python3-pip jq
 ```
 
 ## Install the CLI
@@ -71,7 +71,11 @@ accounts:
 
 If not specified, the `wallet` key will be searched for in the standard location:
 `~/.config/solana/id.json` and used as the **payer** for all transactions initiated
-by the CLI.
+by the CLI. If you haven't already, run
+
+```bash
+solana-keygen new
+```
 
 ## Create an Entity
 
