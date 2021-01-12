@@ -47,6 +47,9 @@ pub fn whitelist<'a>(
     if wl.safe()? != *safe_acc_info.key {
         return Err(LockupErrorCode::WhitelistSafeMismatch.into());
     }
+    if !wl.get_init()? {
+        return Err(LockupErrorCode::NotInitialized.into());
+    }
 
     Ok(wl)
 }

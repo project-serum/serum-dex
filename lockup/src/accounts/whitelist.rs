@@ -18,13 +18,13 @@ use solana_client_gen::solana_sdk::account_info::AccountInfo;
 /// whitelist to avoid a RefCell induced panic.
 #[derive(Debug)]
 pub struct Whitelist<'a> {
-    // Account layout: SAFE_PUBKEY || ..WHITELIST_ENTRY
+    // Account layout: INITIALIZED || SAFE_PUBKEY || ..WHITELIST_ENTRY
     pub acc_info: AccountInfo<'a>,
 }
 
 impl<'a> Whitelist<'a> {
     /// Index at which the whitelist entries start.
-    pub const ITEM_START: usize = 32;
+    pub const ITEM_START: usize = 33;
     /// Byte size for a single item in the whitelist.
     pub const ITEM_SIZE: usize = 65;
     /// Number of items in the whitelist.
@@ -47,16 +47,32 @@ impl<'a> Whitelist<'a> {
         Ok(entries)
     }
 
+    /// Sets the initialization flag on this whitelist .
+    pub fn set_init(&self) -> Result<(), LockupError> {
+        let mut data = self.acc_info.try_borrow_mut_data()?;
+        let dst = array_mut_ref![data, 0, 1];
+        dst.copy_from_slice(&[1]);
+        Ok(())
+    }
+
+    pub fn get_init(&self) -> Result<bool, LockupError> {
+        let r = match self.acc_info.try_borrow_data()?[0] {
+            1 => true,
+            _ => false,
+        };
+        Ok(r)
+    }
+
     /// Returns the address of the Safe account this Whitelist belongs to.
     pub fn safe(&self) -> Result<Pubkey, LockupError> {
         let data = self.acc_info.try_borrow_data()?;
-        Ok(Pubkey::new(&data[..Self::ITEM_START]))
+        Ok(Pubkey::new(&data[1..Self::ITEM_START]))
     }
 
     /// Sets the safe address on this whitelist .
     pub fn set_safe(&self, safe: &Pubkey) -> Result<(), LockupError> {
         let mut data = self.acc_info.try_borrow_mut_data()?;
-        let dst = array_mut_ref![data, 0, Whitelist::ITEM_START];
+        let dst = array_mut_ref![data, 1, 32];
         dst.copy_from_slice(safe.as_ref());
         Ok(())
     }

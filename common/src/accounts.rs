@@ -12,11 +12,11 @@ macro_rules! ring {
     ($message_size:expr) => {
         use arrayref::array_mut_ref;
 
-        const AUTHORITY_START: usize = 0;
+        const AUTHORITY_START: usize = 1;
         // TODO: bump head + tail to be u64 instead of u32.
-        const HEAD_START: usize = 32;
-        const TAIL_START: usize = 36;
-        const ITEM_START: u32 = 40;
+        const HEAD_START: usize = 33;
+        const TAIL_START: usize = 37;
+        const ITEM_START: u32 = 41;
 
         pub trait Ring<'a> {
             type Item: BorshSerialize + BorshDeserialize;
@@ -28,6 +28,24 @@ macro_rules! ring {
 
             fn buffer_size(capacity: u32) -> usize {
                 (Self::ITEM_SIZE as usize * capacity as usize) + ITEM_START as usize
+            }
+
+            fn set_init(&self) -> Result<(), ProgramError> {
+                let buffer = self.buffer();
+                let mut data = buffer.borrow_mut();
+                let dst = array_mut_ref![data, 0, 1];
+                dst.copy_from_slice(&[1]);
+                Ok(())
+            }
+
+            fn get_init(&self) -> Result<bool, ProgramError> {
+                let buffer = self.buffer();
+                let data = buffer.borrow();
+                let r = match data[0] {
+                    1 => true,
+                    _ => false,
+                };
+                Ok(r)
             }
 
             fn append(&self, item: &Self::Item) -> Result<(), ProgramError> {

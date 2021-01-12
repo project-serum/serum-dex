@@ -117,7 +117,7 @@ fn access_control(req: AccessControlRequest) -> Result<(), RegistryError> {
 
     // Reward q must not yet be owned.
     let event_q = RewardEventQueue::from(reward_event_q_acc_info.data.clone());
-    if event_q.authority() != Pubkey::new_from_array([0u8; 32]) {
+    if event_q.get_init()? {
         return Err(RegistryErrorCode::RewardQAlreadyOwned)?;
     }
 
@@ -160,6 +160,7 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), RegistryError> {
     registrar.max_stake_per_entity = max_stake_per_entity;
 
     let event_q = RewardEventQueue::from(reward_event_q_acc_info.data.clone());
+    event_q.set_init()?;
     event_q.set_authority(registrar_acc_info.key);
 
     Ok(())
