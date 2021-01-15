@@ -204,7 +204,7 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), LockupError> {
         return Err(LockupErrorCode::DepositOverflow)?;
     }
 
-    Vesting::unpack_unchecked_mut(
+    Vesting::unpack_mut(
         &mut vesting_acc_info.try_borrow_mut_data()?,
         &mut |vesting: &mut Vesting| {
             // Book keeping.

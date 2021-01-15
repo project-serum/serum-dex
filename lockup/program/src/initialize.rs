@@ -83,7 +83,8 @@ fn access_control(req: AccessControlRequest) -> Result<(), LockupError> {
         ) {
             return Err(LockupErrorCode::NotRentExempt)?;
         }
-        if Pubkey::new_from_array([0; 32]) != Whitelist::new(whitelist_acc_info.clone())?.safe()? {
+        let wl = Whitelist::new(whitelist_acc_info.clone())?;
+        if wl.get_init()? {
             return Err(LockupErrorCode::WhitelistAlreadyInitialized)?;
         }
     }
@@ -108,6 +109,7 @@ fn state_transition(req: StateTransitionRequest) -> Result<(), LockupError> {
 
     // Inittialize Whitelist.
     let whitelist = Whitelist::new(whitelist_acc_info.clone())?;
+    whitelist.set_init()?;
     whitelist.set_safe(safe_acc_info.key)?;
 
     Ok(())

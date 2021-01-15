@@ -14,7 +14,7 @@ pub fn handler(_program_id: &Pubkey, accounts: &[AccountInfo]) -> Result<(), Loc
     let clock_acc_info = next_account_info(acc_infos)?;
 
     let mut d: &[u8] = &vesting_acc_info.try_borrow_data()?;
-    let vesting = Vesting::unpack_unchecked(&mut d)?;
+    let vesting = Vesting::unpack(&mut d)?;
     let clock = access_control::clock(clock_acc_info)?;
 
     let available = vesting.available_for_withdrawal(clock.unix_timestamp);

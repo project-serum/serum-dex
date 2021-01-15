@@ -37,7 +37,7 @@ pub fn handler(
         clock_acc_info,
     })?;
 
-    Vesting::unpack_unchecked_mut(
+    Vesting::unpack_mut(
         &mut vesting_acc_info.try_borrow_mut_data()?,
         &mut |vesting: &mut Vesting| {
             state_transition(StateTransitionRequest {
