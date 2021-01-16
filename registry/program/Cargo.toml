@@ -24,7 +24,7 @@ serum-common = { path = "../../common", features = ["program"] }
 serum-lockup = { path = "../../lockup", features = ["program"] }
 solana-program = "1.4.3"
 arrayref = "0.3.6"
-borsh = { git = "https://github.com/project-serum/borsh", branch = "serum" }
+serum-borsh = { git = "https://github.com/project-serum/borsh", branch = "serum" }
 
 [profile.release]
 lto = true

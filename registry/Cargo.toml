@@ -20,7 +20,7 @@ solana-client-gen = { path = "../solana-client-gen" }
 serum-common = { path = "../common" }
 
 # Forks.
-borsh = { git = "https://github.com/project-serum/borsh", branch = "serum" }
+serum-borsh = { git = "https://github.com/project-serum/borsh", branch = "serum" }
 
 # Client only.
 lazy_static = { version = "1.4.0", optional = true }
