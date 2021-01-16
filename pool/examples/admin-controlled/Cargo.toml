@@ -13,7 +13,7 @@ default = []
 solana-program = "1.4.14"
 serum-pool = { version = "0.1.0", path = "../.." }
 spl-token = { version = "3.0.0", features = ["no-entrypoint"] }
-borsh = { git = "https://github.com/project-serum/borsh", branch = "serum" }
+serum-borsh = { git = "https://github.com/project-serum/borsh", branch = "serum" }
 
 [lib]
 name = "serum_pool_examples_admin_controlled"
