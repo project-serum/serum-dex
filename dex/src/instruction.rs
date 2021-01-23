@@ -413,19 +413,19 @@ pub fn new_order(
     side: Side,
     limit_price: NonZeroU64,
     max_qty: NonZeroU64,
-    order_type:OrderType,
-    client_id:u64,
-    self_trade_behavior:SelfTradeBehavior
+    order_type: OrderType,
+    client_id: u64,
+    self_trade_behavior: SelfTradeBehavior,
 ) -> Result<Instruction, DexError> {
-    let data = MarketInstruction::NewOrderV2(NewOrderInstructionV2{
+    let data = MarketInstruction::NewOrderV2(NewOrderInstructionV2 {
         side,
         limit_price,
         max_qty,
         order_type,
         client_id,
-        self_trade_behavior
-
-    }).pack();
+        self_trade_behavior,
+    })
+    .pack();
     let mut accounts = vec![
         AccountMeta::new(*market, false),
         AccountMeta::new(*open_orders_account, false),
@@ -437,17 +437,14 @@ pub fn new_order(
         AccountMeta::new_readonly(*spl_token_program_id, false),
         AccountMeta::new_readonly(*rent_sysvar_id, false),
     ];
-    match srm_account_referral {
-        Some(key) => {accounts.push(
-            AccountMeta::new(*key, false)
-        )},
-        None => {}
+    if let Some(key) = srm_account_referral {
+        accounts.push(AccountMeta::new(*key, false))
     }
-Ok(Instruction {
-    program_id: *program_id,
-    data,
-    accounts
-})
+    Ok(Instruction {
+        program_id: *program_id,
+        data,
+        accounts,
+    })
 }
 
 pub fn match_orders(
@@ -459,23 +456,23 @@ pub fn match_orders(
     event_queue: &Pubkey,
     coin_fee_receivable_account: &Pubkey,
     pc_fee_receivable_account: &Pubkey,
-    limit: u16
+    limit: u16,
 ) -> Result<Instruction, DexError> {
     let data = MarketInstruction::MatchOrders(limit).pack();
-    let accounts:Vec<AccountMeta>= vec![
+    let accounts: Vec<AccountMeta> = vec![
         AccountMeta::new(*market, false),
         AccountMeta::new(*request_queue, false),
         AccountMeta::new(*event_queue, false),
         AccountMeta::new(*bids, false),
         AccountMeta::new(*asks, false),
         AccountMeta::new(*coin_fee_receivable_account, false),
-        AccountMeta::new(*pc_fee_receivable_account, false)
+        AccountMeta::new(*pc_fee_receivable_account, false),
     ];
-Ok(Instruction {
-    program_id: *program_id,
-    data,
-    accounts
-})
+    Ok(Instruction {
+        program_id: *program_id,
+        data,
+        accounts,
+    })
 }
 
 pub fn consume_events(
@@ -485,23 +482,24 @@ pub fn consume_events(
     event_queue: &Pubkey,
     coin_fee_receivable_account: &Pubkey,
     pc_fee_receivable_account: &Pubkey,
-    limit: u16
+    limit: u16,
 ) -> Result<Instruction, DexError> {
     let data = MarketInstruction::ConsumeEvents(limit).pack();
-    let mut accounts:Vec<AccountMeta>= open_orders_accounts.iter().map(|key| {
-        AccountMeta::new(**key, false)
-    }).collect();
+    let mut accounts: Vec<AccountMeta> = open_orders_accounts
+        .iter()
+        .map(|key| AccountMeta::new(**key, false))
+        .collect();
     accounts.append(&mut vec![
         AccountMeta::new(*market, false),
         AccountMeta::new(*event_queue, false),
         AccountMeta::new(*coin_fee_receivable_account, false),
-        AccountMeta::new(*pc_fee_receivable_account, false)
+        AccountMeta::new(*pc_fee_receivable_account, false),
     ]);
-Ok(Instruction {
-    program_id: *program_id,
-    data,
-    accounts
-})
+    Ok(Instruction {
+        program_id: *program_id,
+        data,
+        accounts,
+    })
 }
 
 pub fn cancel_order(
@@ -512,27 +510,27 @@ pub fn cancel_order(
     request_queue: &Pubkey,
     side: Side,
     order_id: u128,
-    owner: [u64;4],
-    owner_slot: u8
-
+    owner: [u64; 4],
+    owner_slot: u8,
 ) -> Result<Instruction, DexError> {
-    let data = MarketInstruction::CancelOrder(CancelOrderInstruction{
+    let data = MarketInstruction::CancelOrder(CancelOrderInstruction {
         side,
         order_id,
         owner,
-        owner_slot
-    }).pack();
-    let accounts:Vec<AccountMeta>= vec![
+        owner_slot,
+    })
+    .pack();
+    let accounts: Vec<AccountMeta> = vec![
         AccountMeta::new_readonly(*market, false),
         AccountMeta::new(*open_orders_account, false),
         AccountMeta::new(*request_queue, false),
         AccountMeta::new_readonly(*open_orders_account_owner, true),
     ];
-Ok(Instruction {
-    program_id: *program_id,
-    data,
-    accounts
-})
+    Ok(Instruction {
+        program_id: *program_id,
+        data,
+        accounts,
+    })
 }
 
 pub fn settle_funds(
@@ -546,10 +544,10 @@ pub fn settle_funds(
     pc_vault: &Pubkey,
     pc_wallet: &Pubkey,
     referrer_pc_wallet: Option<&Pubkey>,
-    vault_signer: &Pubkey
+    vault_signer: &Pubkey,
 ) -> Result<Instruction, DexError> {
     let data = MarketInstruction::SettleFunds.pack();
-    let mut accounts:Vec<AccountMeta>= vec![
+    let mut accounts: Vec<AccountMeta> = vec![
         AccountMeta::new(*market, false),
         AccountMeta::new(*open_orders_account, false),
         AccountMeta::new_readonly(*open_orders_account_owner, true),
@@ -560,17 +558,14 @@ pub fn settle_funds(
         AccountMeta::new_readonly(*vault_signer, false),
         AccountMeta::new(*spl_token_program_id, false),
     ];
-    match referrer_pc_wallet {
-        Some(key) => {accounts.push(
-            AccountMeta::new(*key, false)
-        )},
-        None => {}
+    if let Some(key) = referrer_pc_wallet {
+        accounts.push(AccountMeta::new(*key, false))
     }
-Ok(Instruction {
-    program_id: *program_id,
-    data,
-    accounts
-})
+    Ok(Instruction {
+        program_id: *program_id,
+        data,
+        accounts,
+    })
 }
 
 pub fn cancel_order_by_client_id(
@@ -579,20 +574,20 @@ pub fn cancel_order_by_client_id(
     open_orders_account: &Pubkey,
     open_orders_account_owner: &Pubkey,
     request_queue: &Pubkey,
-    client_id: u64
+    client_id: u64,
 ) -> Result<Instruction, DexError> {
     let data = MarketInstruction::CancelOrderByClientId(client_id).pack();
-    let accounts:Vec<AccountMeta>= vec![
+    let accounts: Vec<AccountMeta> = vec![
         AccountMeta::new_readonly(*market, false),
         AccountMeta::new(*open_orders_account, false),
         AccountMeta::new(*request_queue, false),
         AccountMeta::new_readonly(*open_orders_account_owner, true),
     ];
-Ok(Instruction {
-    program_id: *program_id,
-    data,
-    accounts
-})
+    Ok(Instruction {
+        program_id: *program_id,
+        data,
+        accounts,
+    })
 }
 
 pub fn disable_market(
@@ -601,15 +596,15 @@ pub fn disable_market(
     disable_authority_key: &Pubkey,
 ) -> Result<Instruction, DexError> {
     let data = MarketInstruction::DisableMarket.pack();
-    let accounts:Vec<AccountMeta>= vec![
+    let accounts: Vec<AccountMeta> = vec![
         AccountMeta::new(*market, false),
         AccountMeta::new_readonly(*disable_authority_key, true),
     ];
-Ok(Instruction {
-    program_id: *program_id,
-    data,
-    accounts
-})
+    Ok(Instruction {
+        program_id: *program_id,
+        data,
+        accounts,
+    })
 }
 
 pub fn sweep_fees(
@@ -622,7 +617,7 @@ pub fn sweep_fees(
     spl_token_program_id: &Pubkey,
 ) -> Result<Instruction, DexError> {
     let data = MarketInstruction::SweepFees.pack();
-    let accounts:Vec<AccountMeta>= vec![
+    let accounts: Vec<AccountMeta> = vec![
         AccountMeta::new(*market, false),
         AccountMeta::new(*pc_vault, false),
         AccountMeta::new_readonly(*fee_sweeping_authority, true),
@@ -630,11 +625,11 @@ pub fn sweep_fees(
         AccountMeta::new_readonly(*vault_signer, false),
         AccountMeta::new_readonly(*spl_token_program_id, false),
     ];
-Ok(Instruction {
-    program_id: *program_id,
-    data,
-    accounts
-})
+    Ok(Instruction {
+        program_id: *program_id,
+        data,
+        accounts,
+    })
 }
 
 #[cfg(test)]
