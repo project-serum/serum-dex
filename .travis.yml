@@ -33,17 +33,6 @@ jobs:
       script:
         - docker exec dev ./scripts/travis/dex-tests.sh
     - <<: *defaults
-      name: Lockup tests
-      <<: *localnet
-      script:
-        - docker exec dev make -C lockup init-test features=strict
-    - <<: *defaults
-      name: Registry tests
-      <<: *localnet
-      script:
-        - docker exec dev make -C registry init-test
-        - docker exec dev make -C registry/rewards test
-    - <<: *defaults
       name: Fmt and Common Tests
       script:
         - docker exec dev cargo build
