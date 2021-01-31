@@ -9,7 +9,7 @@ program = []
 default = []
 
 [dependencies]
-serum-borsh = { git = "https://github.com/project-serum/borsh", branch = "serum" }
+serum-borsh = "0.8.1-serum.1"
 solana-program = "1.4.14"
 
 [[bin]]
