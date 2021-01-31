@@ -53,18 +53,13 @@ fn init_mint(ctx: &Context, faucet: bool) -> Result<()> {
     let program_id = Pubkey::new_from_array([0; 32]).to_string();
     let payer_filepath = &ctx.wallet_path.to_string();
     let cluster = ctx.cluster.to_string();
-    std::env::set_var(serum_common_tests::TEST_PROGRAM_ID, program_id);
-    std::env::set_var(serum_common_tests::TEST_PAYER_FILEPATH, payer_filepath);
-    std::env::set_var(serum_common_tests::TEST_CLUSTER, cluster);
-    let (client, g) = serum_common_tests::genesis::<Client>();
-
     let (srm_faucet, msrm_faucet) = match faucet {
         false => (None, None),
         true => {
             let srm_faucet =
-                faucet::create(ctx, g.srm_mint, 1_000_000_000_000, client.payer().pubkey())?;
+                faucet::create(ctx, g.srm_mint, 1_000_000_000_000, ctx.wallet().pubkey())?;
             let msrm_faucet =
-                faucet::create(ctx, g.msrm_mint, 1_000_000_000_000, client.payer().pubkey())?;
+                faucet::create(ctx, g.msrm_mint, 1_000_000_000_000, ctx.wallet().pubkey())?;
             (Some(srm_faucet), Some(msrm_faucet))
         }
     };

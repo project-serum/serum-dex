@@ -1,4 +1,3 @@
-use crate::pack::Pack;
 use anyhow::{anyhow, Result};
 use rand::rngs::OsRng;
 use solana_client::rpc_client::RpcClient;

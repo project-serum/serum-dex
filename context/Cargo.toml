@@ -12,5 +12,5 @@ anyhow = "1.0.32"
 dirs = "3.0"
 serde = "1.0"
 serde_yaml = "0.8"
+solana-client = "1.5.0"
 serum-common = { path = "../common" }
-solana-client-gen = { path = "../solana-client-gen" }
