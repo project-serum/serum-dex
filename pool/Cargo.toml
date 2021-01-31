@@ -17,7 +17,7 @@ thiserror = "1.0.20"
 zerocopy = "0.3.0"
 bytemuck = "1.4.1"
 slice-of-array = "0.2.1"
-serum-borsh = { git = "https://github.com/project-serum/borsh", branch = "serum" }
+serum-borsh = "0.8.1-serum.1"
 anyhow = { version = "1.0.33", default-features = false }
 hex = "0.4.2"
 base64 = "0.13.0"
