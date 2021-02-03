@@ -10,3 +10,4 @@ cc a4118a6d7c82c191d95704129985f0761b3c6b82a056485e88ea549e6145608a # shrinks to
 cc f8cb82aea20fce7b1585efea458f5a8d08c967df78da4720197145e6fa587f80 # shrinks to inst = CancelOrder(CancelOrderInstruction { side: Bid, order_id: 0, owner: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], owner_slot: 0 })
 cc 9b33e7cb4c2b4e3a34b7b6fdeb7feb49cee9196047870cff53dac8b9483e9245 # shrinks to inst = NewOrder(NewOrderInstruction { side: Bid, limit_price: 1, max_qty: 1, order_type: Limit, client_id: 0 })
 cc 2a279ee739ee4b89416a838543703ace70b994031ac37da2f863025d828bfca6 # shrinks to inst = NewOrder(NewOrderInstruction { side: Bid, limit_price: 1, max_qty: 1, order_type: Limit, client_id: 0 })
+cc 4cd7226dfe9ac17741d91c4a3d8fbd22116654b0ea54c82f2357882404c281b4 # shrinks to inst = CancelOrderByClientIdV2(0)

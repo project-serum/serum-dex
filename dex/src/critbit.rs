@@ -27,6 +27,7 @@ enum NodeTag {
 
 #[derive(Copy, Clone)]
 #[repr(packed)]
+#[allow(dead_code)]
 struct InnerNode {
     tag: u32,
     prefix_len: u32,
@@ -125,6 +126,7 @@ impl LeafNode {
 
 #[derive(Copy, Clone)]
 #[repr(packed)]
+#[allow(dead_code)]
 struct FreeNode {
     tag: u32,
     next: u32,
@@ -158,9 +160,10 @@ const_assert_eq!(_NODE_ALIGN, _FREE_NODE_ALIGN);
 
 #[derive(Copy, Clone)]
 #[repr(packed)]
+#[allow(dead_code)]
 pub struct AnyNode {
     tag: u32,
-    padding: [u32; 17],
+    data: [u32; 17],
 }
 unsafe impl Zeroable for AnyNode {}
 unsafe impl Pod for AnyNode {}

@@ -15,12 +15,12 @@ pub mod state;
 
 #[cfg(feature = "program")]
 use solana_program::{
-    account_info::AccountInfo, entrypoint::ProgramResult, entrypoint_deprecated, pubkey::Pubkey,
+    account_info::AccountInfo, entrypoint::ProgramResult, entrypoint, pubkey::Pubkey,
 };
 
 #[cfg(feature = "program")]
 #[cfg(not(feature = "no-entrypoint"))]
-entrypoint_deprecated!(process_instruction);
+entrypoint!(process_instruction);
 #[cfg(feature = "program")]
 fn process_instruction(
     program_id: &Pubkey,
