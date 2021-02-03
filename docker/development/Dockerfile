@@ -3,7 +3,7 @@ FROM ubuntu:18.04
 ARG DEBIAN_FRONTEND=noninteractive
 
 ARG SOLANA_CHANNEL=v1.2.17
-ARG SOLANA_CLI=v1.3.9
+ARG SOLANA_CLI=v1.5.5
 
 ENV HOME="/root"
 ENV PATH="${HOME}/.cargo/bin:${PATH}"
