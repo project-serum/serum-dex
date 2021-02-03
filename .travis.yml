@@ -32,7 +32,6 @@ jobs:
       name: Dex integration tests
       <<: *localnet
       script:
-        - docker exec dev solana-test-validator > validator.log &
         - docker exec dev ./scripts/travis/dex-tests.sh
     - <<: *defaults
       name: Fmt and Common Tests

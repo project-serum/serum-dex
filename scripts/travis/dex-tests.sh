@@ -12,6 +12,14 @@ CLUSTER_URL=http://localhost:8899
 main() {
     set +e
     #
+    # Start the local validator.
+    #
+    solana-test-validator > validator.log &
+    #
+    # Wait for the validator to start.
+    #
+    sleep 5
+    #
     # Create a keypair for the tests.
     #
     yes | solana-keygen new --outfile $KEYPAIR_FILE
