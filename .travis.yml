@@ -21,7 +21,8 @@ _localnet: &localnet
     - npm install -g @solana/web3.js
     - sudo apt-get install -y pkg-config build-essential libudev-dev
     - sh -c "$(curl -sSfL https://release.solana.com/v1.5.5/install)"
-    - solana-test-validator
+    - export PATH="/home/travis/.local/share/solana/install/active_release/bin:$PATH"
+    - solana-test-validator > validator.log &
 
 jobs:
   include:
