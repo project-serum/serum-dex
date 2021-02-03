@@ -16,7 +16,7 @@ main() {
     #
     # Start the container.
     #
-    docker run -it -d --name dev \
+    docker run -it -d --net host --name dev \
            -v workdir:/workdir \
            projectserum/development:latest bash
 }
