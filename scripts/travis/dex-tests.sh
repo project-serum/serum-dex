@@ -10,10 +10,10 @@ CLUSTER_URL=http://localhost:8899
 # Assumes the current working directory is top-level serum-dex dir.
 #
 main() {
+    set +e
     #
     # Create a keypair for the tests.
     #
-    set +e
     yes | solana-keygen new --outfile $KEYPAIR_FILE
     #
     # Fund the keypair.

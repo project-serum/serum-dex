@@ -21,8 +21,6 @@ _localnet: &localnet
     - sudo apt-get install -y pkg-config build-essential libudev-dev
     - sh -c "$(curl -sSfL https://release.solana.com/v1.5.5/install)"
     - export PATH="/home/travis/.local/share/solana/install/active_release/bin:$PATH"
-    - yes | solana-keygen new
-    - sudo solana-test-validator > validator.log &
 
 jobs:
   include:
@@ -34,6 +32,7 @@ jobs:
       name: Dex integration tests
       <<: *localnet
       script:
+        - docker exec dev solana-test-validator > validator.log &
         - docker exec dev ./scripts/travis/dex-tests.sh
     - <<: *defaults
       name: Fmt and Common Tests
