@@ -18,8 +18,8 @@ _localnet: &localnet
     - 14
   before_script:
     - npm install -g @solana/web3.js
-    - npx solana-localnet update
-    - npx solana-localnet up
+    - sh -c "$(curl -sSfL https://release.solana.com/v1.5.5/install)"
+    - solana-test-validator
 
 jobs:
   include:
