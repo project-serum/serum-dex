@@ -556,7 +556,7 @@ pub fn settle_funds(
         AccountMeta::new(*coin_wallet, false),
         AccountMeta::new(*pc_wallet, false),
         AccountMeta::new_readonly(*vault_signer, false),
-        AccountMeta::new(*spl_token_program_id, false),
+        AccountMeta::new_readonly(*spl_token_program_id, false),
     ];
     if let Some(key) = referrer_pc_wallet {
         accounts.push(AccountMeta::new(*key, false))
