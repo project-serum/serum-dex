@@ -274,7 +274,6 @@ pub fn start(ctx: Option<Context>, opts: Opts) -> Result<()> {
                 num_workers,
                 events_per_worker,
                 num_accounts.unwrap_or(32),
-                None,
             )?;
         }
         Command::MonitorQueue {

@@ -261,30 +261,3 @@ pub fn get_token_account<T: TokenPack>(client: &RpcClient, addr: &Pubkey) -> Res
         .map_or(Err(anyhow!("Account not found")), Ok)?;
     T::unpack_from_slice(&account.data).map_err(Into::into)
 }
-
-pub fn get_account<T: Pack>(client: &RpcClient, addr: &Pubkey) -> Result<T> {
-    let account = client
-        .get_account_with_commitment(addr, CommitmentConfig::recent())?
-        .value
-        .map_or(Err(anyhow!("Account not found")), Ok)?;
-    T::unpack(&account.data).map_err(Into::into)
-}
-
-pub fn get_account_unchecked<T: Pack>(client: &RpcClient, addr: &Pubkey) -> Result<T> {
-    let account = client
-        .get_account_with_commitment(addr, CommitmentConfig::recent())?
-        .value
-        .map_or(Err(anyhow!("Account not found")), Ok)?;
-    let mut data: &[u8] = &account.data;
-    T::unpack_unchecked(&mut data).map_err(Into::into)
-}
-
-// Convenience for testing. Use `get_token_account` otherwise.
-pub fn account_token_unpacked<T: TokenPack>(client: &RpcClient, addr: &Pubkey) -> T {
-    get_token_account::<T>(client, addr).unwrap()
-}
-
-// Convenience for testing. Use `get_account` otherwise.
-pub fn account_unpacked<T: Pack>(client: &RpcClient, addr: &Pubkey) -> T {
-    get_account(client, addr).unwrap()
-}

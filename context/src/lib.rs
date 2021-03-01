@@ -5,7 +5,6 @@ use anyhow::Result;
 use anyhow::{anyhow, format_err};
 use serde::{Deserialize, Serialize};
 use serum_common::client::Cluster;
-use solana_client::commitment_config::CommitmentConfig;
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::Keypair;
