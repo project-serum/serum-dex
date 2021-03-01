@@ -231,7 +231,7 @@ pub fn transfer(
 pub fn send_txn(client: &RpcClient, txn: &Transaction, _simulate: bool) -> Result<Signature> {
     Ok(client.send_and_confirm_transaction_with_spinner_and_config(
         txn,
-        CommitmentConfig::single(),
+        CommitmentConfig::confirmed(),
         RpcSendTransactionConfig {
             skip_preflight: true,
             ..RpcSendTransactionConfig::default()
@@ -256,7 +256,7 @@ pub fn simulate_transaction(
 
 pub fn get_token_account<T: TokenPack>(client: &RpcClient, addr: &Pubkey) -> Result<T> {
     let account = client
-        .get_account_with_commitment(addr, CommitmentConfig::recent())?
+        .get_account_with_commitment(addr, CommitmentConfig::processed())?
         .value
         .map_or(Err(anyhow!("Account not found")), Ok)?;
     T::unpack_from_slice(&account.data).map_err(Into::into)
