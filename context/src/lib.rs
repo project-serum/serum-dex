@@ -5,8 +5,7 @@ use anyhow::Result;
 use anyhow::{anyhow, format_err};
 use serde::{Deserialize, Serialize};
 use serum_common::client::Cluster;
-use solana_client_gen::prelude::*;
-use solana_client_gen::solana_client::rpc_client::RpcClient;
+use solana_client::rpc_client::RpcClient;
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::Keypair;
 use std::convert::TryFrom;
@@ -18,37 +17,15 @@ use std::str::FromStr;
 pub struct Context {
     pub cluster: Cluster,
     pub wallet_path: WalletPath,
-    pub data_dir_path: DataDirPath,
     pub srm_mint: Pubkey,
     pub msrm_mint: Pubkey,
-    pub rewards_pid: Pubkey,
-    pub registry_pid: Pubkey,
-    pub meta_entity_pid: Pubkey,
-    pub lockup_pid: Pubkey,
     pub dex_pid: Pubkey,
     pub faucet_pid: Option<Pubkey>,
-    pub registrar: Pubkey,
-    pub safe: Pubkey,
-    pub rewards_instance: Pubkey,
 }
 
 impl Context {
     pub fn from_config(path: ConfigPath) -> Result<Self> {
         Config::from(&path.to_string())?.try_into()
-    }
-
-    pub fn connect<T: ClientGen>(&self, program_id: Pubkey) -> Result<T> {
-        let wallet = &self.wallet_path.to_string();
-        let c = T::from_keypair_file(program_id, &wallet, self.cluster.url())?.with_options(
-            RequestOptions {
-                commitment: CommitmentConfig::single(),
-                tx: RpcSendTransactionConfig {
-                    skip_preflight: true,
-                    ..RpcSendTransactionConfig::default()
-                },
-            },
-        );
-        Ok(c)
     }
 
     pub fn rpc_client(&self) -> RpcClient {
@@ -65,11 +42,9 @@ impl Context {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct Config {
     pub wallet_path: Option<String>,
-    pub data_dir: Option<String>,
     pub network: Network,
     pub mints: Mints,
     pub programs: Programs,
-    pub accounts: Option<Accounts>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -85,19 +60,8 @@ struct Mints {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct Programs {
-    pub rewards_pid: String,
-    pub registry_pid: String,
-    pub meta_entity_pid: String,
-    pub lockup_pid: String,
     pub dex_pid: String,
     pub faucet_pid: Option<String>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-struct Accounts {
-    pub registrar: String,
-    pub safe: String,
-    pub rewards_instance: String,
 }
 
 impl Config {
@@ -128,27 +92,10 @@ impl TryFrom<Config> for Context {
             wallet_path: cfg
                 .wallet_path
                 .map_or(Default::default(), |p| WalletPath(p)),
-            data_dir_path: cfg.data_dir.map_or(Default::default(), |p| DataDirPath(p)),
             srm_mint: cfg.mints.srm.parse()?,
             msrm_mint: cfg.mints.msrm.parse()?,
-            rewards_pid: cfg.programs.rewards_pid.parse()?,
-            registry_pid: cfg.programs.registry_pid.parse()?,
-            lockup_pid: cfg.programs.lockup_pid.parse()?,
-            meta_entity_pid: cfg.programs.meta_entity_pid.parse()?,
             dex_pid: cfg.programs.dex_pid.parse()?,
             faucet_pid,
-            registrar: cfg
-                .accounts
-                .as_ref()
-                .map_or(Ok(Default::default()), |a| a.registrar.parse::<Pubkey>())?,
-            safe: cfg
-                .accounts
-                .as_ref()
-                .map_or(Ok(Default::default()), |a| a.safe.parse())?,
-            rewards_instance: cfg
-                .accounts
-                .as_ref()
-                .map_or(Ok(Default::default()), |a| a.rewards_instance.parse())?,
         })
     }
 }

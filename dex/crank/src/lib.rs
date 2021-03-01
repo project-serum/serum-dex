@@ -49,9 +49,6 @@ use serum_dex::state::MarketState;
 use serum_dex::state::QueueHeader;
 use serum_dex::state::Request;
 use serum_dex::state::RequestQueueHeader;
-use serum_registry_rewards_client::{
-    Client as RewardsClient, ClientGen, CrankRelayIxRequest, RequestOptions,
-};
 
 pub fn with_logging<F: FnOnce()>(_to: &str, fnc: F) {
     fnc();
@@ -132,20 +129,6 @@ pub enum Command {
         #[clap(long)]
         log_directory: String,
     },
-    ConsumeEventRewards {
-        #[clap(long, short)]
-        market: Pubkey,
-        #[clap(long, short, default_value = "1")]
-        num_workers: usize,
-        #[clap(long, short, default_value = "1")]
-        events_per_worker: usize,
-        #[clap(long)]
-        num_accounts: Option<usize>,
-        #[clap(long)]
-        log_directory: String,
-        #[clap(flatten)]
-        r_ctx: RewardsContext,
-    },
     MatchOrders {
         #[clap(long, short)]
         dex_program_id: Pubkey,
@@ -206,36 +189,6 @@ pub enum Command {
         mint: Pubkey,
         owner_account: String,
     },
-}
-
-#[derive(Debug, Clap, Clone)]
-pub struct RewardsContext {
-    /// Token account rewards are sent to when cranking.
-    #[clap(long = "rewards.receiver")]
-    pub receiver: Pubkey,
-    /// Entity the cranker is the node leader for.
-    #[clap(long = "rewards.registry-entity")]
-    pub registry_entity: Pubkey,
-    #[clap(skip)]
-    pub instance: Pubkey,
-    #[clap(skip)]
-    pub url: String,
-    #[clap(skip)]
-    pub program_id: Pubkey,
-}
-
-impl RewardsContext {
-    pub fn client(&self, payer: &Keypair) -> Result<RewardsClient> {
-        Ok(
-            RewardsClient::from(self.program_id, payer, &self.url).with_options(RequestOptions {
-                commitment: CommitmentConfig::single(),
-                tx: RpcSendTransactionConfig {
-                    skip_preflight: true,
-                    ..RpcSendTransactionConfig::default()
-                },
-            }),
-        )
-    }
 }
 
 pub fn start(ctx: Option<Context>, opts: Opts) -> Result<()> {
@@ -321,38 +274,6 @@ pub fn start(ctx: Option<Context>, opts: Opts) -> Result<()> {
                 num_workers,
                 events_per_worker,
                 num_accounts.unwrap_or(32),
-                None,
-            )?;
-        }
-        Command::ConsumeEventRewards {
-            ref market,
-            num_workers,
-            events_per_worker,
-            ref num_accounts,
-            ref log_directory,
-            ref r_ctx,
-        } => {
-            let mut r_ctx = r_ctx.clone();
-            let ctx = ctx.expect("context must exist when consuming rewards");
-            r_ctx.url = opts.cluster.url().to_string();
-            r_ctx.program_id = ctx.rewards_pid;
-            r_ctx.instance = ctx.rewards_instance;
-            init_logger(log_directory);
-
-            // Unused by the DEX. Nevertheless required to be passed in.
-            let coin_wallet = market;
-            let pc_wallet = market;
-            consume_events_loop(
-                &opts,
-                &ctx.dex_pid,
-                &ctx.wallet_path.to_string(),
-                &market,
-                &coin_wallet,
-                &pc_wallet,
-                num_workers,
-                events_per_worker,
-                num_accounts.unwrap_or(32),
-                Some(Arc::new(r_ctx)),
             )?;
         }
         Command::MonitorQueue {
@@ -577,7 +498,6 @@ fn consume_events_loop(
     num_workers: usize,
     events_per_worker: usize,
     num_accounts: usize,
-    r_ctx: Option<Arc<RewardsContext>>,
 ) -> Result<()> {
     info!("Getting market keys ...");
     let client = opts.client();
@@ -670,7 +590,6 @@ fn consume_events_loop(
                 let program_id = program_id.clone();
                 let client = opts.client();
                 let account_metas = account_metas.clone();
-                let r_ctx = r_ctx.clone();
                 let event_q = *market_keys.event_q;
                 pool.execute(move || {
                     consume_events_wrapper(
@@ -681,7 +600,6 @@ fn consume_events_loop(
                         thread_num,
                         events_per_worker,
                         event_q,
-                        r_ctx,
                     )
                 });
             }
@@ -703,7 +621,6 @@ fn consume_events_wrapper(
     thread_num: usize,
     to_consume: usize,
     event_q: Pubkey,
-    r_ctx: Option<Arc<RewardsContext>>,
 ) {
     let start = std::time::Instant::now();
     let result = consume_events_once(
@@ -714,7 +631,6 @@ fn consume_events_wrapper(
         to_consume,
         thread_num,
         event_q,
-        r_ctx,
     );
     match result {
         Ok(signature) => info!(
@@ -737,26 +653,13 @@ fn consume_events_once(
     to_consume: usize,
     _thread_number: usize,
     event_q: Pubkey,
-    r_ctx: Option<Arc<RewardsContext>>,
 ) -> Result<Signature> {
     let _start = std::time::Instant::now();
     let instruction_data: Vec<u8> = MarketInstruction::ConsumeEvents(to_consume as u16).pack();
-    let instruction = {
-        let mut ix = Instruction {
-            program_id: *program_id,
-            accounts: account_metas,
-            data: instruction_data,
-        };
-        if let Some(ctx) = r_ctx.as_ref() {
-            ix = ctx.client(payer)?.crank_relay_ix(CrankRelayIxRequest {
-                instance: ctx.instance,
-                token_account: ctx.receiver,
-                entity: ctx.registry_entity,
-                dex_event_q: event_q,
-                consume_events_instr: ix,
-            })?;
-        }
-        ix
+    let instruction = Instruction {
+        program_id: *program_id,
+        accounts: account_metas,
+        data: instruction_data,
     };
     let random_instruction = solana_sdk::system_instruction::transfer(
         &payer.pubkey(),

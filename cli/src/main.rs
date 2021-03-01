@@ -19,12 +19,6 @@ pub struct Opts {
 pub enum Command {
     /// Crank client.
     Crank(serum_crank::Command),
-    /// Registry client.
-    Registry(serum_registry_cli::Command),
-    /// Lockup client.
-    Lockup(serum_lockup_cli::Command),
-    /// Crank rewards client.
-    Rewards(serum_registry_rewards_cli::Command),
     /// Development utilities.
     #[cfg(feature = "dev")]
     Dev(dev::Command),
@@ -51,9 +45,6 @@ pub fn run(ctx: Context, cmd: Command) -> Result<()> {
                 command: cmd,
             },
         ),
-        Command::Registry(cmd) => serum_registry_cli::run(ctx, cmd),
-        Command::Lockup(l_cmd) => serum_lockup_cli::run(ctx, l_cmd),
-        Command::Rewards(r_cmd) => serum_registry_rewards_cli::run(ctx, r_cmd),
         #[cfg(feature = "dev")]
         Command::Dev(dev_cmd) => dev::run(ctx, dev_cmd),
     }

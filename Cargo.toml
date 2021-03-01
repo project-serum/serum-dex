@@ -1,28 +1,15 @@
 [workspace]
 members = [
     "assert-owner",
-    "solana-client-gen",
     "common",
-    "common/tests",
     "context",
     "dex/crank",
     "pool",
     "pool/schema",
     "pool/examples/admin-controlled",
     "pool/examples/simple",
-    "registry",
-    "registry/cli",
-    "registry/client",
-    "registry/meta-entity",
-    "registry/rewards",
-    "lockup",
-    "lockup/cli",
-    "lockup/client",
     "cli"
 ]
 exclude = [
     "dex",
-    "registry/program",
-    "registry/meta-entity/program",
-    "lockup/program",
 ]

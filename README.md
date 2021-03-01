@@ -31,9 +31,6 @@
 | Program | Devnet | Mainnet Beta |
 | --------|--------|------------- |
 | [DEX](/dex)     | `9MVDeYQnJmN2Dt7H44Z8cob4bET2ysdNu2uFJcatDJno` | `EUqojwWA2rd19FZrzeBncJsm38Jm1hEhE3zsmX3bRc2o` |
-| [Registry](/registry/program) | `CKKz2WYvneiLb2mzouWc4iPpKisuXs5XKYn7ZUrRjkeK` | `6J7ZoSxtKJUjVLpGRcBrEtvE2T3YVf9mfKUaicndzpCc` |
-| [Lockup](/lockup/program) | `8wreDpv5nuY1gee1X4wkqtRkzoGypVYzWBrMmzipAJKN` | `4nvqpaMz7H12VgHSABjEDFmH62MoWP3BxfMG3BAFQiBo` |
-| [Crank Rewards](/registry/rewards/program) | `7sXyzeu6GJqkXZz8VhjdsXvDg1xR1PEkXbbDaxMc186C` | `4bcHoAgLP9NBje1oVo9WKRDYkvSxcqtJeTSXMRFX5AdZ`|
 
 ## Note
 
@@ -92,8 +89,5 @@ Instructions can be found [here](https://solana-labs.github.io/solana-web3.js/).
 * `context`: Global environment used by Serum crates, read from a configuration file.
 * `dex`: Serum DEX program and client utility.
 * `docker`: Docker image definitions.
-* `lockup`: Serum Lockup program and clients.
 * `pool`: Serum pool protocol.
-* `registry`: Serum staking registry and client.
 * `scripts`: Bash scripts for development.
-* `solana-client-gen`: Proc macro for generating Rust clients from instruction definitions.

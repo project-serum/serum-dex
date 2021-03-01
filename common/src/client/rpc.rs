@@ -1,4 +1,3 @@
-use crate::pack::Pack;
 use anyhow::{anyhow, Result};
 use rand::rngs::OsRng;
 use solana_client::rpc_client::RpcClient;
@@ -232,7 +231,7 @@ pub fn transfer(
 pub fn send_txn(client: &RpcClient, txn: &Transaction, _simulate: bool) -> Result<Signature> {
     Ok(client.send_and_confirm_transaction_with_spinner_and_config(
         txn,
-        CommitmentConfig::single(),
+        CommitmentConfig::confirmed(),
         RpcSendTransactionConfig {
             skip_preflight: true,
             ..RpcSendTransactionConfig::default()
@@ -257,35 +256,8 @@ pub fn simulate_transaction(
 
 pub fn get_token_account<T: TokenPack>(client: &RpcClient, addr: &Pubkey) -> Result<T> {
     let account = client
-        .get_account_with_commitment(addr, CommitmentConfig::recent())?
+        .get_account_with_commitment(addr, CommitmentConfig::processed())?
         .value
         .map_or(Err(anyhow!("Account not found")), Ok)?;
     T::unpack_from_slice(&account.data).map_err(Into::into)
-}
-
-pub fn get_account<T: Pack>(client: &RpcClient, addr: &Pubkey) -> Result<T> {
-    let account = client
-        .get_account_with_commitment(addr, CommitmentConfig::recent())?
-        .value
-        .map_or(Err(anyhow!("Account not found")), Ok)?;
-    T::unpack(&account.data).map_err(Into::into)
-}
-
-pub fn get_account_unchecked<T: Pack>(client: &RpcClient, addr: &Pubkey) -> Result<T> {
-    let account = client
-        .get_account_with_commitment(addr, CommitmentConfig::recent())?
-        .value
-        .map_or(Err(anyhow!("Account not found")), Ok)?;
-    let mut data: &[u8] = &account.data;
-    T::unpack_unchecked(&mut data).map_err(Into::into)
-}
-
-// Convenience for testing. Use `get_token_account` otherwise.
-pub fn account_token_unpacked<T: TokenPack>(client: &RpcClient, addr: &Pubkey) -> T {
-    get_token_account::<T>(client, addr).unwrap()
-}
-
-// Convenience for testing. Use `get_account` otherwise.
-pub fn account_unpacked<T: Pack>(client: &RpcClient, addr: &Pubkey) -> T {
-    get_account(client, addr).unwrap()
 }
