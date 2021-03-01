@@ -16,7 +16,7 @@ use solana_program::sysvar;
 use solana_program::sysvar::Sysvar;
 use spl_token::state::{Account, AccountState, Mint};
 
-use instruction::{initialize_market, MarketInstruction, NewOrderInstructionV1};
+use instruction::{initialize_market, MarketInstruction, NewOrderInstructionV3, SelfTradeBehavior};
 use matching::{OrderType, Side};
 use state::gen_vault_signer_key;
 use state::{MarketState, OpenOrders, State, ToAlignedBytes};
@@ -99,7 +99,7 @@ fn new_dex_owned_account<'bump, Gen: Rng>(
         random_pubkey(rng, bump),
         false,
         true,
-        bump.alloc(100_000_000),
+        bump.alloc(60_000_000_000),
         allocate_dex_owned_account(unpadded_len, bump),
         program_id,
         false,
@@ -116,7 +116,7 @@ fn new_token_mint<'bump, Gen: Rng>(rng: &mut Gen, bump: &'bump Bump) -> AccountI
         random_pubkey(rng, bump),
         false,
         true,
-        bump.alloc(0),
+        bump.alloc(10_000_000),
         data,
         &spl_token::ID,
         false,
@@ -128,6 +128,7 @@ fn new_token_account<'bump, Gen: Rng>(
     rng: &mut Gen,
     mint_pubkey: &'bump Pubkey,
     owner_pubkey: &'bump Pubkey,
+    balance: u64,
     bump: &'bump Bump,
 ) -> AccountInfo<'bump> {
     let data = bump_vec![in bump; 0u8; Account::LEN].into_bump_slice_mut();
@@ -135,12 +136,13 @@ fn new_token_account<'bump, Gen: Rng>(
     account.state = AccountState::Initialized;
     account.mint = *mint_pubkey;
     account.owner = *owner_pubkey;
+    account.amount = balance;
     Account::pack(account, data).unwrap();
     AccountInfo::new(
         random_pubkey(rng, bump),
         false,
         true,
-        bump.alloc(0),
+        bump.alloc(10_000_000),
         data,
         &spl_token::ID,
         false,
@@ -183,8 +185,8 @@ fn setup_market<'bump, R: Rng>(rng: &mut R, bump: &'bump Bump) -> MarketAccounts
         i += 1;
     };
 
-    let coin_vault = new_token_account(rng, &coin_mint.key, vault_signer_pk, bump);
-    let pc_vault = new_token_account(rng, &pc_mint.key, vault_signer_pk, bump);
+    let coin_vault = new_token_account(rng, &coin_mint.key, vault_signer_pk, 0, bump);
+    let pc_vault = new_token_account(rng, &pc_mint.key, vault_signer_pk, 0, bump);
 
     let coin_lot_size = 1_000;
     let pc_lot_size = 1;
@@ -220,6 +222,7 @@ fn setup_market<'bump, R: Rng>(rng: &mut R, bump: &'bump Bump) -> MarketAccounts
             pc_vault.clone(),
             coin_mint.clone(),
             pc_mint.clone(),
+            rent_sysvar.clone(),
         ]
         .into_bump_slice_mut();
         State::process(&program_id, accounts, &init_instruction.data).unwrap();
@@ -261,22 +264,29 @@ fn test_new_order() {
         new_dex_owned_account(&mut rng, size_of::<OpenOrders>(), dex_program_id, &bump);
     let orders_account_seller =
         new_dex_owned_account(&mut rng, size_of::<OpenOrders>(), dex_program_id, &bump);
-    let coin_account = new_token_account(&mut rng, accounts.coin_mint.key, owner.key, &bump);
-    let pc_account = new_token_account(&mut rng, accounts.pc_mint.key, owner.key, &bump);
+    let coin_account =
+        new_token_account(&mut rng, accounts.coin_mint.key, owner.key, 10_000, &bump);
+    let pc_account = new_token_account(&mut rng, accounts.pc_mint.key, owner.key, 1_000_000, &bump);
     let spl_token_program = new_spl_token_program(&bump);
 
-    let instruction_data = MarketInstruction::NewOrder(NewOrderInstructionV1 {
+    let instruction_data = MarketInstruction::NewOrderV3(NewOrderInstructionV3 {
         side: Side::Bid,
         limit_price: NonZeroU64::new(100_000).unwrap(),
-        max_qty: NonZeroU64::new(5).unwrap(),
+        max_coin_qty: NonZeroU64::new(5).unwrap(),
+        max_native_pc_qty_including_fees: NonZeroU64::new(520_000).unwrap(),
         order_type: OrderType::Limit,
-        client_id: 0xabcd,
+        client_order_id: 0xabcd,
+        self_trade_behavior: SelfTradeBehavior::AbortTransaction,
+        limit: 5,
     })
     .pack();
     let instruction_accounts: &[AccountInfo] = bump_vec![in &bump;
         accounts.market.clone(),
         orders_account_buyer.clone(),
         accounts.req_q.clone(),
+        accounts.event_q.clone(),
+        accounts.bids.clone(),
+        accounts.asks.clone(),
         pc_account.clone(),
         owner.clone(),
         accounts.coin_vault.clone(),
@@ -288,35 +298,24 @@ fn test_new_order() {
 
     State::process(dex_program_id, instruction_accounts, &instruction_data).unwrap();
 
-    let instruction_data = MarketInstruction::MatchOrders(1).pack();
-    State::process(
-        dex_program_id,
-        bump_vec![in &bump;
-            accounts.market.clone(),
-            accounts.req_q.clone(),
-            accounts.event_q.clone(),
-            accounts.bids.clone(),
-            accounts.asks.clone(),
-            coin_account.clone(),
-            pc_account.clone(),
-        ]
-        .into_bump_slice(),
-        &instruction_data,
-    )
-    .unwrap();
-
-    let instruction_data = MarketInstruction::NewOrder(NewOrderInstructionV1 {
+    let instruction_data = MarketInstruction::NewOrderV3(NewOrderInstructionV3 {
         side: Side::Ask,
         limit_price: NonZeroU64::new(99_000).unwrap(),
-        max_qty: NonZeroU64::new(4).unwrap(),
+        max_coin_qty: NonZeroU64::new(4).unwrap(),
+        max_native_pc_qty_including_fees: NonZeroU64::new(std::u64::MAX).unwrap(),
         order_type: OrderType::Limit,
-        client_id: 0,
+        self_trade_behavior: SelfTradeBehavior::AbortTransaction,
+        client_order_id: 0,
+        limit: 5,
     })
     .pack();
     let instruction_accounts = bump_vec![in &bump;
         accounts.market.clone(),
         orders_account_seller.clone(),
         accounts.req_q.clone(),
+        accounts.event_q.clone(),
+        accounts.bids.clone(),
+        accounts.asks.clone(),
         coin_account.clone(),
         owner.clone(),
         accounts.coin_vault.clone(),
@@ -329,31 +328,19 @@ fn test_new_order() {
     {
         let market = MarketState::load(&accounts.market, &dex_program_id).unwrap();
         assert_eq!(identity(market.pc_fees_accrued), 0);
-        assert_eq!(identity(market.pc_deposits_total), 501_100);
+        assert_eq!(identity(market.pc_deposits_total), 520_000);
     }
 
     State::process(dex_program_id, instruction_accounts, &instruction_data).unwrap();
-    let instruction_data = MarketInstruction::MatchOrders(5).pack();
-    State::process(
-        dex_program_id,
-        bump_vec![in &bump;
-            accounts.market.clone(),
-            accounts.req_q.clone(),
-            accounts.event_q.clone(),
-            accounts.bids.clone(),
-            accounts.asks.clone(),
-            coin_account.clone(),
-            pc_account.clone(),
-        ]
-        .into_bump_slice(),
-        &instruction_data,
-    )
-    .unwrap();
+
     {
         let market = MarketState::load(&accounts.market, &dex_program_id).unwrap();
         assert_eq!(identity(market.referrer_rebates_accrued), 176);
         assert_eq!(identity(market.pc_fees_accrued), 584);
-        assert_eq!(identity(market.pc_deposits_total), 500_340);
+        assert_eq!(
+            market.pc_fees_accrued + market.pc_deposits_total + market.referrer_rebates_accrued,
+            520_000
+        );
     }
     {
         let open_orders_buyer = MarketState::load(&accounts.market, &dex_program_id)
@@ -363,15 +350,15 @@ fn test_new_order() {
         assert_eq!(identity(open_orders_buyer.native_coin_free), 0);
         assert_eq!(identity(open_orders_buyer.native_coin_total), 0);
         assert_eq!(identity(open_orders_buyer.native_pc_free), 0);
-        assert_eq!(identity(open_orders_buyer.native_pc_total), 501_100);
+        assert_eq!(identity(open_orders_buyer.native_pc_total), 520_000);
         let open_orders_seller = MarketState::load(&accounts.market, &dex_program_id)
             .unwrap()
             .load_orders_mut(&orders_account_seller, None, &dex_program_id, None)
             .unwrap();
         assert_eq!(identity(open_orders_seller.native_coin_free), 0);
-        assert_eq!(identity(open_orders_seller.native_coin_total), 4000);
-        assert_eq!(identity(open_orders_seller.native_pc_free), 0);
-        assert_eq!(identity(open_orders_seller.native_pc_total), 0);
+        assert_eq!(identity(open_orders_seller.native_coin_total), 0);
+        assert_eq!(identity(open_orders_seller.native_pc_free), 399120);
+        assert_eq!(identity(open_orders_seller.native_pc_total), 399120);
     }
 
     {
@@ -393,7 +380,10 @@ fn test_new_order() {
         let market = MarketState::load(&accounts.market, &dex_program_id).unwrap();
         assert_eq!(identity(market.referrer_rebates_accrued), 176);
         assert_eq!(identity(market.pc_fees_accrued), 584);
-        assert_eq!(identity(market.pc_deposits_total), 500_340);
+        assert_eq!(
+            market.pc_deposits_total + market.pc_fees_accrued + market.referrer_rebates_accrued,
+            520_000
+        );
     }
     {
         let open_orders_buyer = MarketState::load(&accounts.market, &dex_program_id)
@@ -402,8 +392,8 @@ fn test_new_order() {
             .unwrap();
         assert_eq!(identity(open_orders_buyer.native_coin_free), 4_000);
         assert_eq!(identity(open_orders_buyer.native_coin_total), 4_000);
-        assert_eq!(identity(open_orders_buyer.native_pc_free), 1_220);
-        assert_eq!(identity(open_orders_buyer.native_pc_total), 101_220);
+        assert_eq!(identity(open_orders_buyer.native_pc_free), 20_120);
+        assert_eq!(identity(open_orders_buyer.native_pc_total), 120_120);
         let open_orders_seller = MarketState::load(&accounts.market, &dex_program_id)
             .unwrap()
             .load_orders_mut(&orders_account_seller, None, &dex_program_id, None)

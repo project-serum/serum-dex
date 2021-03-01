@@ -7,6 +7,8 @@ use solana_program::account_info::AccountInfo;
 use solana_program::bpf_loader;
 use solana_program::clock::Epoch;
 use solana_program::program_pack::Pack;
+use solana_program::instruction::Instruction;
+use solana_program::entrypoint::ProgramResult;
 use solana_program::pubkey::Pubkey;
 use solana_program::rent::Rent;
 use solana_program::system_program;
@@ -57,8 +59,10 @@ pub fn new_dex_owned_account<'bump>(
     unpadded_len: usize,
     program_id: &'bump Pubkey,
     bump: &'bump Bump,
+    rent: Rent,
 ) -> AccountInfo<'bump> {
-    new_dex_owned_account_with_lamports(unpadded_len, 0, program_id, bump)
+    let data_len = unpadded_len + 12;
+    new_dex_owned_account_with_lamports(unpadded_len, rent.minimum_balance(data_len), program_id, bump)
 }
 
 pub fn new_dex_owned_account_with_lamports<'bump>(
@@ -79,7 +83,7 @@ pub fn new_dex_owned_account_with_lamports<'bump>(
     )
 }
 
-pub fn new_token_mint(bump: &Bump) -> AccountInfo {
+pub fn new_token_mint(bump: &Bump, rent: Rent) -> AccountInfo {
     let data = bump.alloc_slice_fill_copy(Mint::LEN, 0u8);
     let mut mint = Mint::default();
     mint.is_initialized = true;
@@ -88,7 +92,7 @@ pub fn new_token_mint(bump: &Bump) -> AccountInfo {
         random_pubkey(bump),
         false,
         true,
-        bump.alloc(0),
+        bump.alloc(rent.minimum_balance(data.len())),
         data,
         &spl_token::ID,
         false,
@@ -101,6 +105,7 @@ pub fn new_token_account<'bump, 'a, 'b>(
     owner_pubkey: &'b Pubkey,
     balance: u64,
     bump: &'bump Bump,
+    rent: Rent
 ) -> AccountInfo<'bump> {
     let data = bump.alloc_slice_fill_copy(SplAccount::LEN, 0u8);
     let mut account = SplAccount::default();
@@ -113,7 +118,7 @@ pub fn new_token_account<'bump, 'a, 'b>(
         random_pubkey(bump),
         false,
         true,
-        bump.alloc(0),
+        bump.alloc(rent.minimum_balance(data.len())),
         data,
         &spl_token::ID,
         false,
@@ -192,28 +197,35 @@ pub struct MarketAccounts<'bump> {
     pub fee_receiver: AccountInfo<'bump>,
 }
 
+impl<'bump> MarketAccounts<'bump> {
+    pub fn rent(&self) -> Rent {
+        Rent::from_account_info(&self.rent_sysvar).unwrap()
+    }
+}
+
 pub const COIN_LOT_SIZE: u64 = 100_000;
 pub const PC_LOT_SIZE: u64 = 100;
 pub const PC_DUST_THRESHOLD: u64 = 500;
 
 pub fn setup_market(bump: &Bump) -> MarketAccounts {
+    let rent = Rent::default();
+    let rent_sysvar = new_rent_sysvar_account(100000, rent, bump);
+
     let program_id = random_pubkey(bump);
-    let market = new_dex_owned_account(size_of::<MarketState>(), program_id, bump);
-    let bids = new_dex_owned_account(1 << 16, program_id, bump);
-    let asks = new_dex_owned_account(1 << 16, program_id, bump);
-    let req_q = new_dex_owned_account(640, program_id, bump);
-    let event_q = new_dex_owned_account(65536, program_id, bump);
+    let market = new_dex_owned_account(size_of::<MarketState>(), program_id, bump, rent);
+    let bids = new_dex_owned_account(1 << 16, program_id, bump, rent);
+    let asks = new_dex_owned_account(1 << 16, program_id, bump, rent);
+    let req_q = new_dex_owned_account(640, program_id, bump, rent);
+    let event_q = new_dex_owned_account(65536, program_id, bump, rent);
 
-    let coin_mint = new_token_mint(bump);
-    let pc_mint = new_token_mint(bump);
-
-    let rent_sysvar = new_rent_sysvar_account(100000, Rent::default(), bump);
+    let coin_mint = new_token_mint(bump, rent);
+    let pc_mint = new_token_mint(bump, rent);
 
     let (vault_signer_nonce, vault_signer) = new_vault_signer_account(&market, program_id, bump);
 
-    let coin_vault = new_token_account(coin_mint.key, vault_signer.key, 0, bump);
-    let pc_vault = new_token_account(pc_mint.key, vault_signer.key, 0, bump);
-    let fee_receiver = new_token_account(pc_mint.key, random_pubkey(bump), 0, bump);
+    let coin_vault = new_token_account(coin_mint.key, vault_signer.key, 0, bump, rent);
+    let pc_vault = new_token_account(pc_mint.key, vault_signer.key, 0, bump, rent);
+    let fee_receiver = new_token_account(pc_mint.key, random_pubkey(bump), 0, bump, rent);
     let sweep_authority = new_sol_account_with_pubkey(bump.alloc(fee_sweeper::ID), 0, bump);
 
     let spl_token_program = new_spl_token_program(bump);
@@ -253,6 +265,7 @@ pub fn setup_market(bump: &Bump) -> MarketAccounts {
             pc_vault.clone(),
             coin_mint.clone(),
             pc_mint.clone(),
+            rent_sysvar.clone(),
         ],
         &init_instruction.data,
     )
@@ -322,4 +335,16 @@ pub fn get_token_account_balance(account: &AccountInfo) -> u64 {
     let data = account.try_borrow_mut_data().unwrap();
     let unpacked = SplAccount::unpack(&data).unwrap();
     return unpacked.amount;
+}
+
+pub struct NoSolLoggingStubs;
+
+impl solana_program::program_stubs::SyscallStubs for NoSolLoggingStubs {
+    fn sol_log(&self, _message: &str) {}
+    fn sol_invoke_signed(&self,
+        _instruction: &Instruction,
+        _account_infos: &[AccountInfo],
+        _signers_seeds: &[&[&[u8]]]) -> ProgramResult {
+        unimplemented!()
+    }
 }

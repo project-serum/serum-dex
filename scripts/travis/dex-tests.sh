@@ -10,10 +10,18 @@ CLUSTER_URL=http://localhost:8899
 # Assumes the current working directory is top-level serum-dex dir.
 #
 main() {
+    set +e
+    #
+    # Start the local validator.
+    #
+    solana-test-validator > validator.log &
+    #
+    # Wait for the validator to start.
+    #
+    sleep 5
     #
     # Create a keypair for the tests.
     #
-    set +e
     yes | solana-keygen new --outfile $KEYPAIR_FILE
     #
     # Fund the keypair.
@@ -34,7 +42,7 @@ dex_whole_shebang() {
     #
     # Deploy the program.
     #
-    local dex_program_id="$(solana deploy --url ${CLUSTER_URL} dex/target/bpfel-unknown-unknown/release/serum_dex.so --use-deprecated-loader | jq .programId -r)"
+    local dex_program_id="$(solana deploy --url ${CLUSTER_URL} dex/target/bpfel-unknown-unknown/release/serum_dex.so | jq .ProgramId -r)"
     #
     # Run the whole-shebang.
     #

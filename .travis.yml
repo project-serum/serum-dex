@@ -1,3 +1,4 @@
+dist: bionic
 language: shell
 os: linux
 
@@ -17,9 +18,9 @@ _localnet: &localnet
   node_js:
     - 14
   before_script:
-    - npm install -g @solana/web3.js
-    - npx solana-localnet update
-    - npx solana-localnet up
+    - sudo apt-get install -y pkg-config build-essential libudev-dev
+    - sh -c "$(curl -sSfL https://release.solana.com/v1.5.5/install)"
+    - export PATH="/home/travis/.local/share/solana/install/active_release/bin:$PATH"
 
 jobs:
   include:

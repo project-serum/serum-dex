@@ -12,9 +12,8 @@ use crate::critbit::SlabTreeError;
 use crate::error::{DexErrorCode, DexResult, SourceFileId};
 use crate::{
     critbit::{LeafNode, NodeHandle, Slab, SlabView},
-    error::DexError,
     fees::{self, FeeTier},
-    state::{Event, EventQueue, EventView, MarketState, Request, RequestQueue, RequestView},
+    state::{Event, EventQueue, EventView, MarketState, OpenOrders, RequestView},
 };
 
 #[cfg(not(feature = "program"))]
@@ -72,38 +71,14 @@ impl<'ob> OrderBookState<'ob> {
         }
     }
 
-    pub fn process_requests(
+    pub(crate) fn process_orderbook_request(
         &mut self,
-        req_q: &mut RequestQueue,
+        request: &RequestView,
         event_q: &mut EventQueue,
-        limit: u16,
-    ) -> Result<(), DexError> {
-        let mut limit_remaining = limit;
-        while limit_remaining > 0 {
-            let request = match req_q.peek_front_mut() {
-                Some(r) => r,
-                None => break,
-            };
-            match self.process_orderbook_request(request, event_q, &mut limit_remaining)? {
-                Some(remaining_request) => {
-                    *request = remaining_request;
-                }
-                None => {
-                    req_q.pop_front().unwrap();
-                }
-            };
-        }
-
-        Ok(())
-    }
-
-    fn process_orderbook_request(
-        &mut self,
-        request: &Request,
-        event_q: &mut EventQueue,
+        proceeds: &mut RequestProceeds,
         limit: &mut u16,
-    ) -> DexResult<Option<Request>> {
-        Ok(match request.as_view()? {
+    ) -> DexResult<Option<RequestView>> {
+        Ok(match *request {
             RequestView::NewOrder {
                 side,
                 order_type,
@@ -130,21 +105,20 @@ impl<'ob> OrderBookState<'ob> {
                         self_trade_behavior,
                     },
                     event_q,
+                    proceeds,
                     limit,
                 )?
-                .map(|remaining| {
-                    Request::new(RequestView::NewOrder {
-                        side,
-                        order_type,
-                        order_id,
-                        owner_slot,
-                        fee_tier,
-                        owner,
-                        max_coin_qty: remaining.coin_qty_remaining,
-                        native_pc_qty_locked: remaining.native_pc_qty_remaining,
-                        client_order_id,
-                        self_trade_behavior,
-                    })
+                .map(|remaining| RequestView::NewOrder {
+                    side,
+                    order_type,
+                    order_id,
+                    owner_slot,
+                    fee_tier,
+                    owner,
+                    max_coin_qty: remaining.coin_qty_remaining,
+                    native_pc_qty_locked: remaining.native_pc_qty_remaining,
+                    client_order_id,
+                    self_trade_behavior,
                 }),
             RequestView::CancelOrder {
                 side,
@@ -169,7 +143,46 @@ impl<'ob> OrderBookState<'ob> {
     }
 }
 
-struct NewOrderParams {
+pub(crate) struct RequestProceeds {
+    pub coin_unlocked: u64,
+    pub native_pc_unlocked: u64,
+
+    pub coin_credit: u64,
+    pub native_pc_credit: u64,
+
+    pub coin_debit: u64,
+    pub native_pc_debit: u64,
+}
+
+macro_rules! impl_incr_method {
+    ($method:ident, $var:ident) => {
+        #[allow(unused)]
+        pub(crate) fn $method(&mut self, $var: u64) {
+            self.$var = self.$var.checked_add($var).unwrap();
+        }
+    };
+}
+
+impl RequestProceeds {
+    pub(crate) fn zero() -> Self {
+        Self {
+            coin_unlocked: 0,
+            native_pc_unlocked: 0,
+            coin_credit: 0,
+            native_pc_credit: 0,
+            coin_debit: 0,
+            native_pc_debit: 0,
+        }
+    }
+    impl_incr_method!(unlock_coin, coin_unlocked);
+    impl_incr_method!(unlock_native_pc, native_pc_unlocked);
+    impl_incr_method!(credit_coin, coin_credit);
+    impl_incr_method!(credit_native_pc, native_pc_credit);
+    impl_incr_method!(debit_coin, coin_debit);
+    impl_incr_method!(debit_native_pc, native_pc_debit);
+}
+
+pub(crate) struct NewOrderParams {
     side: Side,
     order_type: OrderType,
     order_id: u128,
@@ -192,8 +205,10 @@ impl<'ob> OrderBookState<'ob> {
         &mut self,
 
         params: NewOrderParams,
-
         event_q: &mut EventQueue,
+
+        proceeds: &mut RequestProceeds,
+
         limit: &mut u16,
     ) -> DexResult<Option<OrderRemaining>> {
         let NewOrderParams {
@@ -208,14 +223,19 @@ impl<'ob> OrderBookState<'ob> {
             client_order_id,
             self_trade_behavior,
         } = params;
-        let (post_only, post_allowed) = match order_type {
+        let (mut post_only, mut post_allowed) = match order_type {
             OrderType::Limit => (false, true),
             OrderType::ImmediateOrCancel => (false, false),
             OrderType::PostOnly => (true, true),
         };
         let limit_price = extract_price_from_order_id(order_id);
-        while *limit > 0 {
-            *limit -= 1;
+        loop {
+            if *limit == 0 {
+                // Stop matching and release funds if we're out of cycles
+                post_only = true;
+                post_allowed = true;
+            }
+
             let remaining_order = match side {
                 Side::Bid => self.new_bid(
                     NewBidParams {
@@ -232,6 +252,7 @@ impl<'ob> OrderBookState<'ob> {
                         self_trade_behavior,
                     },
                     event_q,
+                    proceeds,
                 ),
                 Side::Ask => {
                     native_pc_qty_locked.ok_or(()).unwrap_err();
@@ -249,21 +270,22 @@ impl<'ob> OrderBookState<'ob> {
                             self_trade_behavior,
                         },
                         event_q,
+                        proceeds,
                     )
                 }
             }?;
             if *limit == 0 {
                 return Ok(remaining_order);
             }
+            *limit -= 1;
             match remaining_order {
                 Some(remaining_order) => {
                     max_coin_qty = remaining_order.coin_qty_remaining;
                     native_pc_qty_locked = remaining_order.native_pc_qty_remaining;
                 }
-                None => break,
+                None => return Ok(None),
             };
         }
-        Ok(None)
     }
 }
 
@@ -285,6 +307,7 @@ impl<'ob> OrderBookState<'ob> {
         &mut self,
         params: NewAskParams,
         event_q: &mut EventQueue,
+        to_release: &mut RequestProceeds,
     ) -> DexResult<Option<OrderRemaining>> {
         let NewAskParams {
             max_qty,
@@ -351,11 +374,15 @@ impl<'ob> OrderBookState<'ob> {
                         cancelled_provide_qty = best_bid_ref.quantity();
                         cancelled_take_qty = 0;
                     }
+                    SelfTradeBehavior::AbortTransaction => {
+                        return Err(DexErrorCode::WouldSelfTrade.into())
+                    }
                 };
 
                 let remaining_provide_size = bid_size - cancelled_provide_qty;
                 let provide_out = Event::new(EventView::Out {
                     side: Side::Bid,
+                    release_funds: true,
                     native_qty_unlocked: cancelled_provide_qty * trade_price.get() * pc_lot_size,
                     native_qty_still_locked: remaining_provide_size
                         * trade_price.get()
@@ -379,6 +406,7 @@ impl<'ob> OrderBookState<'ob> {
                 unfilled_qty -= cancelled_take_qty;
                 let take_out = Event::new(EventView::Out {
                     side: Side::Ask,
+                    release_funds: false,
                     native_qty_unlocked: cancelled_take_qty * coin_lot_size,
                     native_qty_still_locked: unfilled_qty,
                     order_id,
@@ -389,6 +417,7 @@ impl<'ob> OrderBookState<'ob> {
                 event_q
                     .push_back(take_out)
                     .map_err(|_| DexErrorCode::EventQueueFull)?;
+                to_release.unlock_coin(cancelled_take_qty);
 
                 let order_remaining =
                     NonZeroU64::new(unfilled_qty).map(|coin_qty_remaining| OrderRemaining {
@@ -428,6 +457,7 @@ impl<'ob> OrderBookState<'ob> {
                 event_q
                     .push_back(Event::new(EventView::Out {
                         side: Side::Bid,
+                        release_funds: true,
                         native_qty_unlocked: 0,
                         native_qty_still_locked: 0,
                         order_id: best_bid_id,
@@ -446,22 +476,31 @@ impl<'ob> OrderBookState<'ob> {
 
         let native_taker_pc_qty = accum_fill_price * pc_lot_size;
         let native_taker_fee = fee_tier.taker_fee(native_taker_pc_qty);
-        if native_taker_pc_qty > 0 {
-            let taker_fill = Event::new(EventView::Fill {
-                side: Side::Ask,
-                maker: false,
-                native_qty_paid: (max_qty.get() - unfilled_qty) * coin_lot_size,
-                native_qty_received: native_taker_pc_qty - native_taker_fee,
-                native_fee_or_rebate: native_taker_fee,
-                order_id,
-                owner,
-                owner_slot,
-                fee_tier,
-                client_order_id: NonZeroU64::new(client_order_id),
-            });
-            event_q
-                .push_back(taker_fill)
-                .map_err(|_| DexErrorCode::EventQueueFull)?;
+
+        {
+            let net_taker_pc_qty = native_taker_pc_qty - native_taker_fee;
+            let coin_lots_traded = max_qty.get() - unfilled_qty;
+
+            to_release.credit_native_pc(net_taker_pc_qty);
+            to_release.debit_coin(coin_lots_traded);
+
+            if native_taker_pc_qty > 0 {
+                let taker_fill = Event::new(EventView::Fill {
+                    side: Side::Ask,
+                    maker: false,
+                    native_qty_paid: coin_lots_traded * coin_lot_size,
+                    native_qty_received: net_taker_pc_qty,
+                    native_fee_or_rebate: native_taker_fee,
+                    order_id,
+                    owner,
+                    owner_slot,
+                    fee_tier,
+                    client_order_id: NonZeroU64::new(client_order_id),
+                });
+                event_q
+                    .push_back(taker_fill)
+                    .map_err(|_| DexErrorCode::EventQueueFull)?;
+            }
         }
 
         let net_fees_before_referrer_rebate = native_taker_fee - accum_maker_rebates;
@@ -498,6 +537,7 @@ impl<'ob> OrderBookState<'ob> {
                 let order = offers.remove_max().unwrap();
                 let out = Event::new(EventView::Out {
                     side: Side::Ask,
+                    release_funds: true,
                     native_qty_unlocked: order.quantity() * coin_lot_size,
                     native_qty_still_locked: 0,
                     order_id: order.order_id(),
@@ -513,8 +553,10 @@ impl<'ob> OrderBookState<'ob> {
                 insert_result.unwrap();
             }
         } else {
+            to_release.unlock_coin(unfilled_qty);
             let out = Event::new(EventView::Out {
                 side: Side::Ask,
+                release_funds: false,
                 native_qty_unlocked: unfilled_qty * coin_lot_size,
                 native_qty_still_locked: 0,
                 order_id,
@@ -550,6 +592,7 @@ impl<'ob> OrderBookState<'ob> {
         &mut self,
         params: NewBidParams,
         event_q: &mut EventQueue,
+        to_release: &mut RequestProceeds,
     ) -> DexResult<Option<OrderRemaining>> {
         let NewBidParams {
             max_coin_qty,
@@ -627,11 +670,15 @@ impl<'ob> OrderBookState<'ob> {
                         cancelled_take_qty = trade_qty;
                         cancelled_provide_qty = trade_qty;
                     }
+                    SelfTradeBehavior::AbortTransaction => {
+                        return Err(DexErrorCode::WouldSelfTrade.into())
+                    }
                 };
 
                 let remaining_provide_qty = best_offer_ref.quantity() - cancelled_provide_qty;
                 let provide_out = Event::new(EventView::Out {
                     side: Side::Ask,
+                    release_funds: true,
                     native_qty_unlocked: cancelled_provide_qty * coin_lot_size,
                     native_qty_still_locked: remaining_provide_qty * coin_lot_size,
                     order_id: best_offer_id,
@@ -665,7 +712,7 @@ impl<'ob> OrderBookState<'ob> {
                     })
                 })();
 
-                let take_out = {
+                {
                     let native_qty_unlocked;
                     let native_qty_still_locked;
                     match order_remaining {
@@ -678,19 +725,21 @@ impl<'ob> OrderBookState<'ob> {
                             native_qty_still_locked = 0;
                         }
                     };
-                    Event::new(EventView::Out {
+                    to_release.unlock_native_pc(native_qty_unlocked);
+                    let take_out = Event::new(EventView::Out {
                         side: Side::Bid,
+                        release_funds: false,
                         native_qty_unlocked,
                         native_qty_still_locked,
                         order_id,
                         owner,
                         owner_slot,
                         client_order_id: NonZeroU64::new(client_order_id),
-                    })
+                    });
+                    event_q
+                        .push_back(take_out)
+                        .map_err(|_| DexErrorCode::EventQueueFull)?;
                 };
-                event_q
-                    .push_back(take_out)
-                    .map_err(|_| DexErrorCode::EventQueueFull)?;
 
                 return Ok(order_remaining);
             }
@@ -724,6 +773,7 @@ impl<'ob> OrderBookState<'ob> {
                 event_q
                     .push_back(Event::new(EventView::Out {
                         side: Side::Ask,
+                        release_funds: true,
                         native_qty_unlocked: 0,
                         native_qty_still_locked: 0,
                         order_id: best_offer_id,
@@ -745,22 +795,30 @@ impl<'ob> OrderBookState<'ob> {
         let native_pc_qty_remaining =
             native_pc_qty_locked.get() - native_accum_fill_price - native_taker_fee;
 
-        if native_accum_fill_price > 0 {
-            let taker_fill = Event::new(EventView::Fill {
-                side: Side::Bid,
-                maker: false,
-                native_qty_paid: native_accum_fill_price + native_taker_fee,
-                native_qty_received: (max_coin_qty.get() - coin_qty_remaining) * coin_lot_size,
-                native_fee_or_rebate: native_taker_fee,
-                order_id,
-                owner,
-                owner_slot,
-                fee_tier,
-                client_order_id: NonZeroU64::new(client_order_id),
-            });
-            event_q
-                .push_back(taker_fill)
-                .map_err(|_| DexErrorCode::EventQueueFull)?;
+        {
+            let coin_lots_received = max_coin_qty.get() - coin_qty_remaining;
+            let native_pc_paid = native_accum_fill_price + native_taker_fee;
+
+            to_release.credit_coin(coin_lots_received);
+            to_release.debit_native_pc(native_pc_paid);
+
+            if native_accum_fill_price > 0 {
+                let taker_fill = Event::new(EventView::Fill {
+                    side: Side::Bid,
+                    maker: false,
+                    native_qty_paid: native_pc_paid,
+                    native_qty_received: coin_lots_received * coin_lot_size,
+                    native_fee_or_rebate: native_taker_fee,
+                    order_id,
+                    owner,
+                    owner_slot,
+                    fee_tier,
+                    client_order_id: NonZeroU64::new(client_order_id),
+                });
+                event_q
+                    .push_back(taker_fill)
+                    .map_err(|_| DexErrorCode::EventQueueFull)?;
+            }
         }
 
         let net_fees_before_referrer_rebate = native_taker_fee - accum_maker_rebates;
@@ -796,6 +854,7 @@ impl<'ob> OrderBookState<'ob> {
             let native_qty_unlocked = native_pc_qty_remaining - native_qty_still_locked;
             Event::new(EventView::Out {
                 side: Side::Bid,
+                release_funds: true,
                 native_qty_unlocked,
                 native_qty_still_locked,
                 order_id,
@@ -825,6 +884,7 @@ impl<'ob> OrderBookState<'ob> {
                 let order = bids.remove_min().unwrap();
                 let out = Event::new(EventView::Out {
                     side: Side::Bid,
+                    release_funds: true,
                     native_qty_unlocked: order.quantity() * order.price().get() * pc_lot_size,
                     native_qty_still_locked: 0,
                     order_id: order.order_id(),
@@ -842,6 +902,53 @@ impl<'ob> OrderBookState<'ob> {
         }
 
         Ok(None)
+    }
+
+    pub(crate) fn cancel_order_v2(
+        &mut self,
+        side: Side,
+        open_orders_address: [u64; 4],
+        open_orders: &mut OpenOrders,
+        order_id: u128,
+
+        event_q: &mut EventQueue,
+    ) -> DexResult {
+        let leaf_node = self
+            .orders_mut(side)
+            .remove_by_key(order_id)
+            .ok_or(DexErrorCode::OrderNotFound)?;
+        check_assert_eq!(leaf_node.owner(), open_orders_address)
+            .or(Err(DexErrorCode::OrderNotYours))?;
+
+        let open_orders_slot = leaf_node.owner_slot();
+        check_assert_eq!(Some(side), open_orders.slot_side(open_orders_slot))?;
+        check_assert_eq!(order_id, open_orders.orders[open_orders_slot as usize])?;
+
+        let native_qty_unlocked;
+        match side {
+            Side::Bid => {
+                native_qty_unlocked =
+                    leaf_node.quantity() * leaf_node.price().get() * self.market_state.pc_lot_size;
+                open_orders.unlock_pc(native_qty_unlocked);
+            }
+            Side::Ask => {
+                native_qty_unlocked = leaf_node.quantity() * self.market_state.coin_lot_size;
+                open_orders.unlock_coin(native_qty_unlocked);
+            }
+        }
+        event_q
+            .push_back(Event::new(EventView::Out {
+                side,
+                release_funds: false,
+                native_qty_unlocked,
+                native_qty_still_locked: 0,
+                order_id,
+                owner: open_orders_address,
+                owner_slot: open_orders_slot,
+                client_order_id: NonZeroU64::new(leaf_node.client_order_id()),
+            }))
+            .map_err(|_| DexErrorCode::EventQueueFull)?;
+        Ok(())
     }
 
     fn cancel_order(
@@ -871,6 +978,7 @@ impl<'ob> OrderBookState<'ob> {
                 event_q
                     .push_back(Event::new(EventView::Out {
                         side,
+                        release_funds: true,
                         native_qty_unlocked,
                         native_qty_still_locked: 0,
                         order_id,

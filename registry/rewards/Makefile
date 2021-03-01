@@ -16,7 +16,7 @@ deploy-registry:
 	$(eval TEST_REGISTRY_PROGRAM_ID=$(shell echo $(TMP) | sed 's/.*{programId: \(.*\)}.*/\1/g'))
 
 deploy-dex:
-	$(eval TEST_DEX_PROGRAM_ID=$(shell solana deploy $(SOL_OPTIONS) ../../dex/target/bpfel-unknown-unknown/release/serum_dex.so --use-deprecated-loader | jq .programId -r))
+	$(eval TEST_DEX_PROGRAM_ID=$(shell solana deploy $(SOL_OPTIONS) ../../dex/target/bpfel-unknown-unknown/release/serum_dex.so | jq .programId -r))
 
 test-program:
 	make TEST_PROGRAM_ID=$(TEST_PROGRAM_ID) TEST_DEX_PROGRAM_ID=$(TEST_DEX_PROGRAM_ID) TEST_REGISTRY_PROGRAM_ID=$(TEST_REGISTRY_PROGRAM_ID) test-program-super

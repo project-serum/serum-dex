@@ -40,7 +40,7 @@ use serum_common::client::rpc::{
 };
 use serum_common::client::Cluster;
 use serum_context::Context;
-use serum_dex::instruction::{MarketInstruction, NewOrderInstructionV1};
+use serum_dex::instruction::{MarketInstruction, NewOrderInstructionV3, SelfTradeBehavior};
 use serum_dex::matching::{OrderType, Side};
 use serum_dex::state::gen_vault_signer_key;
 use serum_dex::state::Event;
@@ -906,12 +906,15 @@ fn whole_shebang(client: &RpcClient, program_id: &Pubkey, payer: &Keypair) -> Re
         &pc_wallet.pubkey(),
         &market_keys,
         &mut orders,
-        NewOrderInstructionV1 {
+        NewOrderInstructionV3 {
             side: Side::Bid,
             limit_price: NonZeroU64::new(500).unwrap(),
-            max_qty: NonZeroU64::new(1_000).unwrap(),
+            max_coin_qty: NonZeroU64::new(1_000).unwrap(),
+            max_native_pc_qty_including_fees: NonZeroU64::new(500_000).unwrap(),
             order_type: OrderType::Limit,
-            client_id: 019269,
+            client_order_id: 019269,
+            self_trade_behavior: SelfTradeBehavior::DecrementTake,
+            limit: std::u16::MAX,
         },
     )?;
 
@@ -926,27 +929,20 @@ fn whole_shebang(client: &RpcClient, program_id: &Pubkey, payer: &Keypair) -> Re
         &coin_wallet.pubkey(),
         &market_keys,
         &mut orders,
-        NewOrderInstructionV1 {
+        NewOrderInstructionV3 {
             side: Side::Ask,
             limit_price: NonZeroU64::new(499).unwrap(),
-            max_qty: NonZeroU64::new(1_000).unwrap(),
+            max_coin_qty: NonZeroU64::new(1_000).unwrap(),
+            max_native_pc_qty_including_fees: NonZeroU64::new(std::u64::MAX).unwrap(),
             order_type: OrderType::Limit,
-            client_id: 985982,
+            limit: std::u16::MAX,
+            self_trade_behavior: SelfTradeBehavior::DecrementTake,
+            client_order_id: 985982,
         },
     )?;
 
     debug_println!("Ask account: {}", orders.unwrap());
 
-    debug_println!("Matching orders in 15s ...");
-    std::thread::sleep(std::time::Duration::new(15, 0));
-    match_orders(
-        client,
-        program_id,
-        payer,
-        &market_keys,
-        &coin_wallet.pubkey(),
-        &pc_wallet.pubkey(),
-    )?;
     debug_println!("Consuming events in 15s ...");
     std::thread::sleep(std::time::Duration::new(15, 0));
     consume_events(
@@ -978,7 +974,7 @@ pub fn place_order(
     state: &MarketPubkeys,
     orders: &mut Option<Pubkey>,
 
-    new_order: NewOrderInstructionV1,
+    new_order: NewOrderInstructionV3,
 ) -> Result<()> {
     let mut instructions = Vec::new();
     let orders_keypair;
@@ -1000,7 +996,7 @@ pub fn place_order(
     };
     *orders = Some(orders_pubkey);
     let _side = new_order.side;
-    let data = MarketInstruction::NewOrder(new_order).pack();
+    let data = MarketInstruction::NewOrderV3(new_order).pack();
     let instruction = Instruction {
         program_id: *program_id,
         data,
@@ -1008,11 +1004,14 @@ pub fn place_order(
             AccountMeta::new(*state.market, false),
             AccountMeta::new(orders_pubkey, false),
             AccountMeta::new(*state.req_q, false),
+            AccountMeta::new(*state.event_q, false),
+            AccountMeta::new(*state.bids, false),
+            AccountMeta::new(*state.asks, false),
             AccountMeta::new(*wallet, false),
-            AccountMeta::new(payer.pubkey(), true),
+            AccountMeta::new_readonly(payer.pubkey(), true),
             AccountMeta::new(*state.coin_vault, false),
             AccountMeta::new(*state.pc_vault, false),
-            AccountMeta::new(spl_token::ID, false),
+            AccountMeta::new_readonly(spl_token::ID, false),
             AccountMeta::new_readonly(solana_sdk::sysvar::rent::ID, false),
         ],
     };
