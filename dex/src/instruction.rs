@@ -7,7 +7,7 @@ use solana_program::{
     instruction::{AccountMeta, Instruction},
     pubkey::Pubkey,
 };
-use std::convert::TryInto;
+use std::{cmp::max, convert::TryInto};
 
 use arrayref::{array_ref, array_refs};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
@@ -605,7 +605,10 @@ pub fn new_order(
     market: &Pubkey,
     open_orders_account: &Pubkey,
     request_queue: &Pubkey,
-    payer: &Pubkey,
+    event_queue: &Pubkey,
+    market_bids: &Pubkey,
+    market_asks: &Pubkey,
+    order_payer: &Pubkey,
     open_orders_account_owner: &Pubkey,
     coin_vault: &Pubkey,
     pc_vault: &Pubkey,
@@ -615,25 +618,32 @@ pub fn new_order(
     program_id: &Pubkey,
     side: Side,
     limit_price: NonZeroU64,
-    max_qty: NonZeroU64,
+    max_coin_qty: NonZeroU64,
     order_type: OrderType,
-    client_id: u64,
+    client_order_id: u64,
     self_trade_behavior: SelfTradeBehavior,
+    limit: u16,
+    max_native_pc_qty_including_fees: NonZeroU64
 ) -> Result<Instruction, DexError> {
-    let data = MarketInstruction::NewOrderV2(NewOrderInstructionV2 {
+    let data = MarketInstruction::NewOrderV3(NewOrderInstructionV3 {
         side,
         limit_price,
-        max_qty,
+        max_coin_qty,
         order_type,
-        client_id,
+        client_order_id,
         self_trade_behavior,
+        limit,
+        max_native_pc_qty_including_fees
     })
     .pack();
     let mut accounts = vec![
         AccountMeta::new(*market, false),
         AccountMeta::new(*open_orders_account, false),
         AccountMeta::new(*request_queue, false),
-        AccountMeta::new(*payer, false),
+        AccountMeta::new(*event_queue, false),
+        AccountMeta::new(*market_bids, false),
+        AccountMeta::new(*market_asks, false),
+        AccountMeta::new(*order_payer, false),
         AccountMeta::new_readonly(*open_orders_account_owner, true),
         AccountMeta::new(*coin_vault, false),
         AccountMeta::new(*pc_vault, false),
@@ -708,26 +718,26 @@ pub fn consume_events(
 pub fn cancel_order(
     program_id: &Pubkey,
     market: &Pubkey,
+    market_bids: &Pubkey,
+    market_asks: &Pubkey,
     open_orders_account: &Pubkey,
     open_orders_account_owner: &Pubkey,
-    request_queue: &Pubkey,
+    event_queue: &Pubkey,
     side: Side,
     order_id: u128,
-    owner: [u64; 4],
-    owner_slot: u8,
 ) -> Result<Instruction, DexError> {
-    let data = MarketInstruction::CancelOrder(CancelOrderInstruction {
+    let data = MarketInstruction::CancelOrderV2(CancelOrderInstructionV2 {
         side,
         order_id,
-        owner,
-        owner_slot,
     })
     .pack();
     let accounts: Vec<AccountMeta> = vec![
         AccountMeta::new_readonly(*market, false),
+        AccountMeta::new_readonly(*market_bids, false),
+        AccountMeta::new_readonly(*market_asks, false),
         AccountMeta::new(*open_orders_account, false),
-        AccountMeta::new(*request_queue, false),
         AccountMeta::new_readonly(*open_orders_account_owner, true),
+        AccountMeta::new(*event_queue, false),
     ];
     Ok(Instruction {
         program_id: *program_id,
@@ -771,20 +781,24 @@ pub fn settle_funds(
     })
 }
 
-pub fn cancel_order_by_client_id(
+pub fn cancel_order_by_client_order_id(
     program_id: &Pubkey,
     market: &Pubkey,
+    market_bids: &Pubkey,
+    market_asks: &Pubkey,
     open_orders_account: &Pubkey,
     open_orders_account_owner: &Pubkey,
-    request_queue: &Pubkey,
-    client_id: u64,
+    event_queue: &Pubkey,
+    client_order_id: u64,
 ) -> Result<Instruction, DexError> {
-    let data = MarketInstruction::CancelOrderByClientId(client_id).pack();
+    let data = MarketInstruction::CancelOrderByClientIdV2(client_order_id).pack();
     let accounts: Vec<AccountMeta> = vec![
         AccountMeta::new_readonly(*market, false),
+        AccountMeta::new_readonly(*market_bids, false),
+        AccountMeta::new_readonly(*market_asks, false),
         AccountMeta::new(*open_orders_account, false),
-        AccountMeta::new(*request_queue, false),
         AccountMeta::new_readonly(*open_orders_account_owner, true),
+        AccountMeta::new(*event_queue, false),
     ];
     Ok(Instruction {
         program_id: *program_id,
