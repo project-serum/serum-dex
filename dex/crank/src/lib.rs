@@ -518,6 +518,10 @@ fn consume_events_loop(
             .slot;
         let max_slot_height = max_slot_height_mutex.lock().unwrap();
         if event_q_slot <= max_slot_height {
+            info!(
+                "Skipping crank. Already cranked for slot. Event queue slot: {}, Max seen slot: {}",
+                event_q_slot, max_slot_height
+            );
             continue;
         }
         drop(max_slot_height);
