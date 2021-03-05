@@ -2,7 +2,7 @@
 #![allow(dead_code)]
 
 use std::borrow::Cow;
-use std::cmp::min;
+use std::cmp::{ min, max };
 use std::collections::BTreeSet;
 use std::convert::identity;
 use std::mem::size_of;
@@ -517,7 +517,7 @@ fn consume_events_loop(
             .context
             .slot;
         let max_slot_height = max_slot_height_mutex.lock().unwrap();
-        if event_q_slot <= max_slot_height {
+        if event_q_slot <= *max_slot_height {
             info!(
                 "Skipping crank. Already cranked for slot. Event queue slot: {}, Max seen slot: {}",
                 event_q_slot, max_slot_height
