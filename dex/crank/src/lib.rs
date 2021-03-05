@@ -615,7 +615,7 @@ fn consume_events_loop(
                         thread_num,
                         events_per_worker,
                         event_q,
-                        &max_slot_height_mutex_clone,
+                        max_slot_height_mutex_clone,
                         event_q_slot,
                     )
                 });
