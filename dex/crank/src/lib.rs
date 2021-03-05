@@ -507,7 +507,7 @@ fn consume_events_loop(
     let max_slot_height_mutex = Arc::new(Mutex::new(0_u64));
 
     loop {
-        thread::sleep(time::Duration::from_millis(300));
+        thread::sleep(time::Duration::from_millis(1000));
 
         let loop_start = std::time::Instant::now();
         let start_time = std::time::Instant::now();
