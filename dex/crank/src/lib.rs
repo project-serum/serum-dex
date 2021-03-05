@@ -660,7 +660,7 @@ fn consume_events_wrapper(
                 signature
             );
             let mut max_slot_height = max_slot_height_mutex.lock().unwrap();
-            *max_slot_height = max(slot, max_slot_height);
+            *max_slot_height = max(slot, *max_slot_height);
         },
         Err(err) => {
             error!("[thread {}] Received error: {:?}", thread_num, err);
