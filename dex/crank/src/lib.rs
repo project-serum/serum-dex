@@ -512,8 +512,8 @@ fn consume_events_loop(
         let loop_start = std::time::Instant::now();
         let start_time = std::time::Instant::now();
         let event_q_value_and_context = client
-            .get_account_with_commitment(&market_keys.event_q, CommitmentConfig::recent());
-        let event_q_slot = event_q_value_and_context?
+            .get_account_with_commitment(&market_keys.event_q, CommitmentConfig::recent())?;
+        let event_q_slot = event_q_value_and_context
             .context
             .slot;
         let max_slot_height = max_slot_height_mutex.lock().unwrap();
@@ -525,7 +525,7 @@ fn consume_events_loop(
             continue;
         }
         drop(max_slot_height);
-        let event_q_data = event_q_value_and_context?
+        let event_q_data = event_q_value_and_context
             .value
             .ok_or(format_err!("Failed to retrieve account"))?
             .data;
