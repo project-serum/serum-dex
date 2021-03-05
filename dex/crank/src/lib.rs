@@ -7,7 +7,7 @@ use std::collections::BTreeSet;
 use std::convert::identity;
 use std::mem::size_of;
 use std::num::NonZeroU64;
-use std::sync::Arc;
+use std::sync::{ Arc, Mutex };
 use std::{thread, time};
 
 use anyhow::{format_err, Result};
@@ -504,19 +504,24 @@ fn consume_events_loop(
     let market_keys = get_keys_for_market(&client, &program_id, &market)?;
     info!("{:#?}", market_keys);
     let pool = threadpool::ThreadPool::new(num_workers);
+    let max_slot_height_mutex = Arc::new(Mutex::new(0_u64));
 
     loop {
         thread::sleep(time::Duration::from_millis(300));
 
         let loop_start = std::time::Instant::now();
         let start_time = std::time::Instant::now();
-        let event_q_data = client
+        let event_q_value_and_context = client
             .get_account_with_commitment(&market_keys.event_q, CommitmentConfig::recent());
         let event_q_slot = event_q_value_and_context?
             .context
-            .ok_or(format_err!("Failed to retrieve account"))?
             .slot;
-        let event_q_data = event_q_value_and_context
+        let max_slot_height = max_slot_height_mutex.lock().unwrap();
+        if event_q_slot <= max_slot_height {
+            continue;
+        }
+        drop(max_slot_height);
+        let event_q_data = event_q_value_and_context?
             .value
             .ok_or(format_err!("Failed to retrieve account"))?
             .data;
@@ -596,6 +601,7 @@ fn consume_events_loop(
                 let client = opts.client();
                 let account_metas = account_metas.clone();
                 let event_q = *market_keys.event_q;
+                let max_slot_height_mutex_clone = Arc::clone(&max_slot_height_mutex);
                 pool.execute(move || {
                     consume_events_wrapper(
                         &client,
@@ -605,6 +611,8 @@ fn consume_events_loop(
                         thread_num,
                         events_per_worker,
                         event_q,
+                        &max_slot_height_mutex_clone,
+                        event_q_slot,
                     )
                 });
             }
@@ -626,6 +634,8 @@ fn consume_events_wrapper(
     thread_num: usize,
     to_consume: usize,
     event_q: Pubkey,
+    max_slot_height_mutex: Arc<Mutex<u64>>,
+    slot: u64,
 ) {
     let start = std::time::Instant::now();
     let result = consume_events_once(
@@ -638,12 +648,16 @@ fn consume_events_wrapper(
         event_q,
     );
     match result {
-        Ok(signature) => info!(
-            "[thread {}] Successfully consumed events after {:?}: {}.",
-            thread_num,
-            start.elapsed(),
-            signature
-        ),
+        Ok(signature) => {
+            info!(
+                "[thread {}] Successfully consumed events after {:?}: {}.",
+                thread_num,
+                start.elapsed(),
+                signature
+            );
+            let mut max_slot_height = max_slot_height_mutex.lock().unwrap();
+            *max_slot_height = max(slot, max_slot_height);
+        },
         Err(err) => {
             error!("[thread {}] Received error: {:?}", thread_num, err);
         }
