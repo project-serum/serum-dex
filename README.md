@@ -30,7 +30,7 @@
 
 | Program | Devnet | Mainnet Beta |
 | --------|--------|------------- |
-| [DEX](/dex)     | `9MVDeYQnJmN2Dt7H44Z8cob4bET2ysdNu2uFJcatDJno` | `9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin` |
+| [DEX](/dex)     | `DESVgJVGajEgKGXhb6XmqDHGz3VjdgP7rEVESBgxmroY` | `9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin` |
 
 ## Note
 
