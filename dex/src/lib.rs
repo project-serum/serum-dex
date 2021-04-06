@@ -12,6 +12,7 @@ mod fees;
 pub mod instruction;
 pub mod matching;
 pub mod state;
+mod pruning;
 
 #[cfg(feature = "program")]
 use solana_program::{

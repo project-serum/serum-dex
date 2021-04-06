@@ -7,6 +7,7 @@ use std::collections::BTreeSet;
 use std::convert::identity;
 use std::mem::size_of;
 use std::num::NonZeroU64;
+use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::{thread, time};
 
@@ -25,6 +26,8 @@ use sloggers::types::Severity;
 use sloggers::Build;
 use solana_client::rpc_client::RpcClient;
 use solana_client::rpc_config::RpcSendTransactionConfig;
+use solana_gateway::state::GatewayTokenState;
+use solana_gateway_program::instruction::{add_gatekeeper, issue_vanilla, set_state};
 use solana_sdk::commitment_config::CommitmentConfig;
 use solana_sdk::instruction::{AccountMeta, Instruction};
 use solana_sdk::program_pack::Pack;
@@ -43,7 +46,7 @@ use serum_context::Context;
 use serum_dex::instruction::{
     cancel_order_by_client_order_id as cancel_order_by_client_order_id_ix,
     close_open_orders as close_open_orders_ix, init_open_orders as init_open_orders_ix,
-    MarketInstruction, NewOrderInstructionV3, SelfTradeBehavior,
+    MarketInstruction, NewOrderInstructionV3, PruneInstruction, SelfTradeBehavior,
 };
 use serum_dex::matching::{OrderType, Side};
 use serum_dex::state::gen_vault_signer_key;
@@ -53,6 +56,9 @@ use serum_dex::state::MarketState;
 use serum_dex::state::QueueHeader;
 use serum_dex::state::Request;
 use serum_dex::state::RequestQueueHeader;
+use solana_gateway_program::state::{
+    get_gatekeeper_address_with_seed, get_gateway_token_address_with_seed, AddressSeed,
+};
 
 pub fn with_logging<F: FnOnce()>(_to: &str, fnc: F) {
     fnc();
@@ -188,6 +194,8 @@ pub enum Command {
         coin_mint: Pubkey,
         #[clap(long, short)]
         pc_mint: Pubkey,
+        #[clap(long, short)]
+        gatekeeper_key: Pubkey,
         #[clap(long)]
         coin_lot_size: Option<u64>,
         #[clap(long)]
@@ -211,7 +219,14 @@ pub fn start(ctx: Option<Context>, opts: Opts) -> Result<()> {
         } => {
             let payer = read_keypair_file(&payer)?;
             let mint = read_keypair_file(&mint)?;
-            create_and_init_mint(&client, &payer, &mint, &owner_pubkey, decimals)?;
+            create_and_init_mint(
+                &client,
+                &payer,
+                &mint,
+                &owner_pubkey,
+                Option::None,
+                decimals,
+            )?;
         }
         Command::Mint {
             payer,
@@ -319,7 +334,8 @@ pub fn start(ctx: Option<Context>, opts: Opts) -> Result<()> {
             ref payer,
         } => {
             let payer = read_keypair_file(payer)?;
-            whole_shebang(&client, dex_program_id, &payer)?;
+            let fixed_accounts = opts.cluster == Cluster::Civic;
+            whole_shebang(&client, dex_program_id, &payer, fixed_accounts)?;
         }
         Command::SettleFunds {
             ref payer,
@@ -349,6 +365,7 @@ pub fn start(ctx: Option<Context>, opts: Opts) -> Result<()> {
             ref dex_program_id,
             ref coin_mint,
             ref pc_mint,
+            ref gatekeeper_key,
             coin_lot_size,
             pc_lot_size,
         } => {
@@ -359,6 +376,7 @@ pub fn start(ctx: Option<Context>, opts: Opts) -> Result<()> {
                 &payer,
                 coin_mint,
                 pc_mint,
+                gatekeeper_key,
                 coin_lot_size.unwrap_or(1_000_000),
                 pc_lot_size.unwrap_or(10_000),
             )?;
@@ -810,21 +828,154 @@ pub fn consume_events_instruction(
     Ok(Some(instruction))
 }
 
-fn whole_shebang(client: &RpcClient, program_id: &Pubkey, payer: &Keypair) -> Result<()> {
-    let coin_mint = Keypair::generate(&mut OsRng);
-    debug_println!("Coin mint: {}", coin_mint.pubkey());
-    create_and_init_mint(client, payer, &coin_mint, &payer.pubkey(), 3)?;
+fn send_instruction(
+    client: &RpcClient,
+    payer: &Pubkey,
+    instruction: Instruction,
+    signers: Vec<&Keypair>,
+) -> Result<Signature> {
+    let instructions = vec![instruction];
+    let (recent_hash, _fee_calc) = client.get_recent_blockhash()?;
+    let txn = Transaction::new_signed_with_payer(&instructions, Some(payer), &signers, recent_hash);
+    send_txn(client, &txn, false)
+}
 
-    let pc_mint = Keypair::generate(&mut OsRng);
-    debug_println!("Pc mint: {}", pc_mint.pubkey());
-    create_and_init_mint(client, payer, &pc_mint, &payer.pubkey(), 3)?;
+fn register_gatekeeper(
+    client: &RpcClient,
+    payer: &Keypair,
+    gatekeeper_network: &Keypair,
+    gatekeeper: &Pubkey,
+) -> Result<()> {
+    let add_gatekeeper_instruction =
+        add_gatekeeper(&payer.pubkey(), gatekeeper, &gatekeeper_network.pubkey());
+
+    send_instruction(
+        client,
+        &payer.pubkey(),
+        add_gatekeeper_instruction,
+        vec![payer, gatekeeper_network],
+    )?;
+    Ok(())
+}
+
+fn create_gateway_token(
+    client: &RpcClient,
+    payer: &Keypair,
+    gatekeeper: &Keypair,
+    gatekeeper_network: &Pubkey,
+    owner: &Pubkey,
+    seed: Option<AddressSeed>,
+) -> Result<Pubkey> {
+    // create a gateway token as an SPL Token Account
+    let (gatekeeper_account, _) = get_gatekeeper_address_with_seed(&gatekeeper.pubkey());
+    let issue_vanilla_instruction = issue_vanilla(
+        &payer.pubkey(),
+        owner,
+        &gatekeeper_account,
+        &gatekeeper.pubkey(),
+        gatekeeper_network,
+        seed,
+        Option::None,
+    );
+    let (gateway_token, _) = get_gateway_token_address_with_seed(owner, &seed);
+    send_instruction(
+        client,
+        &payer.pubkey(),
+        issue_vanilla_instruction,
+        vec![payer, gatekeeper],
+    )?;
+
+    Ok(gateway_token)
+}
+
+fn revoke_gateway_token(
+    client: &RpcClient,
+    payer: &Keypair,
+    gatekeeper: &Keypair,
+    gateway_token: &Pubkey,
+) -> Result<()> {
+    let (gatekeeper_account, _) = get_gatekeeper_address_with_seed(&gatekeeper.pubkey());
+    let revoke_instruction = set_state(
+        gateway_token,
+        &gatekeeper.pubkey(),
+        &gatekeeper_account,
+        GatewayTokenState::Revoked,
+    );
+    send_instruction(
+        client,
+        &payer.pubkey(),
+        revoke_instruction,
+        vec![payer, gatekeeper],
+    )?;
+
+    Ok(())
+}
+
+fn whole_shebang(
+    client: &RpcClient,
+    program_id: &Pubkey,
+    payer: &Keypair,
+    fixed_accounts: bool,
+) -> Result<()> {
+    let gatekeeper = Keypair::from_base58_string(
+        "1XV16t4fRWypt8avQRa3kwxXFaijuU3XkMSDezdy7r9L3cX8Dom5DKL3sj59bh4k8jAdFNQnpTdqsFYYXz2XKp",
+    );
+    debug_println!(
+        "Gatekeeper: {}  secret: {}",
+        gatekeeper.pubkey(),
+        bs58::encode(gatekeeper.to_bytes()).into_string()
+    );
+
+    if !fixed_accounts {
+        debug_println!("Registering gatekeeper");
+        register_gatekeeper(client, payer, payer, &gatekeeper.pubkey())?;
+        debug_println!("Gatekeeper registered");
+    }
+
+    debug_println!("Create gateway token");
+    let gateway_token = create_gateway_token(
+        client,
+        payer,
+        &gatekeeper,
+        &payer.pubkey(),
+        &payer.pubkey(),
+        None,
+    )
+    .unwrap();
+    debug_println!("Gateway token created");
+
+    let coin_mint_pubkey: Pubkey;
+    let pc_mint_pubkey: Pubkey;
+
+    if !fixed_accounts {
+        let coin_mint = Keypair::generate(&mut OsRng);
+        debug_println!("Coin mint: {}", coin_mint.pubkey());
+        create_and_init_mint(client, payer, &coin_mint, &payer.pubkey(), Option::None, 3)?;
+        coin_mint_pubkey = coin_mint.pubkey();
+
+        let pc_mint = Keypair::generate(&mut OsRng);
+        debug_println!("Pc mint: {}", pc_mint.pubkey());
+        create_and_init_mint(client, payer, &pc_mint, &payer.pubkey(), Option::None, 3)?;
+        pc_mint_pubkey = pc_mint.pubkey();
+    } else {
+        // SRM
+        coin_mint_pubkey =
+            Pubkey::from_str("8YMiwqX9LEW5uibGnW3RPWAsG9CWhYTLKtxaa7TBByr3").unwrap();
+
+        // OXY
+        // coin_mint_pubkey = Pubkey::from_str("Gb5F1RiKp25LTWnrVrDZ17LGWHHhgvcMENtkSwjQAU5T").unwrap();
+
+        // USDC
+        pc_mint_pubkey = Pubkey::from_str("BsufJnDzG1yVshES744dHwF4u1ZrXq51V6ZuuUo16J9i").unwrap();
+    }
 
     let market_keys = list_market(
         client,
         program_id,
         payer,
-        &coin_mint.pubkey(),
-        &pc_mint.pubkey(),
+        &coin_mint_pubkey,
+        &pc_mint_pubkey,
+        &payer.pubkey(), //gatekeeper network
         1_000_000,
         10_000,
     )?;
@@ -835,19 +986,14 @@ fn whole_shebang(client: &RpcClient, program_id: &Pubkey, payer: &Keypair) -> Re
         client,
         payer,
         payer,
-        &coin_mint.pubkey(),
+        &coin_mint_pubkey,
         1_000_000_000_000_000,
     )?;
     debug_println!("Minted {}", coin_wallet.pubkey());
 
     debug_println!("Minting price currency...");
-    let pc_wallet = mint_to_new_account(
-        client,
-        payer,
-        payer,
-        &pc_mint.pubkey(),
-        1_000_000_000_000_000,
-    )?;
+    let pc_wallet =
+        mint_to_new_account(client, payer, payer, &pc_mint_pubkey, 1_000_000_000_000_000)?;
     debug_println!("Minted {}", pc_wallet.pubkey());
 
     let mut orders = None;
@@ -861,11 +1007,12 @@ fn whole_shebang(client: &RpcClient, program_id: &Pubkey, payer: &Keypair) -> Re
         program_id,
         payer,
         &pc_wallet.pubkey(),
+        &gateway_token,
         &market_keys,
         &mut orders,
         NewOrderInstructionV3 {
             side: Side::Bid,
-            limit_price: NonZeroU64::new(500).unwrap(),
+            limit_price: NonZeroU64::new(499).unwrap(),
             max_coin_qty: NonZeroU64::new(1_000).unwrap(),
             max_native_pc_qty_including_fees: NonZeroU64::new(500_000).unwrap(),
             order_type: OrderType::Limit,
@@ -873,6 +1020,16 @@ fn whole_shebang(client: &RpcClient, program_id: &Pubkey, payer: &Keypair) -> Re
             self_trade_behavior: SelfTradeBehavior::DecrementTake,
             limit: std::u16::MAX,
         },
+    )?;
+
+    debug_println!("Match orders");
+    match_orders(
+        &client,
+        program_id,
+        &payer,
+        &market_keys,
+        &coin_wallet.pubkey(),
+        &pc_wallet.pubkey(),
     )?;
 
     debug_println!("Bid account: {}", orders.unwrap());
@@ -884,11 +1041,12 @@ fn whole_shebang(client: &RpcClient, program_id: &Pubkey, payer: &Keypair) -> Re
         program_id,
         payer,
         &coin_wallet.pubkey(),
+        &gateway_token,
         &market_keys,
         &mut orders,
         NewOrderInstructionV3 {
             side: Side::Ask,
-            limit_price: NonZeroU64::new(499).unwrap(),
+            limit_price: NonZeroU64::new(500).unwrap(),
             max_coin_qty: NonZeroU64::new(1_000).unwrap(),
             max_native_pc_qty_including_fees: NonZeroU64::new(std::u64::MAX).unwrap(),
             order_type: OrderType::Limit,
@@ -920,6 +1078,7 @@ fn whole_shebang(client: &RpcClient, program_id: &Pubkey, payer: &Keypair) -> Re
         &coin_wallet.pubkey(),
         &pc_wallet.pubkey(),
     )?;
+
     settle_funds(
         client,
         program_id,
@@ -930,6 +1089,7 @@ fn whole_shebang(client: &RpcClient, program_id: &Pubkey, payer: &Keypair) -> Re
         &coin_wallet.pubkey(),
         &pc_wallet.pubkey(),
     )?;
+
     close_open_orders(
         client,
         program_id,
@@ -1043,6 +1203,76 @@ pub fn init_open_orders(
         recent_hash,
     );
     send_txn(client, &txn, false)?;
+
+    debug_println!("AFTER settle market bids: {}", market_keys.bids);
+    debug_println!("AFTER settle market asks: {}", market_keys.asks);
+
+    debug_println!("Order after settle: {}", orders.unwrap());
+
+    debug_println!("Prune orderbook. Should fail");
+    prune(client, program_id, payer, &market_keys, &gateway_token)
+        .expect_err("Pruning should have failed as the gateway token is not yet revoked");
+    debug_println!("Revoke gateway token");
+    revoke_gateway_token(client, payer, &gatekeeper, &gateway_token).unwrap();
+
+    debug_println!("Prune orderbook again. Should remove the only bid");
+    prune(client, program_id, payer, &market_keys, &gateway_token).unwrap();
+    prune(client, program_id, payer, &market_keys, &gateway_token).unwrap();
+
+    debug_println!("Match orders");
+    match_orders(
+        &client,
+        program_id,
+        &payer,
+        &market_keys,
+        &coin_wallet.pubkey(),
+        &pc_wallet.pubkey(),
+    )?;
+
+    debug_println!("Get new gateway token...");
+    let seed = [0, 0, 0, 0, 0, 0, 0, 1];
+    let new_gateway_token = create_gateway_token(
+        client,
+        payer,
+        &gatekeeper,
+        &payer.pubkey(),
+        &payer.pubkey(),
+        Some(seed),
+    )
+    .unwrap();
+
+    debug_println!("Placing another offer...");
+    let mut orders = None;
+    place_order(
+        client,
+        program_id,
+        payer,
+        &coin_wallet.pubkey(),
+        &new_gateway_token,
+        &market_keys,
+        &mut orders,
+        NewOrderInstructionV3 {
+            side: Side::Ask,
+            limit_price: NonZeroU64::new(500).unwrap(),
+            max_coin_qty: NonZeroU64::new(1_000).unwrap(),
+            max_native_pc_qty_including_fees: NonZeroU64::new(std::u64::MAX).unwrap(),
+            order_type: OrderType::Limit,
+            limit: std::u16::MAX,
+            self_trade_behavior: SelfTradeBehavior::DecrementTake,
+            client_order_id: 985982,
+        },
+    )?;
+
+    debug_println!("Match orders");
+    match_orders(
+        &client,
+        program_id,
+        &payer,
+        &market_keys,
+        &coin_wallet.pubkey(),
+        &pc_wallet.pubkey(),
+    )?;
+
     Ok(())
 }
 
@@ -1051,6 +1281,7 @@ pub fn place_order(
     program_id: &Pubkey,
     payer: &Keypair,
     wallet: &Pubkey,
+    gateway_token: &Pubkey,
     state: &MarketPubkeys,
     orders: &mut Option<Pubkey>,
 
@@ -1091,6 +1322,7 @@ pub fn place_order(
             AccountMeta::new_readonly(payer.pubkey(), true),
             AccountMeta::new(*state.coin_vault, false),
             AccountMeta::new(*state.pc_vault, false),
+            AccountMeta::new_readonly(*gateway_token, false),
             AccountMeta::new_readonly(spl_token::ID, false),
             AccountMeta::new_readonly(solana_sdk::sysvar::rent::ID, false),
         ],
@@ -1105,7 +1337,8 @@ pub fn place_order(
         &signers,
         recent_hash,
     );
-    send_txn(client, &txn, false)?;
+
+    send_txn(client, &txn, true)?;
     Ok(())
 }
 
@@ -1171,6 +1404,7 @@ pub fn list_market(
     payer: &Keypair,
     coin_mint: &Pubkey,
     pc_mint: &Pubkey,
+    gatekeeper_key: &Pubkey,
     coin_lot_size: u64,
     pc_lot_size: u64,
 ) -> Result<MarketPubkeys> {
@@ -1205,6 +1439,7 @@ pub fn list_market(
         &asks_key.pubkey(),
         &req_q_key.pubkey(),
         &event_q_key.pubkey(),
+        gatekeeper_key,
         coin_lot_size,
         pc_lot_size,
         vault_signer_nonce,
@@ -1238,6 +1473,7 @@ pub fn list_market(
     debug_println!("txn:\n{:#x?}", txn);
     let result = simulate_transaction(client, &txn, true, CommitmentConfig::single())?;
     if let Some(e) = result.value.err {
+        debug_println!("Logs: {:?}", result.value.logs.unwrap());
         return Err(format_err!("simulate_transaction error: {:?}", e));
     }
     debug_println!("{:#?}", result.value);
@@ -1273,7 +1509,7 @@ fn gen_listing_params(
     _coin_mint: &Pubkey,
     _pc_mint: &Pubkey,
 ) -> Result<(ListingKeys, Vec<Instruction>)> {
-    let (market_key, create_market) = create_dex_account(client, program_id, payer, 376)?;
+    let (market_key, create_market) = create_dex_account(client, program_id, payer, 408)?;
     let (req_q_key, create_req_q) = create_dex_account(client, program_id, payer, 640)?;
     let (event_q_key, create_event_q) = create_dex_account(client, program_id, payer, 1 << 20)?;
     let (bids_key, create_bids) = create_dex_account(client, program_id, payer, 1 << 16)?;
@@ -1370,6 +1606,38 @@ pub fn match_orders(
     Ok(())
 }
 
+pub fn prune(
+    client: &RpcClient,
+    program_id: &Pubkey,
+    payer: &Keypair,
+    state: &MarketPubkeys,
+    gateway_token: &Pubkey,
+) -> Result<()> {
+    let instruction_data: Vec<u8> = MarketInstruction::Prune(PruneInstruction {}).pack();
+
+    let instruction = Instruction {
+        program_id: *program_id,
+        accounts: vec![
+            AccountMeta::new(*state.market, false),
+            AccountMeta::new(*state.bids, false),
+            AccountMeta::new(*state.asks, false),
+            AccountMeta::new(*gateway_token, false),
+        ],
+        data: instruction_data,
+    };
+
+    let (recent_hash, _fee_calc) = client.get_recent_blockhash()?;
+    let txn = Transaction::new_signed_with_payer(
+        std::slice::from_ref(&instruction),
+        Some(&payer.pubkey()),
+        &[payer],
+        recent_hash,
+    );
+
+    send_txn(client, &txn, true)?;
+    Ok(())
+}
+
 fn create_account(
     client: &RpcClient,
     mint_pubkey: &Pubkey,
@@ -1440,6 +1708,37 @@ fn mint_to_existing_account(
         recent_hash,
     );
     send_txn(client, &txn, false)?;
+    Ok(())
+}
+
+fn freeze_account(
+    client: &RpcClient,
+    payer: &Keypair,
+    freeze_key: &Keypair,
+    mint: &Pubkey,
+    account_to_freeze: &Pubkey,
+    owner: &Pubkey,
+) -> Result<()> {
+    let signers = vec![payer, freeze_key];
+
+    let freeze_account_instr = token_instruction::freeze_account(
+        &spl_token::ID,
+        account_to_freeze,
+        mint,
+        &freeze_key.pubkey(),
+        &[],
+    )?;
+
+    let instructions = vec![freeze_account_instr];
+    let (recent_hash, _fee_calc) = client.get_recent_blockhash()?;
+    let txn = Transaction::new_signed_with_payer(
+        &instructions,
+        Some(&payer.pubkey()),
+        &signers,
+        recent_hash,
+    );
+    debug_println!("Sending freeze account tx");
+    send_txn(client, &txn, true)?;
     Ok(())
 }
 

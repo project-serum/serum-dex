@@ -14,8 +14,10 @@ use enumflags2::BitFlags;
 use num_traits::FromPrimitive;
 use safe_transmute::{self, to_bytes::transmute_to_bytes, trivial::TriviallyTransmutable};
 
+use solana_gateway::Gateway;
 use solana_program::{
     account_info::AccountInfo,
+    msg,
     program_error::ProgramError,
     program_pack::Pack,
     pubkey::Pubkey,
@@ -116,6 +118,9 @@ pub struct MarketState {
     pub fee_rate_bps: u64,
     // 46
     pub referrer_rebates_accrued: u64,
+
+    // 47
+    pub gatekeeper_key: [u64; 4],
 }
 #[cfg(target_endian = "little")]
 unsafe impl Zeroable for MarketState {}
@@ -384,6 +389,7 @@ pub struct OpenOrders {
     pub account_flags: u64, // Initialized, OpenOrders
     pub market: [u64; 4],
     pub owner: [u64; 4],
+    pub gateway_token: [u64; 4],
 
     pub native_coin_free: u64,
     pub native_coin_total: u64,
@@ -739,6 +745,7 @@ pub struct Request {
     native_pc_qty_locked: u64,
     order_id: u128,
     owner: [u64; 4],
+    gateway_token: Option<[u64; 4]>,
     client_order_id: u64,
 }
 unsafe impl Zeroable for Request {}
@@ -755,6 +762,7 @@ pub enum RequestView {
         max_coin_qty: NonZeroU64,
         native_pc_qty_locked: Option<NonZeroU64>,
         owner: [u64; 4],
+        gateway_token: [u64; 4],
         client_order_id: Option<NonZeroU64>,
         self_trade_behavior: SelfTradeBehavior,
     },
@@ -779,6 +787,7 @@ impl Request {
                 fee_tier,
                 order_id,
                 owner,
+                gateway_token,
                 max_coin_qty,
                 native_pc_qty_locked,
                 client_order_id,
@@ -802,6 +811,7 @@ impl Request {
                     padding: Zeroable::zeroed(),
                     order_id,
                     owner,
+                    gateway_token: Some(gateway_token),
                     max_coin_qty_or_cancel_id: max_coin_qty.get(),
                     native_pc_qty_locked: native_pc_qty_locked.map_or(0, NonZeroU64::get),
                     client_order_id: client_order_id.map_or(0, NonZeroU64::get),
@@ -827,6 +837,7 @@ impl Request {
                     fee_tier: 0,
                     self_trade_behavior: 0,
                     owner: expected_owner,
+                    gateway_token: None,
                     native_pc_qty_locked: 0,
                     padding: Zeroable::zeroed(),
                     client_order_id: client_order_id.map_or(0, NonZeroU64::get),
@@ -869,6 +880,7 @@ impl Request {
                 self_trade_behavior,
                 order_id: self.order_id,
                 owner: self.owner,
+                gateway_token: self.gateway_token.unwrap(),
                 max_coin_qty: NonZeroU64::new(self.max_coin_qty_or_cancel_id).unwrap(),
                 native_pc_qty_locked: NonZeroU64::new(self.native_pc_qty_locked),
                 client_order_id: NonZeroU64::new(self.client_order_id),
@@ -1242,6 +1254,8 @@ fn send_from_vault<'a, 'b: 'a>(
 
 pub(crate) mod account_parser {
     use super::*;
+    use crate::error::DexError;
+    use crate::instruction::PruneInstruction;
 
     macro_rules! declare_validated_account_wrapper {
         ($WrapperT:ident, $validate:expr $(, $a:ident : $t:ty)*) => {
@@ -1418,6 +1432,7 @@ pub(crate) mod account_parser {
         serum_dex_accounts: &'a [AccountInfo<'b>; 5],
         pub coin_vault_and_mint: TokenAccountAndMint<'a, 'b>,
         pub pc_vault_and_mint: TokenAccountAndMint<'a, 'b>,
+        pub gatekeeper_key: &'a Pubkey,
     }
 
     impl<'a, 'b: 'a> InitializeMarketArgs<'a, 'b> {
@@ -1426,15 +1441,20 @@ pub(crate) mod account_parser {
             instruction: &'a InitializeMarketInstruction,
             accounts: &'a [AccountInfo<'b>],
         ) -> DexResult<Self> {
-            check_assert_eq!(accounts.len(), 10)?;
-            let accounts = array_ref![accounts, 0, 10];
-            let (unchecked_serum_dex_accounts, unchecked_vaults, unchecked_mints, unchecked_rent) =
-                array_refs![accounts, 5, 2, 2, 1];
+            check_assert_eq!(accounts.len(), 11)?;
+            let accounts = array_ref![accounts, 0, 11];
+            let (
+                unchecked_serum_dex_accounts,
+                unchecked_vaults,
+                unchecked_mints,
+                unchecked_rent,
+                unchecked_gatekeeper,
+            ) = array_refs![accounts, 5, 2, 2, 1, 1];
 
             {
                 let rent_sysvar = RentSysvarAccount::new(&unchecked_rent[0])?;
                 let rent = Rent::from_account_info(rent_sysvar.inner()).or(check_unreachable!())?;
-                let (_, must_be_rent_exempt, _) = array_refs![accounts, 0; ..; 1];
+                let (_, must_be_rent_exempt, _) = array_refs![accounts, 0; ..; 2];
                 for account in must_be_rent_exempt {
                     let data_len = account.data_len();
                     let lamports = account.lamports();
@@ -1480,12 +1500,17 @@ pub(crate) mod account_parser {
                 _ => check_unreachable!()?,
             };
 
+            let gatekeeper_key = unchecked_gatekeeper[0].key;
+
+            msg!("Gatekeeper key: {}", gatekeeper_key);
+
             Ok(InitializeMarketArgs {
                 program_id,
                 instruction,
                 serum_dex_accounts,
                 coin_vault_and_mint,
                 pc_vault_and_mint,
+                gatekeeper_key,
             })
         }
 
@@ -1602,6 +1627,7 @@ pub(crate) mod account_parser {
         pub instruction: &'a NewOrderInstructionV3,
         pub open_orders: &'a mut OpenOrders,
         pub open_orders_address: [u64; 4],
+        pub gateway_token: [u64; 4],
         pub owner: SignerAccount<'a, 'b>,
         pub req_q: RequestQueue<'a>,
         pub event_q: EventQueue<'a>,
@@ -1619,7 +1645,8 @@ pub(crate) mod account_parser {
             accounts: &'a [AccountInfo<'b>],
             f: impl FnOnce(NewOrderV3Args) -> DexResult<T>,
         ) -> DexResult<T> {
-            const MIN_ACCOUNTS: usize = 12;
+            msg!("Parsing order arguments");
+            const MIN_ACCOUNTS: usize = 13;
             check_assert!(accounts.len() == MIN_ACCOUNTS || accounts.len() == MIN_ACCOUNTS + 1)?;
             let (fixed_accounts, fee_discount_account): (
                 &'a [AccountInfo<'b>; MIN_ACCOUNTS],
@@ -1636,6 +1663,7 @@ pub(crate) mod account_parser {
                 ref owner_acc,
                 ref coin_vault_acc,
                 ref pc_vault_acc,
+                ref gateway_token_acc,
                 ref spl_token_program_acc,
                 ref rent_sysvar_acc,
             ]: &'a [AccountInfo<'b>; MIN_ACCOUNTS] = fixed_accounts;
@@ -1673,6 +1701,17 @@ pub(crate) mod account_parser {
             market.check_enabled()?;
             let spl_token_program = SplTokenProgram::new(spl_token_program_acc)?;
 
+            let gateway_token_address = gateway_token_acc.key.to_aligned_bytes();
+            let gatekeeper_pk = Pubkey::new(cast_slice(&identity(market.gatekeeper_key) as &[_]));
+            let gateway_verification_result = Gateway::verify_gateway_token_account_info(
+                &gateway_token_acc,
+                &owner.inner().key,
+                &gatekeeper_pk,
+            )
+            .or(check_unreachable!())?;
+
+            msg!("Gateway Token validated {:?}", gateway_verification_result);
+
             let mut bids = market.load_bids_mut(bids_acc).or(check_unreachable!())?;
             let mut asks = market.load_asks_mut(asks_acc).or(check_unreachable!())?;
 
@@ -1687,6 +1726,7 @@ pub(crate) mod account_parser {
                 order_book_state,
                 open_orders: open_orders.deref_mut(),
                 open_orders_address,
+                gateway_token: gateway_token_address,
                 owner,
                 req_q,
                 event_q,
@@ -1696,6 +1736,8 @@ pub(crate) mod account_parser {
                 spl_token_program,
                 fee_tier,
             };
+
+            msg!("Placing order");
             f(args)
         }
     }
@@ -2087,6 +2129,50 @@ pub(crate) mod account_parser {
             f(InitOpenOrdersArgs)
         }
     }
+
+    pub struct PruneArgs<'a> {
+        pub order_book_state: &'a mut OrderBookState<'a>,
+        pub gateway_token: &'a Pubkey,
+    }
+    impl<'a, 'b: 'a> PruneArgs<'a> {
+        pub fn with_parsed_args<T>(
+            program_id: &'a Pubkey,
+            instruction: &'a PruneInstruction,
+            accounts: &'a [AccountInfo<'b>],
+            f: impl FnOnce(PruneArgs) -> DexResult<T>,
+        ) -> DexResult<T> {
+            const ACCOUNT_COUNT: usize = 4;
+            check_assert!(accounts.len() == ACCOUNT_COUNT)?;
+            let &[ref market_acc, ref bids_acc, ref asks_acc, ref gateway_token_acc] =
+                array_ref![accounts, 0, 4];
+
+            let mut market: RefMut<'a, MarketState> = MarketState::load(market_acc, program_id)?;
+
+            let gateway_token_revoked =
+                Gateway::expect_revoked_gateway_token_account_info(&gateway_token_acc)
+                    .or(check_unreachable!())?;
+            msg!(
+                "Gateway Token identified as revoked {:?}",
+                gateway_token_revoked
+            );
+
+            let mut bids = market.load_bids_mut(bids_acc).or(check_unreachable!())?;
+            let mut asks = market.load_asks_mut(asks_acc).or(check_unreachable!())?;
+
+            let mut order_book_state = OrderBookState {
+                bids: bids.deref_mut(),
+                asks: asks.deref_mut(),
+                market_state: market.deref_mut(),
+            };
+
+            let args = PruneArgs {
+                order_book_state: &mut order_book_state,
+                gateway_token: gateway_token_acc.key,
+            };
+
+            f(args)
+        }
+    }
 }
 
 #[inline]
@@ -2182,6 +2268,12 @@ impl State {
                     Self::process_send_take,
                 )?
             }
+            MarketInstruction::Prune(ref inner) => account_parser::PruneArgs::with_parsed_args(
+                program_id,
+                inner,
+                accounts,
+                Self::process_prune,
+            )?,
             MarketInstruction::CloseOpenOrders => {
                 account_parser::CloseOpenOrdersArgs::with_parsed_args(
                     program_id,
@@ -2489,6 +2581,7 @@ impl State {
             mut order_book_state,
             open_orders,
             open_orders_address,
+            gateway_token,
             mut req_q,
             mut event_q,
             payer,
@@ -2593,6 +2686,7 @@ impl State {
             fee_tier,
             self_trade_behavior: instruction.self_trade_behavior,
             owner: open_orders_address,
+            gateway_token,
             owner_slot,
             max_coin_qty: instruction.max_coin_qty,
             native_pc_qty_locked,
@@ -2685,6 +2779,7 @@ impl State {
     }
 
     fn process_initialize_market(args: account_parser::InitializeMarketArgs) -> DexResult {
+        msg!("Inside Initialize Market");
         let &InitializeMarketInstruction {
             coin_lot_size,
             pc_lot_size,
@@ -2702,6 +2797,9 @@ impl State {
         let coin_mint = args.coin_vault_and_mint.get_mint().inner();
         let pc_vault = args.pc_vault_and_mint.get_account().inner();
         let pc_mint = args.pc_vault_and_mint.get_mint().inner();
+        let gatekeeper_key = args.gatekeeper_key;
+
+        msg!("Gatekeeper key: {}", gatekeeper_key);
 
         // initialize request queue
         let mut rq_data = req_q.try_borrow_mut_data()?;
@@ -2752,11 +2850,18 @@ impl State {
             let slab = Slab::new(cast_slice_mut(slab_words));
             slab.assert_minimum_capacity(100)?;
         }
+
+        msg!("Initializing market data");
+
         // initialize market
         let mut market_data = market.try_borrow_mut_data()?;
         let market_view = init_account_padding(&mut market_data)?;
         let market_hdr: &mut MarketState =
             try_from_bytes_mut(cast_slice_mut(market_view)).or(check_unreachable!())?;
+
+        msg!("Making Market State {}", gatekeeper_key);
+        msg!("aligned bytes {:?}", gatekeeper_key.to_aligned_bytes());
+
         *market_hdr = MarketState {
             coin_lot_size,
             pc_lot_size,
@@ -2782,7 +2887,19 @@ impl State {
             pc_dust_threshold,
             fee_rate_bps: fee_rate_bps as u64,
             referrer_rebates_accrued: 0,
+
+            gatekeeper_key: gatekeeper_key.to_aligned_bytes(),
         };
         Ok(())
+    }
+
+    fn process_prune(args: account_parser::PruneArgs) -> DexResult {
+        let account_parser::PruneArgs {
+            order_book_state,
+            gateway_token,
+        } = args;
+        order_book_state
+            .prune(gateway_token.to_aligned_bytes())
+            .map(|_| ())
     }
 }

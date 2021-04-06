@@ -110,6 +110,12 @@ pub enum DexErrorCode {
     OrderNotYours,
 
     WouldSelfTrade,
+    
+    GatewayIncorrectGatekeeper, // The gatekeeper listed in the gateway token is not accepted by this DEX
+    GatewayInvalidOwner,        // The gateway token's owner is not the account placing the order
+    GatewayInvalidToken,        // The gateway token account is not of the correct type 
+    GatewayTokenRevoked,        // The gateway token was revoked
+    AttemptToPruneValidGatewayToken,        // The gateway token was not revoked, but an attempt was made to remove it from the orderbook
 
     Unknown = 1000,
 

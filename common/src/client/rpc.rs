@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, format_err, Result};
 use rand::rngs::OsRng;
 use solana_client::rpc_client::RpcClient;
 use solana_client::rpc_config::RpcSendTransactionConfig;
@@ -112,7 +112,7 @@ pub fn new_mint(
     decimals: u8,
 ) -> Result<(Keypair, Signature)> {
     let mint = Keypair::generate(&mut OsRng);
-    let s = create_and_init_mint(client, payer_keypair, &mint, owner_pubkey, decimals)?;
+    let s = create_and_init_mint(client, payer_keypair, &mint, owner_pubkey, Option::None, decimals)?;
     Ok((mint, s))
 }
 
@@ -121,6 +121,7 @@ pub fn create_and_init_mint(
     payer_keypair: &Keypair,
     mint_keypair: &Keypair,
     owner_pubkey: &Pubkey,
+    freeze_authority: Option<&Pubkey>,
     decimals: u8,
 ) -> Result<Signature> {
     let signers = vec![payer_keypair, mint_keypair];
@@ -138,7 +139,7 @@ pub fn create_and_init_mint(
         &spl_token::ID,
         &mint_keypair.pubkey(),
         owner_pubkey,
-        None,
+        freeze_authority,
         decimals,
     )?;
     let instructions = vec![create_mint_account_instruction, initialize_mint_instruction];
@@ -228,7 +229,15 @@ pub fn transfer(
     send_txn(client, &txn, false)
 }
 
-pub fn send_txn(client: &RpcClient, txn: &Transaction, _simulate: bool) -> Result<Signature> {
+pub fn send_txn(client: &RpcClient, txn: &Transaction, simulate: bool) -> Result<Signature> {
+    
+    if simulate {
+        let simulation_result = simulate_and_log_transaction(client, txn);
+        if simulation_result.is_err() {
+            return Err(simulation_result.err().unwrap())
+        }
+        
+    }
     Ok(client.send_and_confirm_transaction_with_spinner_and_config(
         txn,
         CommitmentConfig::confirmed(),
@@ -252,6 +261,19 @@ pub fn simulate_transaction(
             "sigVerify": sig_verify, "commitment": cfg.commitment
         }]),
     )
+}
+
+pub fn simulate_and_log_transaction(
+    client: &RpcClient,
+    txn: &Transaction,
+)-> Result<()> {
+    let result = simulate_transaction(client, txn, true, CommitmentConfig::confirmed())?;
+    if let Some(e) = result.value.err {
+        println!("Logs: {:?}", result.value.logs.unwrap());
+        return Err(format_err!("simulate_transaction error: {:?}", e));
+    }
+    println!("{:#?}", result.value);
+    Ok(())
 }
 
 pub fn get_token_account<T: TokenPack>(client: &RpcClient, addr: &Pubkey) -> Result<T> {

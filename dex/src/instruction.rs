@@ -317,6 +317,19 @@ impl CancelOrderInstructionV2 {
     }
 }
 
+/// An instruction to prune all orders with a gateway token from the order book
+/// if the gateway token is invalid.
+#[derive(PartialEq, Eq, Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(test, derive(Arbitrary))]
+pub struct PruneInstruction {
+    // No data arguments at present
+}
+impl PruneInstruction {
+    fn unpack(_data: &[u8; 0]) -> Option<Self> {
+        Some(PruneInstruction {})
+    }
+}
+
 #[derive(PartialEq, Eq, Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(test, derive(Arbitrary))]
 #[cfg_attr(feature = "fuzz", derive(arbitrary::Arbitrary))]
@@ -331,6 +344,7 @@ pub enum MarketInstruction {
     /// 7. `[]` coin currency Mint
     /// 8. `[]` price currency Mint
     /// 9. `[]` the rent sysvar
+    /// 10. `[]` the gatekeeper
     InitializeMarket(InitializeMarketInstruction),
     /// 0. `[writable]` the market
     /// 1. `[writable]` the OpenOrders account to use
@@ -409,9 +423,10 @@ pub enum MarketInstruction {
     /// 7. `[signer]` owner of the OpenOrders account
     /// 8. `[writable]` coin vault
     /// 9. `[writable]` pc vault
-    /// 10. `[]` spl token program
-    /// 11. `[]` the rent sysvar
-    /// 12. `[writable]` (optional) the (M)SRM account used for fee discounts
+    /// 10. `[]` gateway token
+    /// 11. `[]` spl token program
+    /// 12. `[]` the rent sysvar
+    /// 13. `[writable]` (optional) the (M)SRM account used for fee discounts
     NewOrderV3(NewOrderInstructionV3),
     /// 0. `[writable]` market
     /// 1. `[writable]` bids
@@ -443,6 +458,11 @@ pub enum MarketInstruction {
     /// 2. `[]` market
     /// 3. `[]` the rent sysvar
     InitOpenOrders,
+    /// 0. `[writable]` market
+    /// 1. `[writable]` bids
+    /// 2. `[writable]` asks
+    /// 0. `[]` gateway token
+    Prune(PruneInstruction),
 }
 
 impl MarketInstruction {
@@ -536,6 +556,9 @@ impl MarketInstruction {
             }),
             (14, 0) => MarketInstruction::CloseOpenOrders,
             (15, 0) => MarketInstruction::InitOpenOrders,
+            (16, 0) => MarketInstruction::Prune({
+                PruneInstruction::unpack(&[])? // no parameters needed yet
+            }),
             _ => return None,
         })
     }
@@ -563,6 +586,7 @@ pub fn initialize_market(
     asks_pk: &Pubkey,
     req_q_pk: &Pubkey,
     event_q_pk: &Pubkey,
+    gatekeeper_pk: &Pubkey,
     coin_lot_size: u64,
     pc_lot_size: u64,
     vault_signer_nonce: u64,
@@ -592,6 +616,8 @@ pub fn initialize_market(
 
     let rent_sysvar = AccountMeta::new_readonly(solana_program::sysvar::rent::ID, false);
 
+    let gatekeeper = AccountMeta::new_readonly(*gatekeeper_pk, false);
+
     let accounts = vec![
         market_account,
         req_q,
@@ -605,6 +631,7 @@ pub fn initialize_market(
         pc_mint,
         //srm_mint,
         rent_sysvar,
+        gatekeeper,
     ];
 
     Ok(Instruction {
@@ -891,6 +918,27 @@ pub fn init_open_orders(
         AccountMeta::new_readonly(*owner, true),
         AccountMeta::new_readonly(*market, false),
         AccountMeta::new_readonly(rent::ID, false),
+    ];
+    Ok(Instruction {
+        program_id: *program_id,
+        data,
+        accounts,
+    })
+}
+
+pub fn prune(
+    program_id: &Pubkey,
+    market: &Pubkey,
+    bids: &Pubkey,
+    asks: &Pubkey,
+    gateway_token: &Pubkey,
+) -> Result<Instruction, DexError> {
+    let data = MarketInstruction::Prune(PruneInstruction {}).pack();
+    let accounts: Vec<AccountMeta> = vec![
+        AccountMeta::new(*market, false),
+        AccountMeta::new(*bids, false),
+        AccountMeta::new(*asks, false),
+        AccountMeta::new_readonly(*gateway_token, false),
     ];
     Ok(Instruction {
         program_id: *program_id,

@@ -11,6 +11,7 @@ pub enum Cluster {
     Devnet,
     Localnet,
     Debug,
+    Civic,
     Custom(String),
 }
 
@@ -30,9 +31,10 @@ impl FromStr for Cluster {
             "v" | "vipmainnet" => Ok(Cluster::VipMainnet),
             "d" | "devnet" => Ok(Cluster::Devnet),
             "l" | "localnet" => Ok(Cluster::Localnet),
+            "c" | "civic" => Ok(Cluster::Civic),
             "g" | "debug" => Ok(Cluster::Debug),
             _ => Err(anyhow::Error::msg(
-                "Cluster must be one of [localnet, testnet, mainnet, devnet] or be an http or https url\n",
+                "Cluster must be one of [localnet, testnet, mainnet, devnet, civic] or be an http or https url\n",
             )),
         }
     }
@@ -47,6 +49,7 @@ impl std::fmt::Display for Cluster {
             Cluster::Devnet => "devnet",
             Cluster::Localnet => "localnet",
             Cluster::Debug => "debug",
+            Cluster::Civic => "civic",
             Cluster::Custom(url) => url,
         };
         write!(f, "{}", clust_str)
@@ -62,6 +65,7 @@ impl Cluster {
             Cluster::VipMainnet => "https://vip-api.mainnet-beta.solana.com",
             Cluster::Localnet => "http://127.0.0.1:8899",
             Cluster::Debug => "http://34.90.18.145:8899",
+            Cluster::Civic => "http://ec2-3-238-152-85.compute-1.amazonaws.com:8899",
             Cluster::Custom(url) => url,
         }
     }

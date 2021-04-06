@@ -171,6 +171,8 @@ fn setup_market<'bump, R: Rng>(rng: &mut R, bump: &'bump Bump) -> MarketAccounts
     let req_q = new_dex_owned_account(rng, 640, program_id, bump);
     let event_q = new_dex_owned_account(rng, 65536, program_id, bump);
 
+    let gatekeeper_pk = new_token_mint(rng, bump);
+    
     let coin_mint = new_token_mint(rng, bump);
     let pc_mint = new_token_mint(rng, bump);
 
@@ -204,6 +206,7 @@ fn setup_market<'bump, R: Rng>(rng: &mut R, bump: &'bump Bump) -> MarketAccounts
         &asks.key,
         &req_q.key,
         &event_q.key,
+        &gatekeeper_pk.key,
         coin_lot_size,
         pc_lot_size,
         vault_signer_nonce,

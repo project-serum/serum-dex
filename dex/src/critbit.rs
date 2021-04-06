@@ -33,7 +33,7 @@ struct InnerNode {
     prefix_len: u32,
     key: u128,
     children: [u32; 2],
-    _padding: [u64; 5],
+    _padding: [u64; 9],
 }
 unsafe impl Zeroable for InnerNode {}
 unsafe impl Pod for InnerNode {}
@@ -55,6 +55,7 @@ pub struct LeafNode {
     padding: [u8; 2],
     key: u128,
     owner: [u64; 4],
+    gateway_token: [u64; 4],
     quantity: u64,
     client_order_id: u64,
 }
@@ -67,6 +68,7 @@ impl LeafNode {
         owner_slot: u8,
         key: u128,
         owner: [u64; 4],
+        gateway_token: [u64; 4],
         quantity: u64,
         fee_tier: FeeTier,
         client_order_id: u64,
@@ -78,6 +80,7 @@ impl LeafNode {
             padding: [0; 2],
             key,
             owner,
+            gateway_token,
             quantity,
             client_order_id,
         }
@@ -114,6 +117,11 @@ impl LeafNode {
     }
 
     #[inline]
+    pub fn gateway_token(&self) -> [u64; 4] {
+        self.gateway_token
+    }
+
+    #[inline]
     pub fn owner_slot(&self) -> u8 {
         self.owner_slot
     }
@@ -130,7 +138,7 @@ impl LeafNode {
 struct FreeNode {
     tag: u32,
     next: u32,
-    _padding: [u64; 8],
+    _padding: [u64; 12],
 }
 unsafe impl Zeroable for FreeNode {}
 unsafe impl Pod for FreeNode {}
@@ -143,7 +151,7 @@ const fn _const_max(a: usize, b: usize) -> usize {
 const _INNER_NODE_SIZE: usize = size_of::<InnerNode>();
 const _LEAF_NODE_SIZE: usize = size_of::<LeafNode>();
 const _FREE_NODE_SIZE: usize = size_of::<FreeNode>();
-const _NODE_SIZE: usize = 72;
+const _NODE_SIZE: usize = 104;
 
 const _INNER_NODE_ALIGN: usize = align_of::<InnerNode>();
 const _LEAF_NODE_ALIGN: usize = align_of::<LeafNode>();
@@ -163,7 +171,7 @@ const_assert_eq!(_NODE_ALIGN, _FREE_NODE_ALIGN);
 #[allow(dead_code)]
 pub struct AnyNode {
     tag: u32,
-    data: [u32; 17],
+    data: [u32; 25],
 }
 unsafe impl Zeroable for AnyNode {}
 unsafe impl Pod for AnyNode {}
@@ -501,9 +509,18 @@ impl Slab {
     }
 
     fn find_min_max(&self, find_max: bool) -> Option<NodeHandle> {
+        if self.root().is_none() {
+            return None;
+        }
         let mut root: NodeHandle = self.root()?;
         loop {
-            let root_contents = self.get(root).unwrap();
+            let root_option = self.get(root);
+
+            if root_option.is_none() {
+                return None;
+            }
+            
+            let root_contents = root_option.unwrap();
             match root_contents.case().unwrap() {
                 NodeRef::Inner(&InnerNode { children, .. }) => {
                     root = children[if find_max { 1 } else { 0 }];
@@ -620,6 +637,46 @@ impl Slab {
                 }
             }
         }
+    }
+    
+    pub fn find_by<F: Fn(&LeafNode) -> bool>(&self, predicate: F) -> Vec<u128> {
+        let mut found = Vec::new();
+        let mut nodes_to_search: Vec<NodeHandle> = Vec::new();
+        let mut current_node: Option<&AnyNode>;
+
+        let top_node = self.root();
+        
+        if top_node.is_none() {
+            // no found nodes, return the empty vector
+            return found;
+        }
+        
+        nodes_to_search.push(top_node.unwrap());
+        
+        // search through the tree, to find leaves that match the predicate
+        while !nodes_to_search.is_empty() {
+            current_node = self.get(nodes_to_search.pop().unwrap());
+
+            // node not found, ignore it
+            if current_node.is_none() {
+                break;
+            }
+
+            match current_node.unwrap().case().unwrap() {
+                NodeRef::Leaf(leaf) if predicate(leaf) => {
+                    // found a matching leaf
+                    found.push(leaf.key)
+                },
+                NodeRef::Inner(inner) => {
+                    // search the children
+                    nodes_to_search.push(inner.children[0]);
+                    nodes_to_search.push(inner.children[1]);
+                },
+                _ => ()
+            }
+        }
+            
+        found
     }
 
     #[inline]
@@ -804,8 +861,9 @@ mod tests {
                 let offset = rng.gen();
                 let key = rng.gen();
                 let owner = rng.gen();
+                let gateway_token = rng.gen();
                 let qty = rng.gen();
-                let leaf = LeafNode::new(offset, key, owner, qty, FeeTier::Base, 0);
+                let leaf = LeafNode::new(offset, key, owner, gateway_token, qty, FeeTier::Base, 0);
 
                 println!("{:x}", key);
                 println!("{}", i);
@@ -900,7 +958,8 @@ mod tests {
                         };
                         let owner = rng.gen();
                         let qty = rng.gen();
-                        let leaf = LeafNode::new(offset, key, owner, qty, FeeTier::SRM5, 5);
+                        let gateway_token = rng.gen();
+                        let leaf = LeafNode::new(offset, key, owner, gateway_token, qty, FeeTier::SRM5, 5);
 
                         println!("Insert {:x}", key);
 

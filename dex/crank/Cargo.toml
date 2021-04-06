@@ -11,10 +11,12 @@ path = "src/bin/main.rs"
 serum_dex = { path = "../", default-features = false, features = ["client"] }
 serum-common = { path = "../../common", features = ["client"] }
 serum-context = { path = "../../context" }
-spl-token = { version = "3.0.0-pre1", features = ["no-entrypoint"], default-features = false }
+spl-token = { version = "3.1", features = ["no-entrypoint"], default-features = false }
+solana-gateway-program = { git = "https://github.com/identity-com/on-chain-identity-gateway", branch = "develop", features = [ "no-entrypoint" ] }
+solana-gateway = { git = "https://github.com/identity-com/on-chain-identity-gateway", branch = "develop", features = [ "no-entrypoint" ] }
 clap = "3.0.0-beta.1"
-solana-client = "1.4.4"
-solana-sdk = "1.4.4"
+solana-client = "1.7.0"
+solana-sdk = "1.7.0"
 anyhow = "1.0.32"
 rand = "0.7.3"
 safe-transmute = "0.11.0"
@@ -26,3 +28,4 @@ log = "0.4"
 debug_print = "1.0.0"
 tokio = {version = "0.2", features = ["full"]}
 warp = "0.2"
+bs58 = "0.4.0"
