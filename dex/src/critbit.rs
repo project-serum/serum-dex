@@ -28,7 +28,7 @@ enum NodeTag {
 #[derive(Copy, Clone)]
 #[repr(packed)]
 #[allow(dead_code)]
-struct InnerNode {
+pub struct InnerNode {
     tag: u32,
     prefix_len: u32,
     key: u128,
