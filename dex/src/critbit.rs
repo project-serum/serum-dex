@@ -91,7 +91,7 @@ impl LeafNode {
     #[inline]
     pub fn price(&self) -> NonZeroU64 {
         NonZeroU64::new((self.key >> 64) as u64).unwrap()
-    }
+    } 
 
     #[inline]
     pub fn order_id(&self) -> u128 {
@@ -492,7 +492,7 @@ pub enum SlabTreeError {
 }
 
 impl Slab {
-    fn root(&self) -> Option<NodeHandle> {
+    pub fn root(&self) -> Option<NodeHandle> {
         if self.header().leaf_count == 0 {
             return None;
         }
