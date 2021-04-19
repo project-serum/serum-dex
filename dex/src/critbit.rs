@@ -168,12 +168,12 @@ pub struct AnyNode {
 unsafe impl Zeroable for AnyNode {}
 unsafe impl Pod for AnyNode {}
 
-enum NodeRef<'a> {
+pub enum NodeRef<'a> {
     Inner(&'a InnerNode),
     Leaf(&'a LeafNode),
 }
 
-enum NodeRefMut<'a> {
+pub enum NodeRefMut<'a> {
     Inner(&'a mut InnerNode),
     Leaf(&'a mut LeafNode),
 }
