@@ -29,11 +29,11 @@ enum NodeTag {
 #[repr(packed)]
 #[allow(dead_code)]
 pub struct InnerNode {
-    tag: u32,
-    prefix_len: u32,
-    key: u128,
-    children: [u32; 2],
-    _padding: [u64; 5],
+    pub tag: u32,
+    pub prefix_len: u32,
+    pub key: u128,
+    pub children: [u32; 2],
+    pub _padding: [u64; 5],
 }
 unsafe impl Zeroable for InnerNode {}
 unsafe impl Pod for InnerNode {}
@@ -139,7 +139,7 @@ const fn _const_max(a: usize, b: usize) -> usize {
     let gt = (a > b) as usize;
     gt * a + (1 - gt) * b
 }
-
+ 
 const _INNER_NODE_SIZE: usize = size_of::<InnerNode>();
 const _LEAF_NODE_SIZE: usize = size_of::<LeafNode>();
 const _FREE_NODE_SIZE: usize = size_of::<FreeNode>();
