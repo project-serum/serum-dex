@@ -201,7 +201,7 @@ impl AnyNode {
         }
     }
 
-    fn case(&self) -> Option<NodeRef> {
+    pub fn case(&self) -> Option<NodeRef> {
         match NodeTag::try_from(self.tag) {
             Ok(NodeTag::InnerNode) => Some(NodeRef::Inner(cast_ref(self))),
             Ok(NodeTag::LeafNode) => Some(NodeRef::Leaf(cast_ref(self))),
@@ -511,7 +511,7 @@ impl Slab {
                 }
                 _ => return Some(root),
             }
-        }
+        } 
     }
 
     #[inline]
