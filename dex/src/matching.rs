@@ -45,7 +45,7 @@ pub enum OrderType {
     PostOnly = 2,
 }
 
-fn extract_price_from_order_id(order_id: u128) -> u64 {
+pub fn extract_price_from_order_id(order_id: u128) -> u64 {
     (order_id >> 64) as u64
 }
 
@@ -57,14 +57,14 @@ pub struct OrderBookState<'a> {
 }
 
 impl<'ob> OrderBookState<'ob> {
-    fn orders_mut(&mut self, side: Side) -> &mut Slab {
+    pub fn orders_mut(&mut self, side: Side) -> &mut Slab {
         match side {
             Side::Bid => self.bids,
             Side::Ask => self.asks,
         }
     }
 
-    fn find_bbo(&self, side: Side) -> Option<NodeHandle> {
+    pub fn find_bbo(&self, side: Side) -> Option<NodeHandle> {
         match side {
             Side::Bid => self.bids.find_max(),
             Side::Ask => self.asks.find_min(),
