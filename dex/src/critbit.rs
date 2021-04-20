@@ -255,7 +255,7 @@ pub struct SlabHeader {
     pub bump_index: u64,
     pub free_list_len: u64,
     pub free_list_head: u32,
- 
+
     pub root_node: u32,
     pub leaf_count: u64,
 }
