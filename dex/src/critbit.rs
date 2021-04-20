@@ -91,7 +91,7 @@ impl LeafNode {
     #[inline]
     pub fn price(&self) -> NonZeroU64 {
         NonZeroU64::new((self.key >> 64) as u64).unwrap()
-    } 
+    }
 
     #[inline]
     pub fn order_id(&self) -> u128 {
@@ -139,7 +139,6 @@ const fn _const_max(a: usize, b: usize) -> usize {
     let gt = (a > b) as usize;
     gt * a + (1 - gt) * b
 }
- 
 const _INNER_NODE_SIZE: usize = size_of::<InnerNode>();
 const _LEAF_NODE_SIZE: usize = size_of::<LeafNode>();
 const _FREE_NODE_SIZE: usize = size_of::<FreeNode>();
@@ -511,7 +510,7 @@ impl Slab {
                 }
                 _ => return Some(root),
             }
-        } 
+        }
     }
 
     #[inline]
