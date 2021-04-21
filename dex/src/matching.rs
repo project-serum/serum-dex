@@ -143,7 +143,7 @@ impl<'ob> OrderBookState<'ob> {
     }
 }
 
-pub(crate) struct RequestProceeds {
+pub struct RequestProceeds {
     pub coin_unlocked: u64,
     pub native_pc_unlocked: u64,
 
@@ -182,7 +182,7 @@ impl RequestProceeds {
     impl_incr_method!(debit_native_pc, native_pc_debit);
 }
 
-pub(crate) struct NewOrderParams {
+pub struct NewOrderParams {
     side: Side,
     order_type: OrderType,
     order_id: u128,
@@ -195,13 +195,13 @@ pub(crate) struct NewOrderParams {
     self_trade_behavior: SelfTradeBehavior,
 }
 
-struct OrderRemaining {
+pub struct OrderRemaining {
     coin_qty_remaining: NonZeroU64,
     native_pc_qty_remaining: Option<NonZeroU64>,
 }
 
 impl<'ob> OrderBookState<'ob> {
-    fn new_order(
+    pub fn new_order(
         &mut self,
 
         params: NewOrderParams,
