@@ -28,12 +28,12 @@ enum NodeTag {
 #[derive(Copy, Clone)]
 #[repr(packed)]
 #[allow(dead_code)]
-pub struct InnerNode {
-    pub tag: u32,
-    pub prefix_len: u32,
-    pub key: u128,
-    pub children: [u32; 2],
-    pub _padding: [u64; 5],
+struct InnerNode {
+    tag: u32,
+    prefix_len: u32,
+    key: u128,
+    children: [u32; 2],
+    _padding: [u64; 5],
 }
 unsafe impl Zeroable for InnerNode {}
 unsafe impl Pod for InnerNode {}
@@ -139,6 +139,7 @@ const fn _const_max(a: usize, b: usize) -> usize {
     let gt = (a > b) as usize;
     gt * a + (1 - gt) * b
 }
+
 const _INNER_NODE_SIZE: usize = size_of::<InnerNode>();
 const _LEAF_NODE_SIZE: usize = size_of::<LeafNode>();
 const _FREE_NODE_SIZE: usize = size_of::<FreeNode>();
@@ -167,12 +168,12 @@ pub struct AnyNode {
 unsafe impl Zeroable for AnyNode {}
 unsafe impl Pod for AnyNode {}
 
-pub enum NodeRef<'a> {
+enum NodeRef<'a> {
     Inner(&'a InnerNode),
     Leaf(&'a LeafNode),
 }
 
-pub enum NodeRefMut<'a> {
+enum NodeRefMut<'a> {
     Inner(&'a mut InnerNode),
     Leaf(&'a mut LeafNode),
 }
@@ -200,7 +201,7 @@ impl AnyNode {
         }
     }
 
-    pub fn case(&self) -> Option<NodeRef> {
+    fn case(&self) -> Option<NodeRef> {
         match NodeTag::try_from(self.tag) {
             Ok(NodeTag::InnerNode) => Some(NodeRef::Inner(cast_ref(self))),
             Ok(NodeTag::LeafNode) => Some(NodeRef::Leaf(cast_ref(self))),
@@ -251,13 +252,13 @@ const_assert_eq!(_NODE_ALIGN, align_of::<AnyNode>());
 
 #[derive(Copy, Clone)]
 #[repr(packed)]
-pub struct SlabHeader {
-    pub bump_index: u64,
-    pub free_list_len: u64,
-    pub free_list_head: u32,
+struct SlabHeader {
+    bump_index: u64,
+    free_list_len: u64,
+    free_list_head: u32,
 
-    pub root_node: u32,
-    pub leaf_count: u64,
+    root_node: u32,
+    leaf_count: u64,
 }
 unsafe impl Zeroable for SlabHeader {}
 unsafe impl Pod for SlabHeader {}
@@ -346,19 +347,19 @@ impl Slab {
         (header, nodes)
     }
 
-    pub fn header(&self) -> &SlabHeader {
+    fn header(&self) -> &SlabHeader {
         self.parts().0
     }
 
-    pub fn header_mut(&mut self) -> &mut SlabHeader {
+    fn header_mut(&mut self) -> &mut SlabHeader {
         self.parts_mut().0
     }
 
-    pub fn nodes(&self) -> &[AnyNode] {
+    fn nodes(&self) -> &[AnyNode] {
         self.parts().1
     }
 
-    pub fn nodes_mut(&mut self) -> &mut [AnyNode] {
+    fn nodes_mut(&mut self) -> &mut [AnyNode] {
         self.parts_mut().1
     }
 }
@@ -491,7 +492,7 @@ pub enum SlabTreeError {
 }
 
 impl Slab {
-    pub fn root(&self) -> Option<NodeHandle> {
+    fn root(&self) -> Option<NodeHandle> {
         if self.header().leaf_count == 0 {
             return None;
         }
