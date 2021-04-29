@@ -29,9 +29,9 @@ use crate::{
     error::{DexErrorCode, DexResult, SourceFileId},
     fees::{self, FeeTier},
     instruction::{
-        disable_authority, fee_sweeper, msrm_token, srm_token,
-        CancelOrderInstructionV2, InitializeMarketInstruction, MarketInstruction,
-        NewOrderInstructionV3, SelfTradeBehavior, SendTakeInstruction,
+        disable_authority, fee_sweeper, msrm_token, srm_token, CancelOrderInstructionV2,
+        InitializeMarketInstruction, MarketInstruction, NewOrderInstructionV3, SelfTradeBehavior,
+        SendTakeInstruction,
     },
     matching::{OrderBookState, OrderType, RequestProceeds, Side},
 };
@@ -1795,7 +1795,6 @@ pub(crate) mod account_parser {
         }
     }
 
-
     pub struct CancelOrderByClientIdV2Args<'a, 'b: 'a> {
         pub client_order_id: NonZeroU64,
         pub open_orders_address: [u64; 4],
@@ -1994,6 +1993,59 @@ pub(crate) mod account_parser {
             f(args)
         }
     }
+
+    pub struct CloseOpenOrdersArgs<'a, 'b: 'a> {
+        pub open_orders_acc: &'a AccountInfo<'b>,
+        pub dest_acc: &'a AccountInfo<'b>,
+    }
+
+    impl<'a, 'b: 'a> CloseOpenOrdersArgs<'a, 'b> {
+        pub fn with_parsed_args<T>(
+            program_id: &'a Pubkey,
+            accounts: &'a [AccountInfo<'b>],
+            f: impl FnOnce(CloseOpenOrdersArgs) -> DexResult<T>,
+        ) -> DexResult<T> {
+            // Parse accounts.
+            check_assert_eq!(accounts.len(), 1)?;
+            #[rustfmt::skip]
+            let &[
+                ref open_orders_acc,
+                ref owner_acc,
+                ref dest_acc,
+                ref market_acc,
+                ref rent_acc,
+            ] = array_ref![accounts, 0, 5];
+
+            // Validate the accounts given are valid.
+            let rent = {
+                let rent_sysvar = RentSysvarAccount::new(rent_acc)?;
+                Rent::from_account_info(rent_sysvar.inner()).or(check_unreachable!())?
+            };
+            let _dest_token_account = TokenAccount::new(dest_acc)?;
+            let owner = SignerAccount::new(owner_acc)?;
+            let market: RefMut<'a, MarketState> = MarketState::load(market_acc, program_id)?;
+            let open_orders = market.load_orders_mut(
+                open_orders_acc,
+                Some(owner.inner()),
+                program_id,
+                Some(rent),
+            )?;
+
+            // Only accounts with no funds associated with them can be closed.
+            if open_orders.native_coin_total != 0 {
+                return Err(DexErrorCode::TooManyOpenOrders.into());
+            }
+            if open_orders.native_pc_total != 0 {
+                return Err(DexErrorCode::TooManyOpenOrders.into());
+            }
+
+            // Invoke processor.
+            f(CloseOpenOrdersArgs {
+                open_orders_acc,
+                dest_acc,
+            })
+        }
+    }
 }
 
 #[inline]
@@ -2033,8 +2085,7 @@ impl State {
                     Self::process_new_order_v3,
                 )?
             }
-            MarketInstruction::MatchOrders(_limit) => {
-            }
+            MarketInstruction::MatchOrders(_limit) => {}
             MarketInstruction::ConsumeEvents(limit) => {
                 account_parser::ConsumeEventsArgs::with_parsed_args(
                     program_id,
@@ -2090,6 +2141,13 @@ impl State {
                     Self::process_send_take,
                 )?
             }
+            MarketInstruction::CloseOpenOrders => {
+                account_parser::CloseOpenOrdersArgs::with_parsed_args(
+                    program_id,
+                    accounts,
+                    Self::process_close_open_orders,
+                )?
+            }
         };
         Ok(())
     }
@@ -2097,6 +2155,19 @@ impl State {
     #[cfg(feature = "program")]
     fn process_send_take(_args: account_parser::SendTakeArgs) -> DexResult {
         unimplemented!()
+    }
+
+    fn process_close_open_orders(args: account_parser::CloseOpenOrdersArgs) -> DexResult {
+        let account_parser::CloseOpenOrdersArgs {
+            open_orders_acc,
+            dest_acc,
+        } = args;
+        let dest_starting_lamports = dest_acc.lamports();
+        **dest_acc.lamports.borrow_mut() = dest_starting_lamports
+            .checked_add(open_orders_acc.lamports())
+            .unwrap();
+        **open_orders_acc.lamports.borrow_mut() = 0;
+        Ok(())
     }
 
     #[cfg(feature = "program")]
@@ -2474,7 +2545,7 @@ impl State {
             &mut proceeds,
             &mut limit,
         )?;
-        
+
         check_assert!(unfilled_portion.is_none())?;
 
         {

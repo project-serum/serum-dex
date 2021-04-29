@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use solana_program::{
     instruction::{AccountMeta, Instruction},
     pubkey::Pubkey,
+    sysvar::rent,
 };
 use std::{cmp::max, convert::TryInto};
 
@@ -432,6 +433,12 @@ pub enum MarketInstruction {
     /// 3. `[writable]` OpenOrders
     /// 4. `[]`
     SendTake(SendTakeInstruction),
+    /// 0. `[writable]` OpenOrders
+    /// 1. `[signer]` the OpenOrders owner
+    /// 2. `[writable]` the destination account to send rent exemption SOL to
+    /// 3. `[]` market
+    /// 4. `[]` the rent sysvar
+    CloseOpenOrders,
 }
 
 impl MarketInstruction {
@@ -523,6 +530,7 @@ impl MarketInstruction {
                 let data_arr = array_ref![data, 0, 46];
                 SendTakeInstruction::unpack(data_arr)?
             }),
+            (14, 0) => MarketInstruction::CloseOpenOrders,
             _ => return None,
         })
     }
@@ -623,7 +631,7 @@ pub fn new_order(
     client_order_id: u64,
     self_trade_behavior: SelfTradeBehavior,
     limit: u16,
-    max_native_pc_qty_including_fees: NonZeroU64
+    max_native_pc_qty_including_fees: NonZeroU64,
 ) -> Result<Instruction, DexError> {
     let data = MarketInstruction::NewOrderV3(NewOrderInstructionV3 {
         side,
@@ -633,7 +641,7 @@ pub fn new_order(
         client_order_id,
         self_trade_behavior,
         limit,
-        max_native_pc_qty_including_fees
+        max_native_pc_qty_including_fees,
     })
     .pack();
     let mut accounts = vec![
@@ -726,11 +734,7 @@ pub fn cancel_order(
     side: Side,
     order_id: u128,
 ) -> Result<Instruction, DexError> {
-    let data = MarketInstruction::CancelOrderV2(CancelOrderInstructionV2 {
-        side,
-        order_id,
-    })
-    .pack();
+    let data = MarketInstruction::CancelOrderV2(CancelOrderInstructionV2 { side, order_id }).pack();
     let accounts: Vec<AccountMeta> = vec![
         AccountMeta::new_readonly(*market, false),
         AccountMeta::new_readonly(*market_bids, false),
@@ -841,6 +845,28 @@ pub fn sweep_fees(
         AccountMeta::new(*fee_receivable_account, false),
         AccountMeta::new_readonly(*vault_signer, false),
         AccountMeta::new_readonly(*spl_token_program_id, false),
+    ];
+    Ok(Instruction {
+        program_id: *program_id,
+        data,
+        accounts,
+    })
+}
+
+pub fn close_open_orders(
+    program_id: &Pubkey,
+    open_orders: &Pubkey,
+    owner: &Pubkey,
+    destination: &Pubkey,
+    market: &Pubkey,
+) -> Result<Instruction, DexError> {
+    let data = MarketInstruction::CloseOpenOrders.pack();
+    let accounts: Vec<AccountMeta> = vec![
+        AccountMeta::new(*open_orders, false),
+        AccountMeta::new_readonly(*owner, true),
+        AccountMeta::new(*destination, false),
+        AccountMeta::new_readonly(*market, false),
+        AccountMeta::new_readonly(rent::ID, false),
     ];
     Ok(Instruction {
         program_id: *program_id,
