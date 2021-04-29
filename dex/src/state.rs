@@ -1995,6 +1995,7 @@ pub(crate) mod account_parser {
     }
 
     pub struct CloseOpenOrdersArgs<'a, 'b: 'a> {
+        pub open_orders: &'a mut OpenOrders,
         pub open_orders_acc: &'a AccountInfo<'b>,
         pub dest_acc: &'a AccountInfo<'b>,
     }
@@ -2024,7 +2025,7 @@ pub(crate) mod account_parser {
             let _dest_token_account = TokenAccount::new(dest_acc)?;
             let owner = SignerAccount::new(owner_acc)?;
             let market: RefMut<'a, MarketState> = MarketState::load(market_acc, program_id)?;
-            let open_orders = market.load_orders_mut(
+            let mut open_orders = market.load_orders_mut(
                 open_orders_acc,
                 Some(owner.inner()),
                 program_id,
@@ -2041,6 +2042,7 @@ pub(crate) mod account_parser {
 
             // Invoke processor.
             f(CloseOpenOrdersArgs {
+                open_orders: open_orders.deref_mut(),
                 open_orders_acc,
                 dest_acc,
             })
@@ -2159,14 +2161,21 @@ impl State {
 
     fn process_close_open_orders(args: account_parser::CloseOpenOrdersArgs) -> DexResult {
         let account_parser::CloseOpenOrdersArgs {
+            open_orders,
             open_orders_acc,
             dest_acc,
         } = args;
+
+        // Transfer all lamports to the destination.
         let dest_starting_lamports = dest_acc.lamports();
         **dest_acc.lamports.borrow_mut() = dest_starting_lamports
             .checked_add(open_orders_acc.lamports())
             .unwrap();
         **open_orders_acc.lamports.borrow_mut() = 0;
+
+        // Wipe the account data.
+        *open_orders = Zeroable::zeroed();
+
         Ok(())
     }
 
