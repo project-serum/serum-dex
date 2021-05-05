@@ -2022,7 +2022,6 @@ pub(crate) mod account_parser {
                 let rent_sysvar = RentSysvarAccount::new(rent_acc)?;
                 Rent::from_account_info(rent_sysvar.inner()).or(check_unreachable!())?
             };
-            let _dest_token_account = TokenAccount::new(dest_acc)?;
             let owner = SignerAccount::new(owner_acc)?;
             let market: RefMut<'a, MarketState> = MarketState::load(market_acc, program_id)?;
             let mut open_orders = market.load_orders_mut(
