@@ -437,7 +437,6 @@ pub enum MarketInstruction {
     /// 1. `[signer]` the OpenOrders owner
     /// 2. `[writable]` the destination account to send rent exemption SOL to
     /// 3. `[]` market
-    /// 4. `[]` the rent sysvar
     CloseOpenOrders,
 }
 
@@ -866,7 +865,6 @@ pub fn close_open_orders(
         AccountMeta::new_readonly(*owner, true),
         AccountMeta::new(*destination, false),
         AccountMeta::new_readonly(*market, false),
-        AccountMeta::new_readonly(rent::ID, false),
     ];
     Ok(Instruction {
         program_id: *program_id,

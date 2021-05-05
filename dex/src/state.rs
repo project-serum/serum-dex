@@ -2007,29 +2007,20 @@ pub(crate) mod account_parser {
             f: impl FnOnce(CloseOpenOrdersArgs) -> DexResult<T>,
         ) -> DexResult<T> {
             // Parse accounts.
-            check_assert_eq!(accounts.len(), 5)?;
+            check_assert_eq!(accounts.len(), 4)?;
             #[rustfmt::skip]
             let &[
                 ref open_orders_acc,
                 ref owner_acc,
                 ref dest_acc,
                 ref market_acc,
-                ref rent_acc,
-            ] = array_ref![accounts, 0, 5];
+            ] = array_ref![accounts, 0, 4];
 
             // Validate the accounts given are valid.
-            let rent = {
-                let rent_sysvar = RentSysvarAccount::new(rent_acc)?;
-                Rent::from_account_info(rent_sysvar.inner()).or(check_unreachable!())?
-            };
             let owner = SignerAccount::new(owner_acc)?;
             let market: RefMut<'a, MarketState> = MarketState::load(market_acc, program_id)?;
-            let mut open_orders = market.load_orders_mut(
-                open_orders_acc,
-                Some(owner.inner()),
-                program_id,
-                Some(rent),
-            )?;
+            let mut open_orders =
+                market.load_orders_mut(open_orders_acc, Some(owner.inner()), program_id, None)?;
 
             // Only accounts with no funds associated with them can be closed.
             if open_orders.native_coin_total != 0 {
