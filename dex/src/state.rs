@@ -2048,6 +2048,45 @@ pub(crate) mod account_parser {
             })
         }
     }
+
+    pub struct InitOpenOrdersArgs;
+
+    impl InitOpenOrdersArgs {
+        pub fn with_parsed_args<T>(
+            program_id: &Pubkey,
+            accounts: &[AccountInfo],
+            f: impl FnOnce(InitOpenOrdersArgs) -> DexResult<T>,
+        ) -> DexResult<T> {
+            // Parse accounts.
+            check_assert_eq!(accounts.len(), 4)?;
+            #[rustfmt::skip]
+            let &[
+                ref open_orders_acc,
+                ref owner_acc,
+                ref market_acc,
+                ref rent_acc,
+            ] = array_ref![accounts, 0, 4];
+
+            // Validate the accounts given are valid.
+            let rent = {
+                let rent_sysvar = RentSysvarAccount::new(rent_acc)?;
+                Rent::from_account_info(rent_sysvar.inner()).or(check_unreachable!())?
+            };
+            let owner = SignerAccount::new(owner_acc)?;
+            let market = MarketState::load(market_acc, program_id)?;
+
+            // Perform open orders initialization.
+            let _open_orders = market.load_orders_mut(
+                open_orders_acc,
+                Some(owner.inner()),
+                program_id,
+                Some(rent),
+            )?;
+
+            // Invoke processor.
+            f(InitOpenOrdersArgs)
+        }
+    }
 }
 
 #[inline]
@@ -2150,6 +2189,13 @@ impl State {
                     Self::process_close_open_orders,
                 )?
             }
+            MarketInstruction::InitOpenOrders => {
+                account_parser::InitOpenOrdersArgs::with_parsed_args(
+                    program_id,
+                    accounts,
+                    Self::process_init_open_orders,
+                )?
+            }
         };
         Ok(())
     }
@@ -2157,6 +2203,10 @@ impl State {
     #[cfg(feature = "program")]
     fn process_send_take(_args: account_parser::SendTakeArgs) -> DexResult {
         unimplemented!()
+    }
+
+    fn process_init_open_orders(_args: account_parser::InitOpenOrdersArgs) -> DexResult {
+        Ok(())
     }
 
     fn process_close_open_orders(args: account_parser::CloseOpenOrdersArgs) -> DexResult {

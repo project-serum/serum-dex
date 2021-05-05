@@ -42,8 +42,8 @@ use serum_common::client::Cluster;
 use serum_context::Context;
 use serum_dex::instruction::{
     cancel_order_by_client_order_id as cancel_order_by_client_order_id_ix,
-    close_open_orders as close_open_orders_ix, MarketInstruction, NewOrderInstructionV3,
-    SelfTradeBehavior,
+    close_open_orders as close_open_orders_ix, init_open_orders as init_open_orders_ix,
+    MarketInstruction, NewOrderInstructionV3, SelfTradeBehavior,
 };
 use serum_dex::matching::{OrderType, Side};
 use serum_dex::state::gen_vault_signer_key;
@@ -850,8 +850,12 @@ fn whole_shebang(client: &RpcClient, program_id: &Pubkey, payer: &Keypair) -> Re
     )?;
     debug_println!("Minted {}", pc_wallet.pubkey());
 
-    debug_println!("Placing bid...");
     let mut orders = None;
+
+    debug_println!("Initializing open orders");
+    init_open_orders(client, program_id, payer, &market_keys, &mut orders)?;
+
+    debug_println!("Placing bid...");
     place_order(
         client,
         program_id,
@@ -993,6 +997,51 @@ pub fn close_open_orders(
         return Err(format_err!("simulate_transaction error: {:?}", e));
     }
 
+    send_txn(client, &txn, false)?;
+    Ok(())
+}
+
+pub fn init_open_orders(
+    client: &RpcClient,
+    program_id: &Pubkey,
+    owner: &Keypair,
+    state: &MarketPubkeys,
+    orders: &mut Option<Pubkey>,
+) -> Result<()> {
+    let mut instructions = Vec::new();
+    let orders_keypair;
+    let mut signers = Vec::new();
+    let orders_pubkey = match *orders {
+        Some(pk) => pk,
+        None => {
+            let (orders_key, instruction) = create_dex_account(
+                client,
+                program_id,
+                &owner.pubkey(),
+                size_of::<serum_dex::state::OpenOrders>(),
+            )?;
+            orders_keypair = orders_key;
+            signers.push(&orders_keypair);
+            instructions.push(instruction);
+            orders_keypair.pubkey()
+        }
+    };
+    *orders = Some(orders_pubkey);
+    instructions.push(init_open_orders_ix(
+        program_id,
+        &orders_pubkey,
+        &owner.pubkey(),
+        &state.market,
+    )?);
+    signers.push(owner);
+
+    let (recent_hash, _fee_calc) = client.get_recent_blockhash()?;
+    let txn = Transaction::new_signed_with_payer(
+        &instructions,
+        Some(&owner.pubkey()),
+        &signers,
+        recent_hash,
+    );
     send_txn(client, &txn, false)?;
     Ok(())
 }
