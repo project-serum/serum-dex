@@ -2007,7 +2007,7 @@ pub(crate) mod account_parser {
             f: impl FnOnce(CloseOpenOrdersArgs) -> DexResult<T>,
         ) -> DexResult<T> {
             // Parse accounts.
-            check_assert_eq!(accounts.len(), 1)?;
+            check_assert_eq!(accounts.len(), 5)?;
             #[rustfmt::skip]
             let &[
                 ref open_orders_acc,
