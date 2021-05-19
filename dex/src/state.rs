@@ -62,8 +62,8 @@ pub enum AccountFlag {
     Disabled = 1u64 << 7,
 }
 
-#[cfg_attr(target_endian = "little", derive(Debug))]
 #[derive(Copy, Clone)]
+#[cfg_attr(target_endian = "little", derive(Debug))]
 #[repr(packed)]
 pub struct MarketState {
     // 0
