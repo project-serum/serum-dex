@@ -40,7 +40,10 @@ use serum_common::client::rpc::{
 };
 use serum_common::client::Cluster;
 use serum_context::Context;
-use serum_dex::instruction::{MarketInstruction, NewOrderInstructionV3, SelfTradeBehavior};
+use serum_dex::instruction::{
+    close_open_orders as close_open_orders_ix, MarketInstruction, NewOrderInstructionV3,
+    SelfTradeBehavior,
+};
 use serum_dex::matching::{OrderType, Side};
 use serum_dex::state::gen_vault_signer_key;
 use serum_dex::state::Event;
@@ -866,6 +869,33 @@ fn whole_shebang(client: &RpcClient, program_id: &Pubkey, payer: &Keypair) -> Re
         &coin_wallet.pubkey(),
         &pc_wallet.pubkey(),
     )?;
+    close_open_orders(
+        client,
+        program_id,
+        payer,
+        &market_keys,
+        orders.as_ref().unwrap(),
+    )?;
+    Ok(())
+}
+
+pub fn close_open_orders(
+    client: &RpcClient,
+    program_id: &Pubkey,
+    owner: &Keypair,
+    state: &MarketPubkeys,
+    orders: &Pubkey,
+) -> Result<()> {
+    let ixs = &[close_open_orders_ix(
+        program_id,
+        orders,
+        &owner.pubkey(),
+        &owner.pubkey(),
+        &state.market,
+    )?];
+    let (recent_hash, _fee_calc) = client.get_recent_blockhash()?;
+    let txn = Transaction::new_signed_with_payer(ixs, Some(&owner.pubkey()), &[owner], recent_hash);
+    send_txn(client, &txn, false)?;
     Ok(())
 }
 
