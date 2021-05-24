@@ -852,9 +852,12 @@ impl<'ob> OrderBookState<'ob> {
         let out = {
             let native_qty_still_locked = pc_qty_to_keep_locked * pc_lot_size;
             let native_qty_unlocked = native_pc_qty_remaining - native_qty_still_locked;
+
+            to_release.unlock_native_pc(native_qty_unlocked);
+
             Event::new(EventView::Out {
                 side: Side::Bid,
-                release_funds: true,
+                release_funds: false,
                 native_qty_unlocked,
                 native_qty_still_locked,
                 order_id,

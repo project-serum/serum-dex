@@ -349,7 +349,7 @@ fn test_new_order() {
             .unwrap();
         assert_eq!(identity(open_orders_buyer.native_coin_free), 0);
         assert_eq!(identity(open_orders_buyer.native_coin_total), 0);
-        assert_eq!(identity(open_orders_buyer.native_pc_free), 0);
+        assert_eq!(identity(open_orders_buyer.native_pc_free), 20_000);
         assert_eq!(identity(open_orders_buyer.native_pc_total), 520_000);
         let open_orders_seller = MarketState::load(&accounts.market, &dex_program_id)
             .unwrap()
