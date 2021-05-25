@@ -2,12 +2,12 @@
 #![allow(dead_code)]
 
 use std::borrow::Cow;
-use std::cmp::{ min, max };
+use std::cmp::{max, min};
 use std::collections::BTreeSet;
 use std::convert::identity;
 use std::mem::size_of;
 use std::num::NonZeroU64;
-use std::sync::{ Arc, Mutex };
+use std::sync::{Arc, Mutex};
 use std::{thread, time};
 
 use anyhow::{format_err, Result};
@@ -515,20 +515,18 @@ fn consume_events_loop(
     info!("{:#?}", market_keys);
     let pool = threadpool::ThreadPool::new(num_workers);
     let max_slot_height_mutex = Arc::new(Mutex::new(0_u64));
-    let mut last_cranked_at = std::time::Instant::now().checked_sub(
-        std::time::Duration::from_secs(max_wait_for_events_delay)
-    ).unwrap_or(std::time::Instant::now());
+    let mut last_cranked_at = std::time::Instant::now()
+        .checked_sub(std::time::Duration::from_secs(max_wait_for_events_delay))
+        .unwrap_or(std::time::Instant::now());
 
     loop {
         thread::sleep(time::Duration::from_millis(1000));
 
         let loop_start = std::time::Instant::now();
         let start_time = std::time::Instant::now();
-        let event_q_value_and_context = client
-            .get_account_with_commitment(&market_keys.event_q, CommitmentConfig::recent())?;
-        let event_q_slot = event_q_value_and_context
-            .context
-            .slot;
+        let event_q_value_and_context =
+            client.get_account_with_commitment(&market_keys.event_q, CommitmentConfig::recent())?;
+        let event_q_slot = event_q_value_and_context.context.slot;
         let max_slot_height = max_slot_height_mutex.lock().unwrap();
         if event_q_slot <= *max_slot_height {
             info!(
@@ -558,13 +556,15 @@ fn consume_events_loop(
             req_q_len, market, coin_wallet, pc_wallet
         );
 
-        if std::time::Duration::from_secs(max_wait_for_events_delay).lt(
-            &last_cranked_at.elapsed()
-        ) && (event_q_len as u64) < max_q_length {
+        if std::time::Duration::from_secs(max_wait_for_events_delay).lt(&last_cranked_at.elapsed())
+            && (event_q_len as u64) < max_q_length
+        {
             info!(
                 "Skipping crank. Last cranked {} seconds ago and queue only has {} events. \
                 Event queue slot: {}",
-                last_cranked_at.elapsed().as_secs(), event_q_len, event_q_slot
+                last_cranked_at.elapsed().as_secs(),
+                event_q_len,
+                event_q_slot
             );
             continue;
         } else if event_q_len == 0 {
@@ -683,7 +683,7 @@ fn consume_events_wrapper(
             );
             let mut max_slot_height = max_slot_height_mutex.lock().unwrap();
             *max_slot_height = max(slot, *max_slot_height);
-        },
+        }
         Err(err) => {
             error!("[thread {}] Received error: {:?}", thread_num, err);
         }
