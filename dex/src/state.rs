@@ -2029,7 +2029,7 @@ pub(crate) mod account_parser {
             if open_orders.native_pc_total != 0 {
                 return Err(DexErrorCode::TooManyOpenOrders.into());
             }
-            if open_orders.free_slot_bits != u128::MAX {
+            if open_orders.free_slot_bits != std::u128::MAX {
                 return Err(DexErrorCode::TooManyOpenOrders.into());
             }
 
