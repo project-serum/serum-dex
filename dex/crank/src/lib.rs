@@ -559,7 +559,7 @@ fn consume_events_loop(
         if event_q_len == 0 {
             continue;
         } else if std::time::Duration::from_secs(max_wait_for_events_delay)
-            .lt(&last_cranked_at.elapsed())
+            .gt(&last_cranked_at.elapsed())
             && (event_q_len as u64) < max_q_length
         {
             info!(
