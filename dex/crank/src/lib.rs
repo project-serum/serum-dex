@@ -128,6 +128,10 @@ pub enum Command {
         num_accounts: Option<usize>,
         #[clap(long)]
         log_directory: String,
+        #[clap(long)]
+        max_q_length: Option<u64>,
+        #[clap(long)]
+        max_wait_for_events_delay: Option<u64>,
     },
     MatchOrders {
         #[clap(long, short)]
@@ -262,6 +266,8 @@ pub fn start(ctx: Option<Context>, opts: Opts) -> Result<()> {
             events_per_worker,
             ref num_accounts,
             ref log_directory,
+            ref max_q_length,
+            ref max_wait_for_events_delay,
         } => {
             init_logger(log_directory);
             consume_events_loop(
@@ -274,6 +280,8 @@ pub fn start(ctx: Option<Context>, opts: Opts) -> Result<()> {
                 num_workers,
                 events_per_worker,
                 num_accounts.unwrap_or(32),
+                max_q_length.unwrap_or(1),
+                max_wait_for_events_delay.unwrap_or(60),
             )?;
         }
         Command::MonitorQueue {
@@ -498,6 +506,8 @@ fn consume_events_loop(
     num_workers: usize,
     events_per_worker: usize,
     num_accounts: usize,
+    max_q_length: u64,
+    max_wait_for_events_delay: u64,
 ) -> Result<()> {
     info!("Getting market keys ...");
     let client = opts.client();
@@ -505,6 +515,9 @@ fn consume_events_loop(
     info!("{:#?}", market_keys);
     let pool = threadpool::ThreadPool::new(num_workers);
     let max_slot_height_mutex = Arc::new(Mutex::new(0_u64));
+    let mut last_cranked_at = std::time::Instant::now().checked_sub(
+        std::time::Duration::from_secs(max_wait_for_events_delay)
+    ).unwrap_or(std::time::Instant::now());
 
     loop {
         thread::sleep(time::Duration::from_millis(1000));
@@ -545,7 +558,16 @@ fn consume_events_loop(
             req_q_len, market, coin_wallet, pc_wallet
         );
 
-        if event_q_len == 0 {
+        if std::time::Duration::from_secs(max_wait_for_events_delay).lt(
+            &last_cranked_at.elapsed()
+        ) && (event_q_len as u64) < max_q_length {
+            info!(
+                "Skipping crank. Last cranked {} seconds ago and queue only has {} events. \
+                Event queue slot: {}",
+                last_cranked_at.elapsed().as_secs(), event_q_len, event_q_slot
+            );
+            continue;
+        } else if event_q_len == 0 {
             continue;
         } else {
             info!(
@@ -621,10 +643,10 @@ fn consume_events_loop(
                 });
             }
             pool.join();
-            let loop_end = std::time::Instant::now();
+            last_cranked_at = std::time::Instant::now();
             info!(
                 "Total loop time took {}",
-                loop_end.duration_since(loop_start).as_millis()
+                last_cranked_at.duration_since(loop_start).as_millis()
             );
         }
     }
