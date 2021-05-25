@@ -556,7 +556,10 @@ fn consume_events_loop(
             req_q_len, market, coin_wallet, pc_wallet
         );
 
-        if std::time::Duration::from_secs(max_wait_for_events_delay).lt(&last_cranked_at.elapsed())
+        if event_q_len == 0 {
+            continue;
+        } else if std::time::Duration::from_secs(max_wait_for_events_delay)
+            .lt(&last_cranked_at.elapsed())
             && (event_q_len as u64) < max_q_length
         {
             info!(
@@ -566,8 +569,6 @@ fn consume_events_loop(
                 event_q_len,
                 event_q_slot
             );
-            continue;
-        } else if event_q_len == 0 {
             continue;
         } else {
             info!(
