@@ -41,6 +41,7 @@ use serum_common::client::rpc::{
 use serum_common::client::Cluster;
 use serum_context::Context;
 use serum_dex::instruction::{
+    cancel_order_by_client_order_id as cancel_order_by_client_order_id_ix,
     close_open_orders as close_open_orders_ix, MarketInstruction, NewOrderInstructionV3,
     SelfTradeBehavior,
 };
@@ -847,6 +848,16 @@ fn whole_shebang(client: &RpcClient, program_id: &Pubkey, payer: &Keypair) -> Re
         },
     )?;
 
+    // Cancel the open order so that we can close it later.
+    cancel_order_by_client_order_id(
+        client,
+        program_id,
+        payer,
+        &market_keys,
+        &orders.unwrap(),
+        985982,
+    )?;
+
     debug_println!("Ask account: {}", orders.unwrap());
 
     debug_println!("Consuming events in 15s ...");
@@ -879,6 +890,39 @@ fn whole_shebang(client: &RpcClient, program_id: &Pubkey, payer: &Keypair) -> Re
     Ok(())
 }
 
+pub fn cancel_order_by_client_order_id(
+    client: &RpcClient,
+    program_id: &Pubkey,
+    owner: &Keypair,
+    state: &MarketPubkeys,
+    orders: &Pubkey,
+    client_order_id: u64,
+) -> Result<()> {
+    debug_println!("Closing open orders...");
+    let ixs = &[cancel_order_by_client_order_id_ix(
+        program_id,
+        &state.market,
+        &state.bids,
+        &state.asks,
+        orders,
+        &owner.pubkey(),
+        &state.event_q,
+        client_order_id,
+    )?];
+    let (recent_hash, _fee_calc) = client.get_recent_blockhash()?;
+    let txn = Transaction::new_signed_with_payer(ixs, Some(&owner.pubkey()), &[owner], recent_hash);
+
+    debug_println!("Canceling order by client order id instruction ...");
+    let result = simulate_transaction(client, &txn, true, CommitmentConfig::confirmed())?;
+    if let Some(e) = result.value.err {
+        debug_println!("{:#?}", result.value.logs);
+        return Err(format_err!("simulate_transaction error: {:?}", e));
+    }
+
+    send_txn(client, &txn, false)?;
+    Ok(())
+}
+
 pub fn close_open_orders(
     client: &RpcClient,
     program_id: &Pubkey,
@@ -886,6 +930,7 @@ pub fn close_open_orders(
     state: &MarketPubkeys,
     orders: &Pubkey,
 ) -> Result<()> {
+    debug_println!("Closing open orders...");
     let ixs = &[close_open_orders_ix(
         program_id,
         orders,
@@ -895,6 +940,14 @@ pub fn close_open_orders(
     )?];
     let (recent_hash, _fee_calc) = client.get_recent_blockhash()?;
     let txn = Transaction::new_signed_with_payer(ixs, Some(&owner.pubkey()), &[owner], recent_hash);
+
+    debug_println!("Simulating close open orders instruction ...");
+    let result = simulate_transaction(client, &txn, true, CommitmentConfig::confirmed())?;
+    if let Some(e) = result.value.err {
+        debug_println!("{:#?}", result.value.logs);
+        return Err(format_err!("simulate_transaction error: {:?}", e));
+    }
+
     send_txn(client, &txn, false)?;
     Ok(())
 }
