@@ -898,7 +898,6 @@ pub fn cancel_order_by_client_order_id(
     orders: &Pubkey,
     client_order_id: u64,
 ) -> Result<()> {
-    debug_println!("Closing open orders...");
     let ixs = &[cancel_order_by_client_order_id_ix(
         program_id,
         &state.market,
