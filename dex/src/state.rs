@@ -2175,7 +2175,7 @@ impl State {
 
         // Mark the account as closed to prevent it from being used before
         // garbage collection.
-        open_orders.account_flags = AccountFlag::Closed.bits();
+        open_orders.account_flags = AccountFlag::Closed as u64;
 
         Ok(())
     }
