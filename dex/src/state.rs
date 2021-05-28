@@ -60,6 +60,7 @@ pub enum AccountFlag {
     Bids = 1u64 << 5,
     Asks = 1u64 << 6,
     Disabled = 1u64 << 7,
+    Closed = 1u64 << 8,
 }
 
 #[derive(Copy, Clone)]
@@ -2172,8 +2173,9 @@ impl State {
             .unwrap();
         **open_orders_acc.lamports.borrow_mut() = 0;
 
-        // Wipe the account data.
-        *open_orders = Zeroable::zeroed();
+        // Mark the account as closed to prevent it from being used before
+        // garbage collection.
+        open_orders.account_flags = AccountFlag::Closed.bits();
 
         Ok(())
     }
