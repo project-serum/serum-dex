@@ -379,6 +379,7 @@ fn run_action<'bump>(
             .map_err(|e| match e {
                 DexError::ErrorCode(DexErrorCode::InsufficientFunds) => {}
                 DexError::ErrorCode(DexErrorCode::RequestQueueFull) => {}
+                DexError::ErrorCode(DexErrorCode::OrdersNotRentExempt) => {}
                 DexError::ErrorCode(DexErrorCode::WouldSelfTrade)
                     if instruction.self_trade_behavior == SelfTradeBehavior::AbortTransaction => {}
                 e => Err(e).unwrap(),
@@ -441,6 +442,7 @@ fn run_action<'bump>(
             .map_err(|e| match e {
                 DexError::ErrorCode(DexErrorCode::OrderNotFound) => {}
                 DexError::ErrorCode(DexErrorCode::RequestQueueFull) => {}
+                DexError::ErrorCode(DexErrorCode::RentNotProvided) => {}
                 DexError::ErrorCode(DexErrorCode::ClientOrderIdIsZero) if expects_zero_id => {}
                 e => Err(e).unwrap(),
             })
@@ -548,7 +550,11 @@ fn run_action<'bump>(
                 &accounts,
                 &MarketInstruction::SettleFunds.pack(),
             )
-            .unwrap();
+            .map_err(|e| match e {
+                DexError::ErrorCode(DexErrorCode::RentNotProvided) => {}
+                e => Err(e).unwrap(),
+            })
+            .ok();
         }
 
         Action::SweepFees => {
@@ -585,11 +591,6 @@ fn run_action<'bump>(
                 DexError::ErrorCode(DexErrorCode::TooManyOpenOrders) => {}
                 DexError::ErrorCode(DexErrorCode::RentNotProvided) => {}
                 e => Err(e).unwrap(),
-            })
-            .map(|r| {
-                // Only remove the owner if the close was successful.
-                owners.remove(&owner_id).unwrap();
-                r
             })
             .ok();
         }
