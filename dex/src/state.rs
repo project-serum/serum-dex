@@ -2023,13 +2023,19 @@ pub(crate) mod account_parser {
                 market.load_orders_mut(open_orders_acc, Some(owner.inner()), program_id, None)?;
 
             // Only accounts with no funds associated with them can be closed.
+            if open_orders.free_slot_bits != std::u128::MAX {
+                return Err(DexErrorCode::TooManyOpenOrders.into());
+            }
             if open_orders.native_coin_total != 0 {
+                solana_program::msg!(
+                    "Base currency total must be zero to close the open orders account"
+                );
                 return Err(DexErrorCode::TooManyOpenOrders.into());
             }
             if open_orders.native_pc_total != 0 {
-                return Err(DexErrorCode::TooManyOpenOrders.into());
-            }
-            if open_orders.free_slot_bits != std::u128::MAX {
+                solana_program::msg!(
+                    "Quote currency total must be zero to close the open orders account"
+                );
                 return Err(DexErrorCode::TooManyOpenOrders.into());
             }
 
