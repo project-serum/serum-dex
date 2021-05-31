@@ -87,6 +87,7 @@ struct Owner<'bump> {
     orders_account: AccountInfo<'bump>,
     coin_account: AccountInfo<'bump>,
     pc_account: AccountInfo<'bump>,
+    closed_open_orders: bool,
 }
 
 const INITIAL_COIN_BALANCE: u64 = 1_000_000_000;
@@ -120,6 +121,7 @@ impl<'bump> Owner<'bump> {
             orders_account,
             coin_account,
             pc_account,
+            closed_open_orders: false,
         }
     }
 
@@ -227,6 +229,9 @@ fn run_actions(actions: Vec<Action>) {
         let open_orders = match load_orders_result {
             Err(e) if e == DexErrorCode::RentNotProvided.into() => {
                 continue;
+            }
+            Err(e) if e == DexErrorCode::WrongOrdersAccount.into() && owner.closed_open_orders => {
+                continue
             }
             _ => load_orders_result.unwrap(),
         };
@@ -382,6 +387,8 @@ fn run_action<'bump>(
                 DexError::ErrorCode(DexErrorCode::OrdersNotRentExempt) => {}
                 DexError::ErrorCode(DexErrorCode::WouldSelfTrade)
                     if instruction.self_trade_behavior == SelfTradeBehavior::AbortTransaction => {}
+                DexError::ErrorCode(DexErrorCode::WrongOrdersAccount)
+                    if owner.closed_open_orders => {}
                 e => Err(e).unwrap(),
             })
             .ok();
@@ -444,6 +451,8 @@ fn run_action<'bump>(
                 DexError::ErrorCode(DexErrorCode::RequestQueueFull) => {}
                 DexError::ErrorCode(DexErrorCode::RentNotProvided) => {}
                 DexError::ErrorCode(DexErrorCode::ClientOrderIdIsZero) if expects_zero_id => {}
+                DexError::ErrorCode(DexErrorCode::WrongOrdersAccount)
+                    if owner.closed_open_orders => {}
                 e => Err(e).unwrap(),
             })
             .map(|_| {
@@ -486,6 +495,8 @@ fn run_action<'bump>(
                 DexError::ErrorCode(DexErrorCode::OrderNotFound) => {}
                 DexError::ErrorCode(DexErrorCode::OrderNotYours) => {}
                 DexError::ErrorCode(DexErrorCode::RentNotProvided) => {}
+                DexError::ErrorCode(DexErrorCode::WrongOrdersAccount)
+                    if owner.closed_open_orders => {}
                 e => Err(e).unwrap(),
             })
             .ok();
@@ -552,6 +563,8 @@ fn run_action<'bump>(
             )
             .map_err(|e| match e {
                 DexError::ErrorCode(DexErrorCode::RentNotProvided) => {}
+                DexError::ErrorCode(DexErrorCode::WrongOrdersAccount)
+                    if owner.closed_open_orders => {}
                 e => Err(e).unwrap(),
             })
             .ok();
@@ -572,7 +585,6 @@ fn run_action<'bump>(
             )
             .unwrap();
         }
-
         Action::CloseOpenOrders { owner_id } => {
             let owner = owners
                 .entry(owner_id)
@@ -590,7 +602,13 @@ fn run_action<'bump>(
             .map_err(|e| match e {
                 DexError::ErrorCode(DexErrorCode::TooManyOpenOrders) => {}
                 DexError::ErrorCode(DexErrorCode::RentNotProvided) => {}
+                DexError::ErrorCode(DexErrorCode::WrongOrdersAccount)
+                    if owner.closed_open_orders => {}
                 e => Err(e).unwrap(),
+            })
+            .map(|r| {
+                owner.closed_open_orders = true;
+                r
             })
             .ok();
         }
