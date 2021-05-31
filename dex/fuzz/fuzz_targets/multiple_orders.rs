@@ -45,6 +45,9 @@ enum Action {
     ConsumeEvents(u16),
     SettleFunds(OwnerId, Option<ReferrerId>),
     SweepFees,
+    InitOpenOrders {
+        owner_id: OwnerId,
+    },
     CloseOpenOrders {
         owner_id: OwnerId,
     },
@@ -585,6 +588,29 @@ fn run_action<'bump>(
             )
             .unwrap();
         }
+
+        Action::InitOpenOrders { owner_id } => {
+            let owner = owners
+                .entry(owner_id)
+                .or_insert_with(|| Owner::new(&market_accounts, &bump));
+            process_instruction(
+                market_accounts.market.owner,
+                &[
+                    owner.orders_account.clone(),
+                    owner.signer_account.clone(),
+                    market_accounts.market.clone(),
+                    market_accounts.rent_sysvar.clone(),
+                ],
+                &MarketInstruction::InitOpenOrders.pack(),
+            )
+            .map_err(|e| match e {
+                DexError::ErrorCode(DexErrorCode::WrongOrdersAccount)
+                    if owner.closed_open_orders => {}
+                e => Err(e).unwrap(),
+            })
+            .ok();
+        }
+
         Action::CloseOpenOrders { owner_id } => {
             let owner = owners
                 .entry(owner_id)

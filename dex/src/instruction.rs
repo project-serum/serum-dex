@@ -438,6 +438,11 @@ pub enum MarketInstruction {
     /// 2. `[writable]` the destination account to send rent exemption SOL to
     /// 3. `[]` market
     CloseOpenOrders,
+    /// 0. `[writable]` OpenOrders
+    /// 1. `[signer]` the OpenOrders owner
+    /// 2. `[]` market
+    /// 3. `[]` the rent sysvar
+    InitOpenOrders,
 }
 
 impl MarketInstruction {
@@ -530,6 +535,7 @@ impl MarketInstruction {
                 SendTakeInstruction::unpack(data_arr)?
             }),
             (14, 0) => MarketInstruction::CloseOpenOrders,
+            (15, 0) => MarketInstruction::InitOpenOrders,
             _ => return None,
         })
     }
@@ -865,6 +871,26 @@ pub fn close_open_orders(
         AccountMeta::new_readonly(*owner, true),
         AccountMeta::new(*destination, false),
         AccountMeta::new_readonly(*market, false),
+    ];
+    Ok(Instruction {
+        program_id: *program_id,
+        data,
+        accounts,
+    })
+}
+
+pub fn init_open_orders(
+    program_id: &Pubkey,
+    open_orders: &Pubkey,
+    owner: &Pubkey,
+    market: &Pubkey,
+) -> Result<Instruction, DexError> {
+    let data = MarketInstruction::InitOpenOrders.pack();
+    let accounts: Vec<AccountMeta> = vec![
+        AccountMeta::new(*open_orders, false),
+        AccountMeta::new_readonly(*owner, true),
+        AccountMeta::new_readonly(*market, false),
+        AccountMeta::new_readonly(rent::ID, false),
     ];
     Ok(Instruction {
         program_id: *program_id,
