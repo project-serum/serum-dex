@@ -42,7 +42,7 @@ dex_whole_shebang() {
     #
     # Deploy the program.
     #
-    local dex_program_id="$(solana deploy --url ${CLUSTER_URL} dex/target/bpfel-unknown-unknown/release/serum_dex.so | jq .ProgramId -r)"
+    local dex_program_id="$(solana deploy --output json-compact --url ${CLUSTER_URL} dex/target/bpfel-unknown-unknown/release/serum_dex.so | jq .programId -r)"
     #
     # Run the whole-shebang.
     #

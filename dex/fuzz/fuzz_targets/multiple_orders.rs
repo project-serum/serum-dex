@@ -22,8 +22,8 @@ use serum_dex::matching::Side;
 use serum_dex::state::{strip_header, MarketState, OpenOrders, ToAlignedBytes};
 use serum_dex_fuzz::{
     get_token_account_balance, new_dex_owned_account_with_lamports, new_sol_account,
-    new_token_account, process_instruction, setup_market, MarketAccounts, COIN_LOT_SIZE,
-    PC_LOT_SIZE, NoSolLoggingStubs,
+    new_token_account, process_instruction, setup_market, MarketAccounts, NoSolLoggingStubs,
+    COIN_LOT_SIZE, PC_LOT_SIZE,
 };
 
 #[derive(Debug, Arbitrary, Clone)]
@@ -45,6 +45,9 @@ enum Action {
     ConsumeEvents(u16),
     SettleFunds(OwnerId, Option<ReferrerId>),
     SweepFees,
+    CloseOpenOrders {
+        owner_id: OwnerId,
+    },
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy, PartialOrd, Ord)]
@@ -84,6 +87,7 @@ struct Owner<'bump> {
     orders_account: AccountInfo<'bump>,
     coin_account: AccountInfo<'bump>,
     pc_account: AccountInfo<'bump>,
+    closed_open_orders: bool,
 }
 
 const INITIAL_COIN_BALANCE: u64 = 1_000_000_000;
@@ -117,6 +121,7 @@ impl<'bump> Owner<'bump> {
             orders_account,
             coin_account,
             pc_account,
+            closed_open_orders: false,
         }
     }
 
@@ -129,8 +134,13 @@ impl<'bump> Owner<'bump> {
 impl<'bump> Referrer<'bump> {
     fn new(market_accounts: &MarketAccounts<'bump>, bump: &'bump Bump) -> Self {
         let signer_account = new_sol_account(10, &bump);
-        let pc_account =
-            new_token_account(market_accounts.pc_mint.key, signer_account.key, 0, &bump, market_accounts.rent());
+        let pc_account = new_token_account(
+            market_accounts.pc_mint.key,
+            signer_account.key,
+            0,
+            &bump,
+            market_accounts.rent(),
+        );
         Self { pc_account }
     }
 }
@@ -219,6 +229,9 @@ fn run_actions(actions: Vec<Action>) {
         let open_orders = match load_orders_result {
             Err(e) if e == DexErrorCode::RentNotProvided.into() => {
                 continue;
+            }
+            Err(e) if e == DexErrorCode::WrongOrdersAccount.into() && owner.closed_open_orders => {
+                continue
             }
             _ => load_orders_result.unwrap(),
         };
@@ -371,8 +384,11 @@ fn run_action<'bump>(
             .map_err(|e| match e {
                 DexError::ErrorCode(DexErrorCode::InsufficientFunds) => {}
                 DexError::ErrorCode(DexErrorCode::RequestQueueFull) => {}
+                DexError::ErrorCode(DexErrorCode::OrdersNotRentExempt) => {}
                 DexError::ErrorCode(DexErrorCode::WouldSelfTrade)
                     if instruction.self_trade_behavior == SelfTradeBehavior::AbortTransaction => {}
+                DexError::ErrorCode(DexErrorCode::WrongOrdersAccount)
+                    if owner.closed_open_orders => {}
                 e => Err(e).unwrap(),
             })
             .ok();
@@ -433,7 +449,10 @@ fn run_action<'bump>(
             .map_err(|e| match e {
                 DexError::ErrorCode(DexErrorCode::OrderNotFound) => {}
                 DexError::ErrorCode(DexErrorCode::RequestQueueFull) => {}
+                DexError::ErrorCode(DexErrorCode::RentNotProvided) => {}
                 DexError::ErrorCode(DexErrorCode::ClientOrderIdIsZero) if expects_zero_id => {}
+                DexError::ErrorCode(DexErrorCode::WrongOrdersAccount)
+                    if owner.closed_open_orders => {}
                 e => Err(e).unwrap(),
             })
             .map(|_| {
@@ -476,6 +495,8 @@ fn run_action<'bump>(
                 DexError::ErrorCode(DexErrorCode::OrderNotFound) => {}
                 DexError::ErrorCode(DexErrorCode::OrderNotYours) => {}
                 DexError::ErrorCode(DexErrorCode::RentNotProvided) => {}
+                DexError::ErrorCode(DexErrorCode::WrongOrdersAccount)
+                    if owner.closed_open_orders => {}
                 e => Err(e).unwrap(),
             })
             .ok();
@@ -540,7 +561,13 @@ fn run_action<'bump>(
                 &accounts,
                 &MarketInstruction::SettleFunds.pack(),
             )
-            .unwrap();
+            .map_err(|e| match e {
+                DexError::ErrorCode(DexErrorCode::RentNotProvided) => {}
+                DexError::ErrorCode(DexErrorCode::WrongOrdersAccount)
+                    if owner.closed_open_orders => {}
+                e => Err(e).unwrap(),
+            })
+            .ok();
         }
 
         Action::SweepFees => {
@@ -557,6 +584,33 @@ fn run_action<'bump>(
                 &MarketInstruction::SweepFees.pack(),
             )
             .unwrap();
+        }
+        Action::CloseOpenOrders { owner_id } => {
+            let owner = owners
+                .entry(owner_id)
+                .or_insert_with(|| Owner::new(&market_accounts, &bump));
+            process_instruction(
+                market_accounts.market.owner,
+                &[
+                    owner.orders_account.clone(),
+                    owner.signer_account.clone(),
+                    owner.signer_account.clone(), // SOL destination.
+                    market_accounts.market.clone(),
+                ],
+                &MarketInstruction::CloseOpenOrders.pack(),
+            )
+            .map_err(|e| match e {
+                DexError::ErrorCode(DexErrorCode::TooManyOpenOrders) => {}
+                DexError::ErrorCode(DexErrorCode::RentNotProvided) => {}
+                DexError::ErrorCode(DexErrorCode::WrongOrdersAccount)
+                    if owner.closed_open_orders => {}
+                e => Err(e).unwrap(),
+            })
+            .map(|r| {
+                owner.closed_open_orders = true;
+                r
+            })
+            .ok();
         }
     };
 

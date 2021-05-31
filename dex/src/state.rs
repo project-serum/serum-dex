@@ -29,9 +29,9 @@ use crate::{
     error::{DexErrorCode, DexResult, SourceFileId},
     fees::{self, FeeTier},
     instruction::{
-        disable_authority, fee_sweeper, msrm_token, srm_token,
-        CancelOrderInstructionV2, InitializeMarketInstruction, MarketInstruction,
-        NewOrderInstructionV3, SelfTradeBehavior, SendTakeInstruction,
+        disable_authority, fee_sweeper, msrm_token, srm_token, CancelOrderInstructionV2,
+        InitializeMarketInstruction, MarketInstruction, NewOrderInstructionV3, SelfTradeBehavior,
+        SendTakeInstruction,
     },
     matching::{OrderBookState, OrderType, RequestProceeds, Side},
 };
@@ -60,6 +60,7 @@ pub enum AccountFlag {
     Bids = 1u64 << 5,
     Asks = 1u64 << 6,
     Disabled = 1u64 << 7,
+    Closed = 1u64 << 8,
 }
 
 #[derive(Copy, Clone)]
@@ -376,9 +377,9 @@ impl MarketState {
     }
 }
 
-#[cfg_attr(feature = "fuzz", derive(Debug))]
 #[repr(packed)]
 #[derive(Copy, Clone)]
+#[cfg_attr(feature = "fuzz", derive(Debug))]
 pub struct OpenOrders {
     pub account_flags: u64, // Initialized, OpenOrders
     pub market: [u64; 4],
@@ -1795,7 +1796,6 @@ pub(crate) mod account_parser {
         }
     }
 
-
     pub struct CancelOrderByClientIdV2Args<'a, 'b: 'a> {
         pub client_order_id: NonZeroU64,
         pub open_orders_address: [u64; 4],
@@ -1994,6 +1994,60 @@ pub(crate) mod account_parser {
             f(args)
         }
     }
+
+    pub struct CloseOpenOrdersArgs<'a, 'b: 'a> {
+        pub open_orders: &'a mut OpenOrders,
+        pub open_orders_acc: &'a AccountInfo<'b>,
+        pub dest_acc: &'a AccountInfo<'b>,
+    }
+
+    impl<'a, 'b: 'a> CloseOpenOrdersArgs<'a, 'b> {
+        pub fn with_parsed_args<T>(
+            program_id: &'a Pubkey,
+            accounts: &'a [AccountInfo<'b>],
+            f: impl FnOnce(CloseOpenOrdersArgs) -> DexResult<T>,
+        ) -> DexResult<T> {
+            // Parse accounts.
+            check_assert_eq!(accounts.len(), 4)?;
+            #[rustfmt::skip]
+            let &[
+                ref open_orders_acc,
+                ref owner_acc,
+                ref dest_acc,
+                ref market_acc,
+            ] = array_ref![accounts, 0, 4];
+
+            // Validate the accounts given are valid.
+            let owner = SignerAccount::new(owner_acc)?;
+            let market: RefMut<'a, MarketState> = MarketState::load(market_acc, program_id)?;
+            let mut open_orders =
+                market.load_orders_mut(open_orders_acc, Some(owner.inner()), program_id, None)?;
+
+            // Only accounts with no funds associated with them can be closed.
+            if open_orders.free_slot_bits != std::u128::MAX {
+                return Err(DexErrorCode::TooManyOpenOrders.into());
+            }
+            if open_orders.native_coin_total != 0 {
+                solana_program::msg!(
+                    "Base currency total must be zero to close the open orders account"
+                );
+                return Err(DexErrorCode::TooManyOpenOrders.into());
+            }
+            if open_orders.native_pc_total != 0 {
+                solana_program::msg!(
+                    "Quote currency total must be zero to close the open orders account"
+                );
+                return Err(DexErrorCode::TooManyOpenOrders.into());
+            }
+
+            // Invoke processor.
+            f(CloseOpenOrdersArgs {
+                open_orders: open_orders.deref_mut(),
+                open_orders_acc,
+                dest_acc,
+            })
+        }
+    }
 }
 
 #[inline]
@@ -2033,8 +2087,7 @@ impl State {
                     Self::process_new_order_v3,
                 )?
             }
-            MarketInstruction::MatchOrders(_limit) => {
-            }
+            MarketInstruction::MatchOrders(_limit) => {}
             MarketInstruction::ConsumeEvents(limit) => {
                 account_parser::ConsumeEventsArgs::with_parsed_args(
                     program_id,
@@ -2090,6 +2143,13 @@ impl State {
                     Self::process_send_take,
                 )?
             }
+            MarketInstruction::CloseOpenOrders => {
+                account_parser::CloseOpenOrdersArgs::with_parsed_args(
+                    program_id,
+                    accounts,
+                    Self::process_close_open_orders,
+                )?
+            }
         };
         Ok(())
     }
@@ -2097,6 +2157,27 @@ impl State {
     #[cfg(feature = "program")]
     fn process_send_take(_args: account_parser::SendTakeArgs) -> DexResult {
         unimplemented!()
+    }
+
+    fn process_close_open_orders(args: account_parser::CloseOpenOrdersArgs) -> DexResult {
+        let account_parser::CloseOpenOrdersArgs {
+            open_orders,
+            open_orders_acc,
+            dest_acc,
+        } = args;
+
+        // Transfer all lamports to the destination.
+        let dest_starting_lamports = dest_acc.lamports();
+        **dest_acc.lamports.borrow_mut() = dest_starting_lamports
+            .checked_add(open_orders_acc.lamports())
+            .unwrap();
+        **open_orders_acc.lamports.borrow_mut() = 0;
+
+        // Mark the account as closed to prevent it from being used before
+        // garbage collection.
+        open_orders.account_flags = AccountFlag::Closed as u64;
+
+        Ok(())
     }
 
     #[cfg(feature = "program")]
@@ -2474,7 +2555,7 @@ impl State {
             &mut proceeds,
             &mut limit,
         )?;
-        
+
         check_assert!(unfilled_portion.is_none())?;
 
         {
