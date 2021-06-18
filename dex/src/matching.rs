@@ -74,6 +74,7 @@ impl<'ob> OrderBookState<'ob> {
     pub(crate) fn process_orderbook_request(
         &mut self,
         request: &RequestView,
+        open_orders: &mut OpenOrders,
         event_q: &mut EventQueue,
         proceeds: &mut RequestProceeds,
         limit: &mut u16,
@@ -104,6 +105,7 @@ impl<'ob> OrderBookState<'ob> {
                         client_order_id: client_order_id.map_or(0, NonZeroU64::get),
                         self_trade_behavior,
                     },
+                    open_orders,
                     event_q,
                     proceeds,
                     limit,
@@ -205,6 +207,7 @@ impl<'ob> OrderBookState<'ob> {
         &mut self,
 
         params: NewOrderParams,
+        open_orders: &mut OpenOrders,
         event_q: &mut EventQueue,
 
         proceeds: &mut RequestProceeds,
@@ -251,6 +254,7 @@ impl<'ob> OrderBookState<'ob> {
                         client_order_id,
                         self_trade_behavior,
                     },
+                    open_orders,
                     event_q,
                     proceeds,
                 ),
@@ -269,6 +273,7 @@ impl<'ob> OrderBookState<'ob> {
                             client_order_id,
                             self_trade_behavior,
                         },
+                        open_orders,
                         event_q,
                         proceeds,
                     )
@@ -306,6 +311,7 @@ impl<'ob> OrderBookState<'ob> {
     fn new_ask(
         &mut self,
         params: NewAskParams,
+        open_orders: &mut OpenOrders,
         event_q: &mut EventQueue,
         to_release: &mut RequestProceeds,
     ) -> DexResult<Option<OrderRemaining>> {
@@ -507,6 +513,7 @@ impl<'ob> OrderBookState<'ob> {
         let referrer_rebate = fees::referrer_rebate(native_taker_fee);
         let net_fees = net_fees_before_referrer_rebate - referrer_rebate;
 
+        open_orders.referrer_rebates_accrued += referrer_rebate;
         self.market_state.referrer_rebates_accrued += referrer_rebate;
         self.market_state.pc_fees_accrued += net_fees;
         self.market_state.pc_deposits_total -= net_fees_before_referrer_rebate;
@@ -591,6 +598,7 @@ impl<'ob> OrderBookState<'ob> {
     fn new_bid(
         &mut self,
         params: NewBidParams,
+        open_orders: &mut OpenOrders,
         event_q: &mut EventQueue,
         to_release: &mut RequestProceeds,
     ) -> DexResult<Option<OrderRemaining>> {
@@ -825,6 +833,7 @@ impl<'ob> OrderBookState<'ob> {
         let referrer_rebate = fees::referrer_rebate(native_taker_fee);
         let net_fees = net_fees_before_referrer_rebate - referrer_rebate;
 
+        open_orders.referrer_rebates_accrued += referrer_rebate;
         self.market_state.referrer_rebates_accrued += referrer_rebate;
         self.market_state.pc_fees_accrued += net_fees;
         self.market_state.pc_deposits_total -= net_fees_before_referrer_rebate;
