@@ -28,7 +28,7 @@ enum NodeTag {
 #[derive(Copy, Clone)]
 #[repr(packed)]
 #[allow(dead_code)]
-struct InnerNode {
+pub struct InnerNode {
     tag: u32,
     prefix_len: u32,
     key: u128,
@@ -39,10 +39,14 @@ unsafe impl Zeroable for InnerNode {}
 unsafe impl Pod for InnerNode {}
 
 impl InnerNode {
-    fn walk_down(&self, search_key: u128) -> (NodeHandle, bool) {
+    pub fn walk_down(&self, search_key: u128) -> (NodeHandle, bool) {
         let crit_bit_mask = (1u128 << 127) >> self.prefix_len;
         let crit_bit = (search_key & crit_bit_mask) != 0;
         (self.children[crit_bit as usize], crit_bit)
+    }
+
+    pub fn prefix_len(&self) -> u32 {
+        self.prefix_len
     }
 }
 
@@ -168,18 +172,18 @@ pub struct AnyNode {
 unsafe impl Zeroable for AnyNode {}
 unsafe impl Pod for AnyNode {}
 
-enum NodeRef<'a> {
+pub enum NodeRef<'a> {
     Inner(&'a InnerNode),
     Leaf(&'a LeafNode),
 }
 
-enum NodeRefMut<'a> {
+pub enum NodeRefMut<'a> {
     Inner(&'a mut InnerNode),
     Leaf(&'a mut LeafNode),
 }
 
 impl AnyNode {
-    fn key(&self) -> Option<u128> {
+    pub fn key(&self) -> Option<u128> {
         match self.case()? {
             NodeRef::Inner(inner) => Some(inner.key),
             NodeRef::Leaf(leaf) => Some(leaf.key),
@@ -187,21 +191,21 @@ impl AnyNode {
     }
 
     #[cfg(test)]
-    fn prefix_len(&self) -> u32 {
+    pub fn prefix_len(&self) -> u32 {
         match self.case().unwrap() {
             NodeRef::Inner(&InnerNode { prefix_len, .. }) => prefix_len,
             NodeRef::Leaf(_) => 128,
         }
     }
 
-    fn children(&self) -> Option<[u32; 2]> {
+    pub fn children(&self) -> Option<[u32; 2]> {
         match self.case().unwrap() {
             NodeRef::Inner(&InnerNode { children, .. }) => Some(children),
             NodeRef::Leaf(_) => None,
         }
     }
 
-    fn case(&self) -> Option<NodeRef> {
+    pub fn case(&self) -> Option<NodeRef> {
         match NodeTag::try_from(self.tag) {
             Ok(NodeTag::InnerNode) => Some(NodeRef::Inner(cast_ref(self))),
             Ok(NodeTag::LeafNode) => Some(NodeRef::Leaf(cast_ref(self))),
@@ -209,7 +213,7 @@ impl AnyNode {
         }
     }
 
-    fn case_mut(&mut self) -> Option<NodeRefMut> {
+    pub fn case_mut(&mut self) -> Option<NodeRefMut> {
         match NodeTag::try_from(self.tag) {
             Ok(NodeTag::InnerNode) => Some(NodeRefMut::Inner(cast_mut(self))),
             Ok(NodeTag::LeafNode) => Some(NodeRefMut::Leaf(cast_mut(self))),
@@ -252,7 +256,7 @@ const_assert_eq!(_NODE_ALIGN, align_of::<AnyNode>());
 
 #[derive(Copy, Clone)]
 #[repr(packed)]
-struct SlabHeader {
+pub struct SlabHeader {
     bump_index: u64,
     free_list_len: u64,
     free_list_head: u32,
@@ -311,13 +315,13 @@ impl Slab {
         Ok(())
     }
 
-    fn check_size_align(&self) {
+    pub fn check_size_align(&self) {
         let (header_bytes, nodes_bytes) = array_refs![&self.0, SLAB_HEADER_LEN; .. ;];
         let _header: &SlabHeader = cast_ref(header_bytes);
         let _nodes: &[AnyNode] = cast_slice(nodes_bytes);
     }
 
-    fn parts(&self) -> (&SlabHeader, &[AnyNode]) {
+    pub fn parts(&self) -> (&SlabHeader, &[AnyNode]) {
         unsafe {
             invariant(self.0.len() < size_of::<SlabHeader>());
             invariant((self.0.as_ptr() as usize) % align_of::<SlabHeader>() != 0);
@@ -332,7 +336,7 @@ impl Slab {
         (header, nodes)
     }
 
-    fn parts_mut(&mut self) -> (&mut SlabHeader, &mut [AnyNode]) {
+    pub fn parts_mut(&mut self) -> (&mut SlabHeader, &mut [AnyNode]) {
         unsafe {
             invariant(self.0.len() < size_of::<SlabHeader>());
             invariant((self.0.as_ptr() as usize) % align_of::<SlabHeader>() != 0);
@@ -347,19 +351,19 @@ impl Slab {
         (header, nodes)
     }
 
-    fn header(&self) -> &SlabHeader {
+    pub fn header(&self) -> &SlabHeader {
         self.parts().0
     }
 
-    fn header_mut(&mut self) -> &mut SlabHeader {
+    pub fn header_mut(&mut self) -> &mut SlabHeader {
         self.parts_mut().0
     }
 
-    fn nodes(&self) -> &[AnyNode] {
+    pub fn nodes(&self) -> &[AnyNode] {
         self.parts().1
     }
 
-    fn nodes_mut(&mut self) -> &mut [AnyNode] {
+    pub fn nodes_mut(&mut self) -> &mut [AnyNode] {
         self.parts_mut().1
     }
 }
@@ -492,7 +496,7 @@ pub enum SlabTreeError {
 }
 
 impl Slab {
-    fn root(&self) -> Option<NodeHandle> {
+    pub fn root(&self) -> Option<NodeHandle> {
         if self.header().leaf_count == 0 {
             return None;
         }
@@ -600,7 +604,7 @@ impl Slab {
     }
 
     #[cfg(test)]
-    fn find_by_key(&self, search_key: u128) -> Option<NodeHandle> {
+    pub fn find_by_key(&self, search_key: u128) -> Option<NodeHandle> {
         let mut node_handle: NodeHandle = self.root()?;
         loop {
             let node_ref = self.get(node_handle).unwrap();
@@ -681,7 +685,7 @@ impl Slab {
     }
 
     #[cfg(test)]
-    fn traverse(&self) -> Vec<&LeafNode> {
+    pub fn traverse(&self) -> Vec<&LeafNode> {
         fn walk_rec<'a>(slab: &'a Slab, sub_root: NodeHandle, buf: &mut Vec<&'a LeafNode>) {
             match slab.get(sub_root).unwrap().case().unwrap() {
                 NodeRef::Leaf(leaf) => {

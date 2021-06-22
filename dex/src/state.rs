@@ -259,7 +259,7 @@ impl MarketState {
         Ok(open_orders)
     }
 
-    fn load_bids_mut<'a>(&self, bids: &'a AccountInfo) -> DexResult<RefMut<'a, Slab>> {
+    pub fn load_bids_mut<'a>(&self, bids: &'a AccountInfo) -> DexResult<RefMut<'a, Slab>> {
         check_assert_eq!(&bids.key.to_aligned_bytes(), &identity(self.bids))
             .map_err(|_| DexErrorCode::WrongBidsAccount)?;
         let (header, buf) = strip_header::<OrderBookStateHeader, u8>(bids, false)?;
@@ -268,7 +268,7 @@ impl MarketState {
         Ok(RefMut::map(buf, Slab::new))
     }
 
-    fn load_asks_mut<'a>(&self, asks: &'a AccountInfo) -> DexResult<RefMut<'a, Slab>> {
+    pub fn load_asks_mut<'a>(&self, asks: &'a AccountInfo) -> DexResult<RefMut<'a, Slab>> {
         check_assert_eq!(&asks.key.to_aligned_bytes(), &identity(self.asks))
             .map_err(|_| DexErrorCode::WrongAsksAccount)?;
         let (header, buf) = strip_header::<OrderBookStateHeader, u8>(asks, false)?;
@@ -277,7 +277,7 @@ impl MarketState {
         Ok(RefMut::map(buf, Slab::new))
     }
 
-    fn load_request_queue_mut<'a>(&self, queue: &'a AccountInfo) -> DexResult<RequestQueue<'a>> {
+    pub fn load_request_queue_mut<'a>(&self, queue: &'a AccountInfo) -> DexResult<RequestQueue<'a>> {
         check_assert_eq!(&queue.key.to_aligned_bytes(), &identity(self.req_q))
             .map_err(|_| DexErrorCode::WrongRequestQueueAccount)?;
 
@@ -290,7 +290,7 @@ impl MarketState {
         Ok(Queue { header, buf })
     }
 
-    fn load_event_queue_mut<'a>(&self, queue: &'a AccountInfo) -> DexResult<EventQueue<'a>> {
+    pub fn load_event_queue_mut<'a>(&self, queue: &'a AccountInfo) -> DexResult<EventQueue<'a>> {
         check_assert_eq!(&queue.key.to_aligned_bytes(), &identity(self.event_q))
             .map_err(|_| DexErrorCode::WrongEventQueueAccount)?;
         let (header, buf) = strip_header::<EventQueueHeader, Event>(queue, false)?;
