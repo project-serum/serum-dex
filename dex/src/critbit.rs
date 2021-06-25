@@ -862,7 +862,7 @@ mod tests {
             Min,
             Max,
             End,
-        };
+        }
 
         for weights in &[
             [

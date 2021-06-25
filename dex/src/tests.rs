@@ -19,7 +19,7 @@ use spl_token::state::{Account, AccountState, Mint};
 use instruction::{initialize_market, MarketInstruction, NewOrderInstructionV3, SelfTradeBehavior};
 use matching::{OrderType, Side};
 use state::gen_vault_signer_key;
-use state::{MarketState, OpenOrders, State, ToAlignedBytes};
+use state::{Market, MarketState, OpenOrders, State, ToAlignedBytes};
 
 use super::*;
 
@@ -200,6 +200,7 @@ fn setup_market<'bump, R: Rng>(rng: &mut R, bump: &'bump Bump) -> MarketAccounts
         &pc_mint.key,
         &coin_vault.key,
         &pc_vault.key,
+        None,
         &bids.key,
         &asks.key,
         &req_q.key,
@@ -326,7 +327,7 @@ fn test_new_order() {
     .into_bump_slice();
 
     {
-        let market = MarketState::load(&accounts.market, &dex_program_id).unwrap();
+        let market = Market::load(&accounts.market, &dex_program_id).unwrap();
         assert_eq!(identity(market.pc_fees_accrued), 0);
         assert_eq!(identity(market.pc_deposits_total), 520_000);
     }
@@ -334,7 +335,7 @@ fn test_new_order() {
     State::process(dex_program_id, instruction_accounts, &instruction_data).unwrap();
 
     {
-        let market = MarketState::load(&accounts.market, &dex_program_id).unwrap();
+        let market = Market::load(&accounts.market, &dex_program_id).unwrap();
         assert_eq!(identity(market.referrer_rebates_accrued), 176);
         assert_eq!(identity(market.pc_fees_accrued), 584);
         assert_eq!(
@@ -343,17 +344,17 @@ fn test_new_order() {
         );
     }
     {
-        let open_orders_buyer = MarketState::load(&accounts.market, &dex_program_id)
+        let open_orders_buyer = Market::load(&accounts.market, &dex_program_id)
             .unwrap()
-            .load_orders_mut(&orders_account_buyer, None, &dex_program_id, None)
+            .load_orders_mut(&orders_account_buyer, None, &dex_program_id, None, None)
             .unwrap();
         assert_eq!(identity(open_orders_buyer.native_coin_free), 0);
         assert_eq!(identity(open_orders_buyer.native_coin_total), 0);
         assert_eq!(identity(open_orders_buyer.native_pc_free), 20_000);
         assert_eq!(identity(open_orders_buyer.native_pc_total), 520_000);
-        let open_orders_seller = MarketState::load(&accounts.market, &dex_program_id)
+        let open_orders_seller = Market::load(&accounts.market, &dex_program_id)
             .unwrap()
-            .load_orders_mut(&orders_account_seller, None, &dex_program_id, None)
+            .load_orders_mut(&orders_account_seller, None, &dex_program_id, None, None)
             .unwrap();
         assert_eq!(identity(open_orders_seller.native_coin_free), 0);
         assert_eq!(identity(open_orders_seller.native_coin_total), 0);
@@ -377,7 +378,7 @@ fn test_new_order() {
     }
 
     {
-        let market = MarketState::load(&accounts.market, &dex_program_id).unwrap();
+        let market = Market::load(&accounts.market, &dex_program_id).unwrap();
         assert_eq!(identity(market.referrer_rebates_accrued), 176);
         assert_eq!(identity(market.pc_fees_accrued), 584);
         assert_eq!(
@@ -386,17 +387,17 @@ fn test_new_order() {
         );
     }
     {
-        let open_orders_buyer = MarketState::load(&accounts.market, &dex_program_id)
+        let open_orders_buyer = Market::load(&accounts.market, &dex_program_id)
             .unwrap()
-            .load_orders_mut(&orders_account_buyer, None, &dex_program_id, None)
+            .load_orders_mut(&orders_account_buyer, None, &dex_program_id, None, None)
             .unwrap();
         assert_eq!(identity(open_orders_buyer.native_coin_free), 4_000);
         assert_eq!(identity(open_orders_buyer.native_coin_total), 4_000);
         assert_eq!(identity(open_orders_buyer.native_pc_free), 20_120);
         assert_eq!(identity(open_orders_buyer.native_pc_total), 120_120);
-        let open_orders_seller = MarketState::load(&accounts.market, &dex_program_id)
+        let open_orders_seller = Market::load(&accounts.market, &dex_program_id)
             .unwrap()
-            .load_orders_mut(&orders_account_seller, None, &dex_program_id, None)
+            .load_orders_mut(&orders_account_seller, None, &dex_program_id, None, None)
             .unwrap();
         assert_eq!(identity(open_orders_seller.native_coin_free), 0);
         assert_eq!(identity(open_orders_seller.native_coin_total), 0);

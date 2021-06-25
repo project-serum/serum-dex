@@ -13,10 +13,10 @@ pub mod instruction;
 pub mod matching;
 pub mod state;
 
+#[cfg(all(feature = "program", not(feature = "no-entrypoint")))]
+use solana_program::entrypoint;
 #[cfg(feature = "program")]
-use solana_program::{
-    account_info::AccountInfo, entrypoint::ProgramResult, entrypoint, pubkey::Pubkey,
-};
+use solana_program::{account_info::AccountInfo, entrypoint::ProgramResult, pubkey::Pubkey};
 
 #[cfg(feature = "program")]
 #[cfg(not(feature = "no-entrypoint"))]
