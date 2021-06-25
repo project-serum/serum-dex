@@ -36,7 +36,7 @@ pub mod disable_authority {
 
 pub mod fee_sweeper {
     use solana_program::declare_id;
-    declare_id!("DeqYsmBd9BnrbgUwQjVH4sQWK71dEgE6eoZFw3Rp4ftE");
+    declare_id!("FhmUh2PEpTzUwBWPt4qgDBeqfmb2ES3T64CkT1ZiktSS");
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Serialize, Deserialize)]
