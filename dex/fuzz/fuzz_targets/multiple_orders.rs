@@ -19,7 +19,7 @@ use serum_dex::instruction::{
     CancelOrderInstructionV2, MarketInstruction, NewOrderInstructionV3, SelfTradeBehavior,
 };
 use serum_dex::matching::Side;
-use serum_dex::state::{strip_header, MarketState, OpenOrders, ToAlignedBytes};
+use serum_dex::state::{strip_header, Market, OpenOrders, ToAlignedBytes};
 use serum_dex_fuzz::{
     get_token_account_balance, new_dex_owned_account_with_lamports, new_sol_account,
     new_token_account, process_instruction, setup_market, MarketAccounts, NoSolLoggingStubs,
@@ -222,11 +222,12 @@ fn run_actions(actions: Vec<Action>) {
 
     for owner in owners.values() {
         let market_state =
-            MarketState::load(&market_accounts.market, market_accounts.market.owner).unwrap();
+            Market::load(&market_accounts.market, market_accounts.market.owner).unwrap();
         let load_orders_result = market_state.load_orders_mut(
             &owner.orders_account,
             Some(&owner.signer_account),
             market_accounts.market.owner,
+            None,
             None,
         );
         let open_orders = match load_orders_result {
@@ -245,8 +246,7 @@ fn run_actions(actions: Vec<Action>) {
         assert_eq!(identity(open_orders.native_pc_total), 0);
     }
 
-    let market_state =
-        MarketState::load(&market_accounts.market, market_accounts.market.owner).unwrap();
+    let market_state = Market::load(&market_accounts.market, market_accounts.market.owner).unwrap();
     let total_coin_bal: u64 = owners
         .values()
         .map(|owner| get_token_account_balance(&owner.coin_account))
@@ -655,7 +655,7 @@ fn run_action<'bump>(
             .values()
             .map(|owner| get_token_account_balance(&owner.coin_account))
             .sum();
-        let fees = MarketState::load(&market_accounts.market, market_accounts.market.owner)
+        let fees = Market::load(&market_accounts.market, market_accounts.market.owner)
             .unwrap()
             .coin_fees_accrued;
         println!(
