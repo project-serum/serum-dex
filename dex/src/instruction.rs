@@ -741,9 +741,9 @@ pub fn cancel_order(
 ) -> Result<Instruction, DexError> {
     let data = MarketInstruction::CancelOrderV2(CancelOrderInstructionV2 { side, order_id }).pack();
     let accounts: Vec<AccountMeta> = vec![
-        AccountMeta::new_readonly(*market, false),
-        AccountMeta::new_readonly(*market_bids, false),
-        AccountMeta::new_readonly(*market_asks, false),
+        AccountMeta::new(*market, false),
+        AccountMeta::new(*market_bids, false),
+        AccountMeta::new(*market_asks, false),
         AccountMeta::new(*open_orders_account, false),
         AccountMeta::new_readonly(*open_orders_account_owner, true),
         AccountMeta::new(*event_queue, false),
@@ -802,9 +802,9 @@ pub fn cancel_order_by_client_order_id(
 ) -> Result<Instruction, DexError> {
     let data = MarketInstruction::CancelOrderByClientIdV2(client_order_id).pack();
     let accounts: Vec<AccountMeta> = vec![
-        AccountMeta::new_readonly(*market, false),
-        AccountMeta::new_readonly(*market_bids, false),
-        AccountMeta::new_readonly(*market_asks, false),
+        AccountMeta::new(*market, false),
+        AccountMeta::new(*market_bids, false),
+        AccountMeta::new(*market_asks, false),
         AccountMeta::new(*open_orders_account, false),
         AccountMeta::new_readonly(*open_orders_account_owner, true),
         AccountMeta::new(*event_queue, false),
