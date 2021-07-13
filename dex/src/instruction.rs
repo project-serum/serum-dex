@@ -566,7 +566,6 @@ pub fn initialize_market(
     asks_pk: &Pubkey,
     req_q_pk: &Pubkey,
     event_q_pk: &Pubkey,
-    authority: &Pubkey,
     coin_lot_size: u64,
     pc_lot_size: u64,
     vault_signer_nonce: u64,
