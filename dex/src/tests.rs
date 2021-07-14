@@ -19,7 +19,7 @@ use spl_token::state::{Account, AccountState, Mint};
 use instruction::{initialize_market, MarketInstruction, NewOrderInstructionV3, SelfTradeBehavior};
 use matching::{OrderType, Side};
 use state::gen_vault_signer_key;
-use state::{Market, OpenOrders, State, ToAlignedBytes};
+use state::{Market, MarketState, OpenOrders, State, ToAlignedBytes};
 
 use super::*;
 
@@ -346,7 +346,7 @@ fn test_new_order() {
     {
         let open_orders_buyer = Market::load(&accounts.market, &dex_program_id)
             .unwrap()
-            .load_orders_mut(&orders_account_buyer, None, &dex_program_id, None)
+            .load_orders_mut(&orders_account_buyer, None, &dex_program_id, None, None)
             .unwrap();
         assert_eq!(identity(open_orders_buyer.native_coin_free), 0);
         assert_eq!(identity(open_orders_buyer.native_coin_total), 0);
@@ -354,7 +354,7 @@ fn test_new_order() {
         assert_eq!(identity(open_orders_buyer.native_pc_total), 520_000);
         let open_orders_seller = Market::load(&accounts.market, &dex_program_id)
             .unwrap()
-            .load_orders_mut(&orders_account_seller, None, &dex_program_id, None)
+            .load_orders_mut(&orders_account_seller, None, &dex_program_id, None, None)
             .unwrap();
         assert_eq!(identity(open_orders_seller.native_coin_free), 0);
         assert_eq!(identity(open_orders_seller.native_coin_total), 0);
@@ -389,7 +389,7 @@ fn test_new_order() {
     {
         let open_orders_buyer = Market::load(&accounts.market, &dex_program_id)
             .unwrap()
-            .load_orders_mut(&orders_account_buyer, None, &dex_program_id, None)
+            .load_orders_mut(&orders_account_buyer, None, &dex_program_id, None, None)
             .unwrap();
         assert_eq!(identity(open_orders_buyer.native_coin_free), 4_000);
         assert_eq!(identity(open_orders_buyer.native_coin_total), 4_000);
@@ -397,7 +397,7 @@ fn test_new_order() {
         assert_eq!(identity(open_orders_buyer.native_pc_total), 120_120);
         let open_orders_seller = Market::load(&accounts.market, &dex_program_id)
             .unwrap()
-            .load_orders_mut(&orders_account_seller, None, &dex_program_id, None)
+            .load_orders_mut(&orders_account_seller, None, &dex_program_id, None, None)
             .unwrap();
         assert_eq!(identity(open_orders_seller.native_coin_free), 0);
         assert_eq!(identity(open_orders_seller.native_coin_total), 0);
