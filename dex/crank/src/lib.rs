@@ -1032,6 +1032,7 @@ pub fn init_open_orders(
         &orders_pubkey,
         &owner.pubkey(),
         &state.market,
+        None,
     )?);
     signers.push(owner);
 
@@ -1201,6 +1202,7 @@ pub fn list_market(
         pc_mint,
         &coin_vault.pubkey(),
         &pc_vault.pubkey(),
+        None,
         &bids_key.pubkey(),
         &asks_key.pubkey(),
         &req_q_key.pubkey(),
