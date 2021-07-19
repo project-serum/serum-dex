@@ -205,6 +205,9 @@ unsafe impl Zeroable for MarketStateV2 {}
 #[cfg(target_endian = "little")]
 unsafe impl Pod for MarketStateV2 {}
 
+#[cfg(target_endian = "little")]
+unsafe impl TriviallyTransmutable for MarketStateV2 {}
+
 #[derive(Copy, Clone)]
 #[cfg_attr(target_endian = "little", derive(Debug))]
 #[repr(packed)]
