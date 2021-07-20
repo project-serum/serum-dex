@@ -248,6 +248,7 @@ pub fn setup_market(bump: &Bump) -> MarketAccounts {
         coin_vault.key,
         pc_vault.key,
         None,
+        None,
         bids.key,
         asks.key,
         req_q.key,
