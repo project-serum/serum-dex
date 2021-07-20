@@ -13,8 +13,8 @@ serum-common = { path = "../../common", features = ["client"] }
 serum-context = { path = "../../context" }
 spl-token = { version = "3.0.0-pre1", features = ["no-entrypoint"], default-features = false }
 clap = "3.0.0-beta.1"
-solana-client = "1.4.4"
-solana-sdk = "1.4.4"
+solana-client = "1.6.18"
+solana-sdk = "1.6.18"
 anyhow = "1.0.32"
 rand = "0.7.3"
 safe-transmute = "0.11.0"
