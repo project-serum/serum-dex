@@ -38,7 +38,7 @@ dex_whole_shebang() {
     #
     # Build the program.
     #
-    ./do.sh build dex
+    cd ./dex && cargo build-bpf && cd ../
     #
     # Deploy the program.
     #
