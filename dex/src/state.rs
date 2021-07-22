@@ -1549,8 +1549,15 @@ pub(crate) mod account_parser {
             };
 
             {
-                let rent = Rent::get()?;
-                let end_idx = accounts.len() - remaining_accounts.len();
+                let rent = {
+                    // Dynamic sysvars don't work in unit tests.
+                    if cfg!(test) {
+                        Rent::from_account_info(&unchecked_rent[0])?
+                    } else {
+                        Rent::get()?
+                    }
+                };
+                let end_idx = accounts.len() - remaining_accounts.len() - 1;
                 for account in &accounts[1..end_idx] {
                     let data_len = account.data_len();
                     let lamports = account.lamports();
@@ -1759,7 +1766,7 @@ pub(crate) mod account_parser {
                 ref coin_vault_acc,
                 ref pc_vault_acc,
                 ref spl_token_program_acc,
-                ref _rent_sysvar_acc,
+                ref rent_sysvar_acc,
             ]: &'a [AccountInfo<'b>; MIN_ACCOUNTS] = fixed_accounts;
             let srm_or_msrm_account = match fee_discount_account {
                 &[] => None,
@@ -1768,7 +1775,14 @@ pub(crate) mod account_parser {
             };
 
             let mut market = Market::load(market_acc, program_id)?;
-            let rent = Rent::get()?;
+            let rent = {
+                // Dynamic sysvars don't work in unit tests.
+                if cfg!(test) {
+                    Rent::from_account_info(rent_sysvar_acc)?
+                } else {
+                    Rent::get()?
+                }
+            };
             let owner = SignerAccount::new(owner_acc)?;
             let fee_tier =
                 market.load_fee_tier(&owner.inner().key.to_aligned_bytes(), srm_or_msrm_account)?;
