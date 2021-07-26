@@ -1423,14 +1423,12 @@ pub(crate) mod account_parser {
                 array_refs![accounts, 5, 2, 2, 1];
 
             {
-                let rent = {
-                    // Dynamic sysvars don't work in unit tests.
-                    if cfg!(test) {
-                        Rent::from_account_info(&unchecked_rent[0])?
-                    } else {
-                        Rent::get()?
-                    }
-                };
+                // Dynamic sysvars don't work in unit tests.
+                #[cfg(test)]
+                let rent = Rent::from_account_info(&unchecked_rent[0])?;
+                #[cfg(not(test))]
+                let rent = Rent::get()?;
+
                 let (_, must_be_rent_exempt, _) = array_refs![accounts, 0; ..; 1];
                 for account in must_be_rent_exempt {
                     let data_len = account.data_len();
@@ -1643,14 +1641,13 @@ pub(crate) mod account_parser {
             };
 
             let mut market: RefMut<'a, MarketState> = MarketState::load(market_acc, program_id)?;
-            let rent = {
-                // Dynamic sysvars don't work in unit tests.
-                if cfg!(test) {
-                    Rent::from_account_info(rent_sysvar_acc)?
-                } else {
-                    Rent::get()?
-                }
-            };
+
+            // Dynamic sysvars don't work in unit tests.
+            #[cfg(test)]
+            let rent = Rent::from_account_info(rent_sysvar_acc)?;
+            #[cfg(not(test))]
+            let rent = Rent::get()?;
+
             let owner = SignerAccount::new(owner_acc)?;
             let fee_tier =
                 market.load_fee_tier(&owner.inner().key.to_aligned_bytes(), srm_or_msrm_account)?;
