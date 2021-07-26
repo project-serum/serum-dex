@@ -18,7 +18,7 @@ default = ["program"]
 no-entrypoint = []
 
 [dependencies]
-solana-program = "1.5.5"
+solana-program = "1.6.18"
 spl-token = { version = "3.0.0-pre1", features = ["no-entrypoint"] }
 serde = "1.0.114"
 itertools = "0.9.0"

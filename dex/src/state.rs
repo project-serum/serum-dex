@@ -15,12 +15,8 @@ use num_traits::FromPrimitive;
 use safe_transmute::{self, to_bytes::transmute_to_bytes, trivial::TriviallyTransmutable};
 
 use solana_program::{
-    account_info::AccountInfo,
-    program_error::ProgramError,
-    program_pack::Pack,
-    pubkey::Pubkey,
-    rent::Rent,
-    sysvar::{Sysvar, SysvarId},
+    account_info::AccountInfo, program_error::ProgramError, program_pack::Pack, pubkey::Pubkey,
+    rent::Rent, sysvar::Sysvar,
 };
 use spl_token::error::TokenError;
 
@@ -1318,11 +1314,6 @@ pub(crate) mod account_parser {
         }
     }
 
-    declare_validated_account_wrapper!(RentSysvarAccount, |account: &AccountInfo| {
-        check_assert!(Rent::check_id(account.key))?;
-        Ok(())
-    });
-
     declare_validated_account_wrapper!(SignerAccount, |account: &AccountInfo| {
         check_assert!(account.is_signer)?;
         Ok(())
@@ -1432,8 +1423,12 @@ pub(crate) mod account_parser {
                 array_refs![accounts, 5, 2, 2, 1];
 
             {
-                let rent_sysvar = RentSysvarAccount::new(&unchecked_rent[0])?;
-                let rent = Rent::from_account_info(rent_sysvar.inner()).or(check_unreachable!())?;
+                // Dynamic sysvars don't work in unit tests.
+                #[cfg(test)]
+                let rent = Rent::from_account_info(&unchecked_rent[0])?;
+                #[cfg(not(test))]
+                let rent = Rent::get()?;
+
                 let (_, must_be_rent_exempt, _) = array_refs![accounts, 0; ..; 1];
                 for account in must_be_rent_exempt {
                     let data_len = account.data_len();
@@ -1646,10 +1641,13 @@ pub(crate) mod account_parser {
             };
 
             let mut market: RefMut<'a, MarketState> = MarketState::load(market_acc, program_id)?;
-            let rent = {
-                let rent_sysvar = RentSysvarAccount::new(rent_sysvar_acc)?;
-                Rent::from_account_info(rent_sysvar.inner()).or(check_unreachable!())?
-            };
+
+            // Dynamic sysvars don't work in unit tests.
+            #[cfg(test)]
+            let rent = Rent::from_account_info(rent_sysvar_acc)?;
+            #[cfg(not(test))]
+            let rent = Rent::get()?;
+
             let owner = SignerAccount::new(owner_acc)?;
             let fee_tier =
                 market.load_fee_tier(&owner.inner().key.to_aligned_bytes(), srm_or_msrm_account)?;
@@ -2064,14 +2062,11 @@ pub(crate) mod account_parser {
                 ref open_orders_acc,
                 ref owner_acc,
                 ref market_acc,
-                ref rent_acc,
+                ref _rent_acc,
             ] = array_ref![accounts, 0, 4];
 
             // Validate the accounts given are valid.
-            let rent = {
-                let rent_sysvar = RentSysvarAccount::new(rent_acc)?;
-                Rent::from_account_info(rent_sysvar.inner()).or(check_unreachable!())?
-            };
+            let rent = Rent::get()?;
             let owner = SignerAccount::new(owner_acc)?;
             let market = MarketState::load(market_acc, program_id)?;
 
