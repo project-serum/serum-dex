@@ -2513,7 +2513,6 @@ impl State {
 
             let view = event.as_view()?;
             let owner: [u64; 4] = event.owner;
-            let _pk = Pubkey::new(cast_slice(&identity(owner) as &[_]));
             let owner_index: Result<usize, usize> = open_orders_accounts
                 .binary_search_by_key(&owner, |account_info| account_info.key.to_aligned_bytes());
             let mut open_orders: RefMut<OpenOrders> = match owner_index {
