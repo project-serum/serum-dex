@@ -1424,9 +1424,9 @@ pub(crate) mod account_parser {
 
             {
                 // Dynamic sysvars don't work in unit tests.
-                #[cfg(test)]
+                #[cfg(any(test, feature = "fuzz"))]
                 let rent = Rent::from_account_info(&unchecked_rent[0])?;
-                #[cfg(not(test))]
+                #[cfg(not(any(test, feature = "fuzz")))]
                 let rent = Rent::get()?;
 
                 let (_, must_be_rent_exempt, _) = array_refs![accounts, 0; ..; 1];
@@ -1643,9 +1643,9 @@ pub(crate) mod account_parser {
             let mut market: RefMut<'a, MarketState> = MarketState::load(market_acc, program_id)?;
 
             // Dynamic sysvars don't work in unit tests.
-            #[cfg(test)]
+            #[cfg(any(test, feature = "fuzz"))]
             let rent = Rent::from_account_info(rent_sysvar_acc)?;
-            #[cfg(not(test))]
+            #[cfg(not(any(test, feature = "fuzz")))]
             let rent = Rent::get()?;
 
             let owner = SignerAccount::new(owner_acc)?;
@@ -2062,11 +2062,16 @@ pub(crate) mod account_parser {
                 ref open_orders_acc,
                 ref owner_acc,
                 ref market_acc,
-                ref _rent_acc,
+                ref rent_acc,
             ] = array_ref![accounts, 0, 4];
 
-            // Validate the accounts given are valid.
+            // Dynamic sysvars don't work in unit tests.
+            #[cfg(any(test, feature = "fuzz"))]
+            let rent = Rent::from_account_info(rent_acc)?;
+            #[cfg(not(any(test, feature = "fuzz")))]
             let rent = Rent::get()?;
+
+            // Validate the accounts given are valid.
             let owner = SignerAccount::new(owner_acc)?;
             let market = MarketState::load(market_acc, program_id)?;
 
