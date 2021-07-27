@@ -401,7 +401,7 @@ fn run_action<'bump>(
                 DexError::ErrorCode(DexErrorCode::WrongOrdersAccount)
                     if owner.closed_open_orders => {}
                 // Open orders account hasn't been initialized.
-                DexError::ErrorCode(DexErrorCode::InvalidMarketAuthority)
+                DexError::ErrorCode(DexErrorCode::InvalidOpenOrdersAuthority)
                     if market_accounts.open_orders_authority.is_some() => {}
                 e => Err(e).unwrap(),
             })
@@ -512,7 +512,7 @@ fn run_action<'bump>(
                 DexError::ErrorCode(DexErrorCode::WrongOrdersAccount)
                     if owner.closed_open_orders => {}
                 // Open orders account hasn't been initialized.
-                DexError::ErrorCode(DexErrorCode::InvalidMarketAuthority)
+                DexError::ErrorCode(DexErrorCode::InvalidOpenOrdersAuthority)
                     if market_accounts.open_orders_authority.is_some() => {}
                 e => Err(e).unwrap(),
             })
@@ -649,7 +649,7 @@ fn run_action<'bump>(
                 DexError::ErrorCode(DexErrorCode::WrongOrdersAccount)
                     if owner.closed_open_orders => {}
                 // Open orders account hasn't been initialized.
-                DexError::ErrorCode(DexErrorCode::InvalidMarketAuthority)
+                DexError::ErrorCode(DexErrorCode::InvalidOpenOrdersAuthority)
                     if market_accounts.open_orders_authority.is_some() => {}
                 e => Err(e).unwrap(),
             })
@@ -681,7 +681,7 @@ fn run_action<'bump>(
                 )
                 .map_err(|e| match e {
                     // Open orders account hasn't been initialized.
-                    DexError::ErrorCode(DexErrorCode::InvalidMarketAuthority)
+                    DexError::ErrorCode(DexErrorCode::InvalidOpenOrdersAuthority)
                         if market_accounts.open_orders_authority.is_some() => {}
                     DexError::ErrorCode(DexErrorCode::WrongOrdersAccount)
                         if owner.closed_open_orders => {}
