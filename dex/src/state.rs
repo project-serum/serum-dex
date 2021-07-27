@@ -1379,7 +1379,7 @@ fn send_from_vault<'a, 'b: 'a>(
     Ok(())
 }
 
-pub(crate) mod account_parser {
+pub mod account_parser {
     use super::*;
 
     macro_rules! declare_validated_account_wrapper {
@@ -1387,7 +1387,7 @@ pub(crate) mod account_parser {
             #[derive(Copy, Clone)]
             pub struct $WrapperT<'a, 'b: 'a>(&'a AccountInfo<'b>);
             impl<'a, 'b: 'a> $WrapperT<'a, 'b> {
-                fn new(account: &'a AccountInfo<'b> $(,$a: $t)*) -> DexResult<Self> {
+                pub fn new(account: &'a AccountInfo<'b> $(,$a: $t)*) -> DexResult<Self> {
                     let validate_result: DexResult = $validate(account $(,$a)*);
                     validate_result?;
                     Ok($WrapperT(account))
@@ -2299,7 +2299,7 @@ pub(crate) mod account_parser {
                 open_orders_acc,
                 Some(open_orders_owner_acc),
                 program_id,
-                Some(Rent::get()?),
+                None,
                 None,
             )?;
             let mut bids = market.load_bids_mut(bids_acc).or(check_unreachable!())?;

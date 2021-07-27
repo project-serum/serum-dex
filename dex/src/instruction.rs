@@ -454,6 +454,7 @@ pub enum MarketInstruction {
     /// 3. `[signer]` prune authority
     /// 4. `[]` open orders.
     /// 5. `[]` open orders owner.
+    /// 6. `[writable]` event queue.
     Prune,
 }
 
