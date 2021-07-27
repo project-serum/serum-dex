@@ -51,6 +51,9 @@ enum Action {
     CloseOpenOrders {
         owner_id: OwnerId,
     },
+    Prune {
+        owner_id: OwnerId,
+    },
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy, PartialOrd, Ord)]
@@ -167,8 +170,10 @@ fn run_actions(actions: Vec<Action>) {
         solana_program::program_stubs::set_syscall_stubs(Box::new(NoSolLoggingStubs));
     }
 
+    // Toggle when to test a permissioned market.
+    let is_permissioned = actions.len() % 2 == 0;
     let bump = Bump::new();
-    let market_accounts = setup_market(&bump);
+    let market_accounts = setup_market(&bump, is_permissioned);
     let mut owners: HashMap<OwnerId, Owner> = HashMap::new();
     let mut referrers: HashMap<ReferrerId, Referrer> = HashMap::new();
 
@@ -228,7 +233,10 @@ fn run_actions(actions: Vec<Action>) {
             Some(&owner.signer_account),
             market_accounts.market.owner,
             None,
-            None,
+            market_accounts
+                .open_orders_authority
+                .as_ref()
+                .map(|acc| serum_dex::state::account_parser::SignerAccount::new(acc).unwrap()),
         );
         let open_orders = match load_orders_result {
             Err(e) if e == DexErrorCode::RentNotProvided.into() => {
@@ -392,6 +400,9 @@ fn run_action<'bump>(
                     if instruction.self_trade_behavior == SelfTradeBehavior::AbortTransaction => {}
                 DexError::ErrorCode(DexErrorCode::WrongOrdersAccount)
                     if owner.closed_open_orders => {}
+                // Open orders account hasn't been initialized.
+                DexError::ErrorCode(DexErrorCode::InvalidMarketAuthority)
+                    if market_accounts.open_orders_authority.is_some() => {}
                 e => Err(e).unwrap(),
             })
             .ok();
@@ -500,6 +511,9 @@ fn run_action<'bump>(
                 DexError::ErrorCode(DexErrorCode::RentNotProvided) => {}
                 DexError::ErrorCode(DexErrorCode::WrongOrdersAccount)
                     if owner.closed_open_orders => {}
+                // Open orders account hasn't been initialized.
+                DexError::ErrorCode(DexErrorCode::InvalidMarketAuthority)
+                    if market_accounts.open_orders_authority.is_some() => {}
                 e => Err(e).unwrap(),
             })
             .ok();
@@ -593,14 +607,18 @@ fn run_action<'bump>(
             let owner = owners
                 .entry(owner_id)
                 .or_insert_with(|| Owner::new(&market_accounts, &bump));
+            let mut acc_infos = vec![
+                owner.orders_account.clone(),
+                owner.signer_account.clone(),
+                market_accounts.market.clone(),
+                market_accounts.rent_sysvar.clone(),
+            ];
+            if let Some(oo_acc_info) = market_accounts.open_orders_authority.as_ref() {
+                acc_infos.push(oo_acc_info.clone());
+            }
             process_instruction(
                 market_accounts.market.owner,
-                &[
-                    owner.orders_account.clone(),
-                    owner.signer_account.clone(),
-                    market_accounts.market.clone(),
-                    market_accounts.rent_sysvar.clone(),
-                ],
+                &acc_infos,
                 &MarketInstruction::InitOpenOrders.pack(),
             )
             .map_err(|e| match e {
@@ -630,6 +648,9 @@ fn run_action<'bump>(
                 DexError::ErrorCode(DexErrorCode::RentNotProvided) => {}
                 DexError::ErrorCode(DexErrorCode::WrongOrdersAccount)
                     if owner.closed_open_orders => {}
+                // Open orders account hasn't been initialized.
+                DexError::ErrorCode(DexErrorCode::InvalidMarketAuthority)
+                    if market_accounts.open_orders_authority.is_some() => {}
                 e => Err(e).unwrap(),
             })
             .map(|r| {
@@ -637,6 +658,37 @@ fn run_action<'bump>(
                 r
             })
             .ok();
+        }
+
+        Action::Prune { owner_id } => {
+            if let Some(prune_authority) = market_accounts.prune_authority.as_ref() {
+                let owner = owners
+                    .entry(owner_id)
+                    .or_insert_with(|| Owner::new(&market_accounts, &bump));
+
+                process_instruction(
+                    market_accounts.market.owner,
+                    &[
+                        market_accounts.market.clone(),
+                        market_accounts.bids.clone(),
+                        market_accounts.asks.clone(),
+                        prune_authority.clone(),
+                        owner.orders_account.clone(),
+                        owner.signer_account.clone(),
+                        market_accounts.event_q.clone(),
+                    ],
+                    &MarketInstruction::Prune.pack(),
+                )
+                .map_err(|e| match e {
+                    // Open orders account hasn't been initialized.
+                    DexError::ErrorCode(DexErrorCode::InvalidMarketAuthority)
+                        if market_accounts.open_orders_authority.is_some() => {}
+                    DexError::ErrorCode(DexErrorCode::WrongOrdersAccount)
+                        if owner.closed_open_orders => {}
+                    e => Err(e).unwrap(),
+                })
+                .ok();
+            }
         }
     };
 
