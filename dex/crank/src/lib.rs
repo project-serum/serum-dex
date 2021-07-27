@@ -13,6 +13,7 @@ use std::{thread, time};
 use anyhow::{format_err, Result};
 use clap::Clap;
 use debug_print::debug_println;
+use enumflags2::BitFlags;
 use log::{error, info};
 use rand::rngs::OsRng;
 use safe_transmute::{
@@ -52,7 +53,7 @@ use serum_dex::state::EventQueueHeader;
 use serum_dex::state::QueueHeader;
 use serum_dex::state::Request;
 use serum_dex::state::RequestQueueHeader;
-use serum_dex::state::{Market, MarketState, MarketStateV2};
+use serum_dex::state::{AccountFlag, Market, MarketState, MarketStateV2};
 
 pub fn with_logging<F: FnOnce()>(_to: &str, fnc: F) {
     fnc();
@@ -426,13 +427,14 @@ fn get_keys_for_market<'a>(
     let account_data: Vec<u8> = client.get_account_data(&market)?;
     let words: Cow<[u64]> = remove_dex_account_padding(&account_data)?;
     let market_state: MarketState = {
-        if account_data.len() == MarketState::LEN {
-            transmute_one_pedantic::<MarketState>(transmute_to_bytes(&words))
-                .map_err(|e| e.without_src())?
-        } else {
+        let account_flags = Market::account_flags(&account_data)?;
+        if account_flags.intersects(AccountFlag::Permissioned) {
             let state = transmute_one_pedantic::<MarketStateV2>(transmute_to_bytes(&words))
                 .map_err(|e| e.without_src())?;
             state.inner
+        } else {
+            transmute_one_pedantic::<MarketState>(transmute_to_bytes(&words))
+                .map_err(|e| e.without_src())?
         }
     };
     market_state.check_flags()?;

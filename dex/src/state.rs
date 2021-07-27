@@ -58,6 +58,7 @@ pub enum AccountFlag {
     Asks = 1u64 << 6,
     Disabled = 1u64 << 7,
     Closed = 1u64 << 8,
+    Permissioned = 1u64 << 9,
 }
 
 // Versioned frontend for market accounts.
@@ -89,11 +90,25 @@ impl<'a> DerefMut for Market<'a> {
 impl<'a> Market<'a> {
     #[inline]
     pub fn load(market_account: &'a AccountInfo, program_id: &Pubkey) -> DexResult<Self> {
-        if market_account.try_data_len()? == MarketState::LEN {
-            Ok(Market::V1(MarketState::load(market_account, program_id)?))
-        } else {
+        let flags = Market::account_flags(&market_account.try_borrow_data()?)?;
+        if flags.intersects(AccountFlag::Permissioned) {
             Ok(Market::V2(MarketStateV2::load(market_account, program_id)?))
+        } else {
+            Ok(Market::V1(MarketState::load(market_account, program_id)?))
         }
+    }
+
+    pub fn account_flags(account_data: &[u8]) -> DexResult<BitFlags<AccountFlag>> {
+        let start = ACCOUNT_HEAD_PADDING.len();
+        let end = start + size_of::<AccountFlag>();
+        check_assert!(account_data.len() >= end)?;
+
+        let mut flag_bytes = [0u8; 8];
+        flag_bytes.copy_from_slice(&account_data[start..end]);
+
+        BitFlags::from_bits(u64::from_le_bytes(flag_bytes))
+            .map_err(|_| DexErrorCode::InvalidMarketFlags.into())
+            .map(Into::into)
     }
 
     pub fn open_orders_authority(&self) -> Option<&Pubkey> {
@@ -192,6 +207,18 @@ impl MarketStateV2 {
 
         state.check_flags()?;
         Ok(state)
+    }
+
+    #[inline]
+    pub fn check_flags(&self) -> DexResult {
+        let flags = BitFlags::from_bits(self.account_flags)
+            .map_err(|_| DexErrorCode::InvalidMarketFlags)?;
+        let required_flags =
+            AccountFlag::Initialized | AccountFlag::Market | AccountFlag::Permissioned;
+        if flags != required_flags {
+            Err(DexErrorCode::InvalidMarketFlags)?
+        }
+        Ok(())
     }
 }
 
@@ -331,8 +358,6 @@ pub fn strip_header<'a, H: Pod, D: Pod>(
 }
 
 impl MarketState {
-    pub const LEN: usize = 388;
-
     #[inline]
     pub fn load<'a>(
         market_account: &'a AccountInfo,
@@ -2903,11 +2928,15 @@ impl State {
         // initialize market
         let mut market_data = market.try_borrow_mut_data()?;
         let market_view = init_account_padding(&mut market_data)?;
+        let mut account_flags = AccountFlag::Initialized | AccountFlag::Market;
+        if market_authority.is_some() {
+            account_flags |= AccountFlag::Permissioned;
+        }
         let market_state = MarketState {
             coin_lot_size,
             pc_lot_size,
             own_address: market.key.to_aligned_bytes(),
-            account_flags: (AccountFlag::Initialized | AccountFlag::Market).bits(),
+            account_flags: account_flags.bits(),
 
             coin_mint: coin_mint.key.to_aligned_bytes(),
             coin_vault: coin_vault.key.to_aligned_bytes(),
