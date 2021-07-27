@@ -331,7 +331,7 @@ pub enum MarketInstruction {
     /// 7. `[]` coin currency Mint
     /// 8. `[]` price currency Mint
     /// 9. `[]` the rent sysvar
-    /// 10. `[signer]` open orders market authority (optional).
+    /// 10. `[]` open orders market authority (optional).
     InitializeMarket(InitializeMarketInstruction),
     /// 0. `[writable]` the market
     /// 1. `[writable]` the OpenOrders account to use

@@ -122,7 +122,7 @@ impl<'a> Market<'a> {
         if open_orders.account_flags == 0 {
             let oo_authority = open_orders_authority.map(|a| a.inner().key);
             if oo_authority != self.open_orders_authority() {
-                return Err(DexErrorCode::InvalidMarketAuthority.into());
+                return Err(DexErrorCode::InvalidOpenOrdersAuthority.into());
             }
 
             let rent = rent.ok_or(DexErrorCode::RentNotProvided)?;
@@ -2193,7 +2193,7 @@ pub(crate) mod account_parser {
                 ref rent_acc,
             ] = array_ref![accounts, 0, 4];
 
-            let market_authority = (&accounts[4..])
+            let oo_authority = (&accounts[4..])
                 .first()
                 .map(|acc| SignerAccount::new(acc))
                 .transpose()?;
@@ -2214,7 +2214,7 @@ pub(crate) mod account_parser {
                 Some(owner.inner()),
                 program_id,
                 Some(rent),
-                market_authority,
+                oo_authority,
             )?;
 
             // Invoke processor.

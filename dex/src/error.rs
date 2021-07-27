@@ -110,7 +110,7 @@ pub enum DexErrorCode {
     OrderNotYours,
 
     WouldSelfTrade,
-    InvalidMarketAuthority,
+    InvalidOpenOrdersAuthority,
 
     Unknown = 1000,
 
