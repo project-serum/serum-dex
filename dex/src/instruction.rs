@@ -935,8 +935,10 @@ pub fn prune(
     market: &Pubkey,
     bids: &Pubkey,
     asks: &Pubkey,
-    market_authority: &Pubkey,
+    prune_authority: &Pubkey,
     open_orders: &Pubkey,
+    open_orders_owner: &Pubkey,
+    event_q: &Pubkey,
     limit: u16,
 ) -> Result<Instruction, DexError> {
     let data = MarketInstruction::Prune(limit).pack();
@@ -944,8 +946,10 @@ pub fn prune(
         AccountMeta::new(*market, false),
         AccountMeta::new(*bids, false),
         AccountMeta::new(*asks, false),
-        AccountMeta::new_readonly(*market_authority, true),
+        AccountMeta::new_readonly(*prune_authority, true),
         AccountMeta::new_readonly(*open_orders, false),
+        AccountMeta::new_readonly(*open_orders_owner, false),
+        AccountMeta::new(*event_q, false),
     ];
     Ok(Instruction {
         program_id: *program_id,
