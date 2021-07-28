@@ -35,8 +35,6 @@ num-traits = "0.2.12"
 arrayref = "0.3.6"
 bytemuck = { version = "1.4.0" }
 byteorder = "1.3.4"
-# Needed to fix the build until solana toolchain updates rust to 1.51.
-zeroize = "=1.3.0"
 
 [lib]
 crate-type = ["cdylib", "lib"]
