@@ -55,21 +55,12 @@ sudo apt-get install -y pkg-config build-essential python3-pip jq
 
 ### Install Solana
 
-```bash
-curl -sSf https://raw.githubusercontent.com/solana-labs/solana/v1.4.14/install/solana-install-init.sh | sh -s - v1.4.14
-export PATH="/home/ubuntu/.local/share/solana/install/active_release/bin:$PATH"
-```
+Directions can be found [here](https://docs.solana.com/cli/install-solana-cli-tools#use-solanas-install-tool).
 
 ### Download the source
 
 ```bash
 git clone https://github.com/project-serum/serum-dex.git
-```
-
-### Install the BPF SDK
-
-```bash
-./do.sh update
 ```
 
 ### Build, deploy, and test programs
@@ -78,15 +69,12 @@ See individual crates for documentation. For example, to build the dex see its [
 
 ## Running a local Solana cluster
 
-The easiest way to run a local cluster is to run the docker container provided by Solana.
-Instructions can be found [here](https://solana-labs.github.io/solana-web3.js/). For local development, however, it's often convenient to build and run a validator from [source](https://github.com/solana-labs/solana#building).
+The easiest way to run a local cluster is to use [solana-test-validator](https://docs.solana.com/developing/test-validator).
 
 ## Directories
 
 * `assert-owner`: Solana utility program for checking account ownership.
-* `cli`: Serum command line interface.
 * `common`: Common rust utilities.
-* `context`: Global environment used by Serum crates, read from a configuration file.
 * `dex`: Serum DEX program and client utility.
 * `docker`: Docker image definitions.
 * `pool`: Serum pool protocol.

@@ -10,7 +10,6 @@ path = "src/bin/main.rs"
 [dependencies]
 serum_dex = { path = "../", default-features = false, features = ["client"] }
 serum-common = { path = "../../common", features = ["client"] }
-serum-context = { path = "../../context" }
 spl-token = { version = "3.0.0-pre1", features = ["no-entrypoint"], default-features = false }
 clap = "3.0.0-beta.1"
 enumflags2 = "0.6.4"

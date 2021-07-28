@@ -2,13 +2,11 @@
 members = [
     "assert-owner",
     "common",
-    "context",
     "dex/crank",
     "pool",
     "pool/schema",
     "pool/examples/admin-controlled",
     "pool/examples/simple",
-    "cli"
 ]
 exclude = [
     "dex",

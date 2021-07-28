@@ -40,7 +40,6 @@ use serum_common::client::rpc::{
     create_and_init_mint, create_token_account, mint_to_new_account, send_txn, simulate_transaction,
 };
 use serum_common::client::Cluster;
-use serum_context::Context;
 use serum_dex::instruction::{
     cancel_order_by_client_order_id as cancel_order_by_client_order_id_ix,
     close_open_orders as close_open_orders_ix, init_open_orders as init_open_orders_ix,
@@ -200,7 +199,7 @@ pub enum Command {
     },
 }
 
-pub fn start(ctx: Option<Context>, opts: Opts) -> Result<()> {
+pub fn start(opts: Opts) -> Result<()> {
     let client = opts.client();
 
     match opts.command {
