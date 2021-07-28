@@ -8,8 +8,6 @@ _defaults: &defaults
     - docker
   before_install:
     - scripts/travis/run-docker.sh
-  install:
-    - mkdir -p bin && ./bpf-sdk-install.sh bin
   before_cache:
     - scripts/travis/stop-docker.sh
 
@@ -25,11 +23,7 @@ _localnet: &localnet
 jobs:
   include:
     - <<: *defaults
-      name: Dex unit tests
-      script:
-        - docker exec dev ./do.sh test dex
-    - <<: *defaults
-      name: Dex integration tests
+      name: Dex tests
       <<: *localnet
       script:
         - docker exec dev ./scripts/travis/dex-tests.sh

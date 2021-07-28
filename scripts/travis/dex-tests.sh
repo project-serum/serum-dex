@@ -29,7 +29,13 @@ main() {
     yes | solana airdrop --url $CLUSTER_URL 100
     set -e
     #
-    # Run the tests.
+    # Run the unit tests.
+    #
+    pushd dex
+    cargo test
+    popd
+    #
+    # Run the integration tests.
     #
     dex_whole_shebang
 }
