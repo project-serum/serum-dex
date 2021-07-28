@@ -677,7 +677,7 @@ fn run_action<'bump>(
                         owner.signer_account.clone(),
                         market_accounts.event_q.clone(),
                     ],
-                    &MarketInstruction::Prune.pack(),
+                    &MarketInstruction::Prune(u16::MAX).pack(),
                 )
                 .map_err(|e| match e {
                     // Open orders account hasn't been initialized.
