@@ -622,7 +622,11 @@ impl Slab {
         }
     }
 
-    pub fn find_by<F: Fn(&LeafNode) -> bool>(&self, predicate: F) -> Vec<u128> {
+    pub(crate) fn find_by<F: Fn(&LeafNode) -> bool>(
+        &self,
+        limit: &mut u16,
+        predicate: F,
+    ) -> Vec<u128> {
         let mut found = Vec::new();
         let mut nodes_to_search: Vec<NodeHandle> = Vec::new();
         let mut current_node: Option<&AnyNode>;
@@ -637,7 +641,9 @@ impl Slab {
         nodes_to_search.push(top_node.unwrap());
 
         // Search through the tree.
-        while !nodes_to_search.is_empty() {
+        while !nodes_to_search.is_empty() && *limit > 0 {
+            *limit -= 1;
+
             current_node = self.get(nodes_to_search.pop().unwrap());
 
             // Node not found.

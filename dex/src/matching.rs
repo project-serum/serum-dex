@@ -146,9 +146,14 @@ impl<'ob> OrderBookState<'ob> {
     pub fn remove_all(
         &mut self,
         open_orders: [u64; 4],
+        mut limit: u16,
     ) -> DexResult<(Vec<LeafNode>, Vec<LeafNode>)> {
-        let asks_matching_open_orders = self.asks.find_by(|order| order.owner().eq(&open_orders));
-        let bids_matching_open_orders = self.bids.find_by(|order| order.owner().eq(&open_orders));
+        let asks_matching_open_orders = self
+            .asks
+            .find_by(&mut limit, |order| order.owner().eq(&open_orders));
+        let bids_matching_open_orders = self
+            .bids
+            .find_by(&mut limit, |order| order.owner().eq(&open_orders));
         let bids_removed: Vec<LeafNode> = bids_matching_open_orders
             .iter()
             .filter_map(|order_to_remove| self.bids.remove_by_key(*order_to_remove))

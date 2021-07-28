@@ -177,6 +177,8 @@ pub struct MarketStateV2 {
     pub inner: MarketState,
     pub open_orders_authority: Pubkey,
     pub prune_authority: Pubkey,
+    // Unused bytes for future upgrades.
+    padding: [u8; 1024],
 }
 
 impl Deref for MarketStateV2 {
@@ -2270,12 +2272,14 @@ pub mod account_parser {
         pub open_orders: &'a mut OpenOrders,
         pub open_orders_address: &'a Pubkey,
         pub event_q: EventQueue<'a>,
+        pub limit: u16,
     }
 
     impl<'a> PruneArgs<'a> {
         pub fn with_parsed_args<T>(
             program_id: &Pubkey,
             accounts: &[AccountInfo],
+            limit: u16,
             f: impl FnOnce(PruneArgs) -> DexResult<T>,
         ) -> DexResult<T> {
             // Parse accounts.
@@ -2316,6 +2320,7 @@ pub mod account_parser {
                 open_orders_address,
                 open_orders: open_orders.deref_mut(),
                 event_q,
+                limit,
             };
             f(args)
         }
@@ -2429,9 +2434,10 @@ impl State {
                     Self::process_init_open_orders,
                 )?
             }
-            MarketInstruction::Prune => account_parser::PruneArgs::with_parsed_args(
+            MarketInstruction::Prune(limit) => account_parser::PruneArgs::with_parsed_args(
                 program_id,
                 accounts,
+                limit,
                 Self::process_prune,
             )?,
         };
@@ -2449,9 +2455,11 @@ impl State {
             open_orders,
             open_orders_address,
             mut event_q,
+            limit,
         } = args;
         let open_orders_addr_bytes = open_orders_address.to_aligned_bytes();
-        let (bids_removed, asks_removed) = order_book_state.remove_all(open_orders_addr_bytes)?;
+        let (bids_removed, asks_removed) =
+            order_book_state.remove_all(open_orders_addr_bytes, limit)?;
 
         solana_program::msg!(
             "Pruned {:?} bids and {:?} asks",

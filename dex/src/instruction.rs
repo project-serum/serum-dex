@@ -455,7 +455,7 @@ pub enum MarketInstruction {
     /// 4. `[]` open orders.
     /// 5. `[]` open orders owner.
     /// 6. `[writable]` event queue.
-    Prune,
+    Prune(u16),
 }
 
 impl MarketInstruction {
@@ -549,7 +549,10 @@ impl MarketInstruction {
             }),
             (14, 0) => MarketInstruction::CloseOpenOrders,
             (15, 0) => MarketInstruction::InitOpenOrders,
-            (16, 0) => MarketInstruction::Prune,
+            (16, 2) => {
+                let limit = array_ref![data, 0, 2];
+                MarketInstruction::Prune(u16::from_le_bytes(*limit))
+            }
             _ => return None,
         })
     }
@@ -934,8 +937,9 @@ pub fn prune(
     asks: &Pubkey,
     market_authority: &Pubkey,
     open_orders: &Pubkey,
+    limit: u16,
 ) -> Result<Instruction, DexError> {
-    let data = MarketInstruction::Prune.pack();
+    let data = MarketInstruction::Prune(limit).pack();
     let accounts: Vec<AccountMeta> = vec![
         AccountMeta::new(*market, false),
         AccountMeta::new(*bids, false),
