@@ -6,9 +6,9 @@ use safe_transmute::to_bytes::{transmute_to_bytes, transmute_to_bytes_mut};
 use solana_program::account_info::AccountInfo;
 use solana_program::bpf_loader;
 use solana_program::clock::Epoch;
-use solana_program::program_pack::Pack;
-use solana_program::instruction::Instruction;
 use solana_program::entrypoint::ProgramResult;
+use solana_program::instruction::Instruction;
+use solana_program::program_pack::Pack;
 use solana_program::pubkey::Pubkey;
 use solana_program::rent::Rent;
 use solana_program::system_program;
@@ -62,7 +62,12 @@ pub fn new_dex_owned_account<'bump>(
     rent: Rent,
 ) -> AccountInfo<'bump> {
     let data_len = unpadded_len + 12;
-    new_dex_owned_account_with_lamports(unpadded_len, rent.minimum_balance(data_len), program_id, bump)
+    new_dex_owned_account_with_lamports(
+        unpadded_len,
+        rent.minimum_balance(data_len),
+        program_id,
+        bump,
+    )
 }
 
 pub fn new_dex_owned_account_with_lamports<'bump>(
@@ -105,7 +110,7 @@ pub fn new_token_account<'bump, 'a, 'b>(
     owner_pubkey: &'b Pubkey,
     balance: u64,
     bump: &'bump Bump,
-    rent: Rent
+    rent: Rent,
 ) -> AccountInfo<'bump> {
     let data = bump.alloc_slice_fill_copy(SplAccount::LEN, 0u8);
     let mut account = SplAccount::default();
@@ -242,6 +247,7 @@ pub fn setup_market(bump: &Bump) -> MarketAccounts {
         pc_mint.key,
         coin_vault.key,
         pc_vault.key,
+        None,
         bids.key,
         asks.key,
         req_q.key,
@@ -341,10 +347,12 @@ pub struct NoSolLoggingStubs;
 
 impl solana_program::program_stubs::SyscallStubs for NoSolLoggingStubs {
     fn sol_log(&self, _message: &str) {}
-    fn sol_invoke_signed(&self,
+    fn sol_invoke_signed(
+        &self,
         _instruction: &Instruction,
         _account_infos: &[AccountInfo],
-        _signers_seeds: &[&[&[u8]]]) -> ProgramResult {
+        _signers_seeds: &[&[&[u8]]],
+    ) -> ProgramResult {
         unimplemented!()
     }
 }

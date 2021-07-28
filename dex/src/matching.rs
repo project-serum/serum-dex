@@ -6,7 +6,7 @@ use num_enum::{IntoPrimitive, TryFromPrimitive};
 use proptest_derive::Arbitrary;
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "program")]
-use solana_program::info;
+use solana_program::msg;
 
 use crate::critbit::SlabTreeError;
 use crate::error::{DexErrorCode, DexResult, SourceFileId};
@@ -17,7 +17,7 @@ use crate::{
 };
 
 #[cfg(not(feature = "program"))]
-macro_rules! info {
+macro_rules! msg {
     ($($i:expr),*) => { { ($($i),*) } };
 }
 declare_check_assert_macros!(SourceFileId::Matching);
@@ -533,7 +533,7 @@ impl<'ob> OrderBookState<'ob> {
             let insert_result = offers.insert_leaf(&new_order);
             if let Err(SlabTreeError::OutOfSpace) = insert_result {
                 // boot out the least aggressive offer
-                info!("offers full! booting...");
+                msg!("offers full! booting...");
                 let order = offers.remove_max().unwrap();
                 let out = Event::new(EventView::Out {
                     side: Side::Ask,
@@ -883,7 +883,7 @@ impl<'ob> OrderBookState<'ob> {
             let insert_result = bids.insert_leaf(&new_leaf);
             if let Err(SlabTreeError::OutOfSpace) = insert_result {
                 // boot out the least aggressive bid
-                info!("bids full! booting...");
+                msg!("bids full! booting...");
                 let order = bids.remove_min().unwrap();
                 let out = Event::new(EventView::Out {
                     side: Side::Bid,
