@@ -1381,7 +1381,12 @@ fn send_from_vault<'a, 'b: 'a>(
     Ok(())
 }
 
-pub mod account_parser {
+#[cfg(feature = "fuzz")]
+pub mod fuzz_account_parser {
+    pub use super::account_parser::SignerAccount;
+}
+
+pub(crate) mod account_parser {
     use super::*;
 
     macro_rules! declare_validated_account_wrapper {
@@ -1565,15 +1570,8 @@ pub mod account_parser {
                 remaining_accounts,
             ) = array_refs![accounts, 5, 2, 2, 1; .. ;];
 
-            let (market_authority, prune_authority) = {
-                let mut rem_iter = remaining_accounts.iter();
-                let first = rem_iter.next();
-                if first.is_none() {
-                    (None, None)
-                } else {
-                    (first, rem_iter.next())
-                }
-            };
+            let mut rem_iter = remaining_accounts.iter();
+            let (market_authority, prune_authority) = (rem_iter.next(), rem_iter.next());
 
             {
                 // Dynamic sysvars don't work in unit tests.
