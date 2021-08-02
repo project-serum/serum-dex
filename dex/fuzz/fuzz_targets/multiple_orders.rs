@@ -27,6 +27,12 @@ use serum_dex_fuzz::{
 };
 
 #[derive(Debug, Arbitrary, Clone)]
+pub struct ActionSequence {
+    actions: Vec<Action>,
+    is_permissioned: bool,
+}
+
+#[derive(Debug, Arbitrary, Clone)]
 enum Action {
     PlaceOrder {
         owner_id: OwnerId,
@@ -161,17 +167,21 @@ lazy_static! {
         .unwrap_or(0);
 }
 
-fuzz_target!(|actions: Vec<Action>| { run_actions(actions) });
+fuzz_target!(|seq: ActionSequence| { run_actions(seq) });
 
-fn run_actions(actions: Vec<Action>) {
+fn run_actions(seq: ActionSequence) {
     if *VERBOSE >= 1 {
-        println!("{:#?}", actions);
+        println!("{:#?}", seq);
     } else {
         solana_program::program_stubs::set_syscall_stubs(Box::new(NoSolLoggingStubs));
     }
 
+    let ActionSequence {
+        actions,
+        is_permissioned,
+    } = seq;
+
     // Toggle when to test a permissioned market.
-    let is_permissioned = actions.len() % 2 == 0;
     let bump = Bump::new();
     let market_accounts = setup_market(&bump, is_permissioned);
     let mut owners: HashMap<OwnerId, Owner> = HashMap::new();
