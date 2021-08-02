@@ -181,7 +181,6 @@ fn run_actions(seq: ActionSequence) {
         is_permissioned,
     } = seq;
 
-    // Toggle when to test a permissioned market.
     let bump = Bump::new();
     let market_accounts = setup_market(&bump, is_permissioned);
     let mut owners: HashMap<OwnerId, Owner> = HashMap::new();
