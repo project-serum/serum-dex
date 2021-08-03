@@ -622,6 +622,52 @@ impl Slab {
         }
     }
 
+    pub(crate) fn find_by<F: Fn(&LeafNode) -> bool>(
+        &self,
+        limit: &mut u16,
+        predicate: F,
+    ) -> Vec<u128> {
+        let mut found = Vec::new();
+        let mut nodes_to_search: Vec<NodeHandle> = Vec::new();
+        let mut current_node: Option<&AnyNode>;
+
+        let top_node = self.root();
+
+        // No found nodes.
+        if top_node.is_none() {
+            return found;
+        }
+
+        nodes_to_search.push(top_node.unwrap());
+
+        // Search through the tree.
+        while !nodes_to_search.is_empty() && *limit > 0 {
+            *limit -= 1;
+
+            current_node = self.get(nodes_to_search.pop().unwrap());
+
+            // Node not found.
+            if current_node.is_none() {
+                break;
+            }
+
+            match current_node.unwrap().case().unwrap() {
+                NodeRef::Leaf(leaf) if predicate(leaf) => {
+                    // Found a matching leaf.
+                    found.push(leaf.key)
+                }
+                NodeRef::Inner(inner) => {
+                    // Search the children.
+                    nodes_to_search.push(inner.children[0]);
+                    nodes_to_search.push(inner.children[1]);
+                }
+                _ => (),
+            }
+        }
+
+        found
+    }
+
     #[inline]
     pub fn remove_by_key(&mut self, search_key: u128) -> Option<LeafNode> {
         let mut parent_h = self.root()?;

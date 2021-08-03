@@ -201,6 +201,7 @@ fn setup_market<'bump, R: Rng>(rng: &mut R, bump: &'bump Bump) -> MarketAccounts
         &coin_vault.key,
         &pc_vault.key,
         None,
+        None,
         &bids.key,
         &asks.key,
         &req_q.key,

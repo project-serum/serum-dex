@@ -331,7 +331,8 @@ pub enum MarketInstruction {
     /// 7. `[]` coin currency Mint
     /// 8. `[]` price currency Mint
     /// 9. `[]` the rent sysvar
-    /// 10. `[]` open orders market authority (optional).
+    /// 10. `[]` open orders market authority (optional)
+    /// 11. `[]` prune authority (optional, requires open orders market authority)
     InitializeMarket(InitializeMarketInstruction),
     /// 0. `[writable]` the market
     /// 1. `[writable]` the OpenOrders account to use
@@ -445,6 +446,16 @@ pub enum MarketInstruction {
     /// 3. `[]` the rent sysvar
     /// 4. `[signer]` open orders market authority (optional).
     InitOpenOrders,
+    /// Removes all orders for a given open orders account from the orderbook.
+    ///
+    /// 0. `[writable]` market
+    /// 1. `[writable]` bids
+    /// 2. `[writable]` asks
+    /// 3. `[signer]` prune authority
+    /// 4. `[]` open orders.
+    /// 5. `[]` open orders owner.
+    /// 6. `[writable]` event queue.
+    Prune(u16),
 }
 
 impl MarketInstruction {
@@ -538,6 +549,10 @@ impl MarketInstruction {
             }),
             (14, 0) => MarketInstruction::CloseOpenOrders,
             (15, 0) => MarketInstruction::InitOpenOrders,
+            (16, 2) => {
+                let limit = array_ref![data, 0, 2];
+                MarketInstruction::Prune(u16::from_le_bytes(*limit))
+            }
             _ => return None,
         })
     }
@@ -561,6 +576,7 @@ pub fn initialize_market(
     coin_vault_pk: &Pubkey,
     pc_vault_pk: &Pubkey,
     authority_pk: Option<&Pubkey>,
+    prune_authority_pk: Option<&Pubkey>,
     // srm_vault_pk: &Pubkey,
     bids_pk: &Pubkey,
     asks_pk: &Pubkey,
@@ -610,8 +626,12 @@ pub fn initialize_market(
         rent_sysvar,
     ];
     if let Some(auth) = authority_pk {
-        let authority = AccountMeta::new(*auth, false);
+        let authority = AccountMeta::new_readonly(*auth, false);
         accounts.push(authority);
+        if let Some(prune_auth) = prune_authority_pk {
+            let authority = AccountMeta::new_readonly(*prune_auth, false);
+            accounts.push(authority);
+        }
     }
 
     Ok(Instruction {
@@ -903,6 +923,34 @@ pub fn init_open_orders(
     if let Some(market_authority) = market_authority {
         accounts.push(AccountMeta::new_readonly(*market_authority, true));
     }
+    Ok(Instruction {
+        program_id: *program_id,
+        data,
+        accounts,
+    })
+}
+
+pub fn prune(
+    program_id: &Pubkey,
+    market: &Pubkey,
+    bids: &Pubkey,
+    asks: &Pubkey,
+    prune_authority: &Pubkey,
+    open_orders: &Pubkey,
+    open_orders_owner: &Pubkey,
+    event_q: &Pubkey,
+    limit: u16,
+) -> Result<Instruction, DexError> {
+    let data = MarketInstruction::Prune(limit).pack();
+    let accounts: Vec<AccountMeta> = vec![
+        AccountMeta::new(*market, false),
+        AccountMeta::new(*bids, false),
+        AccountMeta::new(*asks, false),
+        AccountMeta::new_readonly(*prune_authority, true),
+        AccountMeta::new_readonly(*open_orders, false),
+        AccountMeta::new_readonly(*open_orders_owner, false),
+        AccountMeta::new(*event_q, false),
+    ];
     Ok(Instruction {
         program_id: *program_id,
         data,

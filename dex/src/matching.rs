@@ -141,6 +141,29 @@ impl<'ob> OrderBookState<'ob> {
             }
         })
     }
+
+    // Removes all orders belonging to the given open orders account.
+    pub fn remove_all(
+        &mut self,
+        open_orders: [u64; 4],
+        mut limit: u16,
+    ) -> DexResult<(Vec<LeafNode>, Vec<LeafNode>)> {
+        let asks_matching_open_orders = self
+            .asks
+            .find_by(&mut limit, |order| order.owner().eq(&open_orders));
+        let bids_matching_open_orders = self
+            .bids
+            .find_by(&mut limit, |order| order.owner().eq(&open_orders));
+        let bids_removed: Vec<LeafNode> = bids_matching_open_orders
+            .iter()
+            .filter_map(|order_to_remove| self.bids.remove_by_key(*order_to_remove))
+            .collect();
+        let asks_removed: Vec<LeafNode> = asks_matching_open_orders
+            .iter()
+            .filter_map(|order_to_remove| self.asks.remove_by_key(*order_to_remove))
+            .collect();
+        Ok((bids_removed, asks_removed))
+    }
 }
 
 pub(crate) struct RequestProceeds {
@@ -913,19 +936,37 @@ impl<'ob> OrderBookState<'ob> {
         open_orders_address: [u64; 4],
         open_orders: &mut OpenOrders,
         order_id: u128,
-
         event_q: &mut EventQueue,
     ) -> DexResult {
         let leaf_node = self
             .orders_mut(side)
             .remove_by_key(order_id)
             .ok_or(DexErrorCode::OrderNotFound)?;
+        self.cancel_leaf_node(
+            leaf_node,
+            side,
+            open_orders,
+            open_orders_address,
+            order_id,
+            event_q,
+        )
+    }
+
+    pub(crate) fn cancel_leaf_node(
+        &mut self,
+        leaf_node: LeafNode,
+        side: Side,
+        open_orders: &mut OpenOrders,
+        open_orders_address: [u64; 4],
+        order_id: u128,
+        event_q: &mut EventQueue,
+    ) -> DexResult {
         check_assert_eq!(leaf_node.owner(), open_orders_address)
             .or(Err(DexErrorCode::OrderNotYours))?;
 
         let open_orders_slot = leaf_node.owner_slot();
-        check_assert_eq!(Some(side), open_orders.slot_side(open_orders_slot))?;
         check_assert_eq!(order_id, open_orders.orders[open_orders_slot as usize])?;
+        check_assert_eq!(Some(side), open_orders.slot_side(open_orders_slot))?;
 
         let native_qty_unlocked;
         match side {
@@ -961,7 +1002,6 @@ impl<'ob> OrderBookState<'ob> {
         expected_owner: [u64; 4],
         expected_owner_slot: u8,
         client_order_id: Option<NonZeroU64>,
-
         event_q: &mut EventQueue,
     ) -> DexResult<()> {
         if let Some(leaf_node) = self.orders_mut(side).remove_by_key(order_id) {
