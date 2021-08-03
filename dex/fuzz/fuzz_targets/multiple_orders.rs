@@ -245,7 +245,7 @@ fn run_actions(seq: ActionSequence) {
             market_accounts
                 .open_orders_authority
                 .as_ref()
-                .map(|acc| serum_dex::state::account_parser::SignerAccount::new(acc).unwrap()),
+                .map(|acc| serum_dex::state::fuzz_account_parser::SignerAccount::new(acc).unwrap()),
         );
         let open_orders = match load_orders_result {
             Err(e) if e == DexErrorCode::RentNotProvided.into() => {
