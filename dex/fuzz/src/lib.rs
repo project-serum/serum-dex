@@ -20,7 +20,8 @@ use spl_token::state::Mint;
 use serum_dex::error::DexResult;
 use serum_dex::instruction::{fee_sweeper, initialize_market};
 use serum_dex::state::{
-    gen_vault_signer_key, strip_header, EventQueue, MarketState, Queue, RequestQueue, State,
+    gen_vault_signer_key, strip_header, EventQueue, MarketState, MarketStateV2, Queue,
+    RequestQueue, State,
 };
 
 fn random_pubkey(bump: &Bump) -> &Pubkey {
@@ -200,6 +201,8 @@ pub struct MarketAccounts<'bump> {
     pub rent_sysvar: AccountInfo<'bump>,
     pub sweep_authority: AccountInfo<'bump>,
     pub fee_receiver: AccountInfo<'bump>,
+    pub open_orders_authority: Option<AccountInfo<'bump>>,
+    pub prune_authority: Option<AccountInfo<'bump>>,
 }
 
 impl<'bump> MarketAccounts<'bump> {
@@ -212,12 +215,21 @@ pub const COIN_LOT_SIZE: u64 = 100_000;
 pub const PC_LOT_SIZE: u64 = 100;
 pub const PC_DUST_THRESHOLD: u64 = 500;
 
-pub fn setup_market(bump: &Bump) -> MarketAccounts {
+pub fn setup_market(bump: &Bump, is_permissioned: bool) -> MarketAccounts {
     let rent = Rent::default();
     let rent_sysvar = new_rent_sysvar_account(100000, rent, bump);
 
     let program_id = random_pubkey(bump);
-    let market = new_dex_owned_account(size_of::<MarketState>(), program_id, bump, rent);
+    let market = new_dex_owned_account(
+        if is_permissioned {
+            size_of::<MarketStateV2>()
+        } else {
+            size_of::<MarketState>()
+        },
+        program_id,
+        bump,
+        rent,
+    );
     let bids = new_dex_owned_account(1 << 16, program_id, bump, rent);
     let asks = new_dex_owned_account(1 << 16, program_id, bump, rent);
     let req_q = new_dex_owned_account(640, program_id, bump, rent);
@@ -233,6 +245,14 @@ pub fn setup_market(bump: &Bump) -> MarketAccounts {
     let fee_receiver = new_token_account(pc_mint.key, random_pubkey(bump), 0, bump, rent);
     let sweep_authority = new_sol_account_with_pubkey(bump.alloc(fee_sweeper::ID), 0, bump);
 
+    let (open_orders_authority, prune_authority) = match is_permissioned {
+        false => (None, None),
+        true => (
+            Some(new_sol_account_with_pubkey(random_pubkey(bump), 0, bump)),
+            Some(new_sol_account_with_pubkey(random_pubkey(bump), 0, bump)),
+        ),
+    };
+
     let spl_token_program = new_spl_token_program(bump);
 
     let coin_lot_size = COIN_LOT_SIZE;
@@ -247,8 +267,8 @@ pub fn setup_market(bump: &Bump) -> MarketAccounts {
         pc_mint.key,
         coin_vault.key,
         pc_vault.key,
-        None,
-        None,
+        open_orders_authority.as_ref().map(|a| a.key),
+        prune_authority.as_ref().map(|a| a.key),
         bids.key,
         asks.key,
         req_q.key,
@@ -260,23 +280,23 @@ pub fn setup_market(bump: &Bump) -> MarketAccounts {
     )
     .unwrap();
 
-    process_instruction(
-        program_id,
-        &[
-            market.clone(),
-            req_q.clone(),
-            event_q.clone(),
-            bids.clone(),
-            asks.clone(),
-            coin_vault.clone(),
-            pc_vault.clone(),
-            coin_mint.clone(),
-            pc_mint.clone(),
-            rent_sysvar.clone(),
-        ],
-        &init_instruction.data,
-    )
-    .unwrap();
+    let mut acc_infos = vec![
+        market.clone(),
+        req_q.clone(),
+        event_q.clone(),
+        bids.clone(),
+        asks.clone(),
+        coin_vault.clone(),
+        pc_vault.clone(),
+        coin_mint.clone(),
+        pc_mint.clone(),
+        rent_sysvar.clone(),
+    ];
+    if is_permissioned {
+        acc_infos.push(open_orders_authority.as_ref().unwrap().clone());
+        acc_infos.push(prune_authority.as_ref().unwrap().clone());
+    }
+    process_instruction(program_id, &acc_infos, &init_instruction.data).unwrap();
 
     MarketAccounts {
         market,
@@ -293,6 +313,8 @@ pub fn setup_market(bump: &Bump) -> MarketAccounts {
         rent_sysvar,
         fee_receiver,
         sweep_authority,
+        open_orders_authority,
+        prune_authority,
     }
 }
 
