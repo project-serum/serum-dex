@@ -31,6 +31,7 @@ jobs:
   include:
     - <<: *localnet
       script:
+        - mkdir -p /tmp/tests && cd /tmp/tests
         - git clone --recursive https://github.com/project-serum/permissioned-markets-quickstart.git
         - cd permissioned-markets-quickstart
         - yarn
