@@ -1,6 +1,10 @@
 dist: bionic
 language: shell
 os: linux
+env:
+  global:
+    - NODE_VERSION="v14.7.0"
+    - SOLANA_VERSION="v1.6.18"
 
 _defaults: &defaults
   cache: false
@@ -12,13 +16,16 @@ _defaults: &defaults
     - scripts/travis/stop-docker.sh
 
 _localnet: &localnet
-  language: node_js
-  node_js:
-    - 14
+  language: rust
+  rust:
+    - stable
   before_script:
+    - nvm install $NODE_VERSION
     - sudo apt-get install -y pkg-config build-essential libudev-dev
-    - sh -c "$(curl -sSfL https://release.solana.com/v1.6.18/install)"
+    - sh -c "$(curl -sSfL https://release.solana.com/${SOLANA_VERSION}/install)"
     - export PATH="/home/travis/.local/share/solana/install/active_release/bin:$PATH"
+    - export PATH="/home/travis/.local/share/solana/install/active_release/bin:$PATH"
+    - yes | solana-keygen new
 
 jobs:
   include:
@@ -33,3 +40,12 @@ jobs:
         - docker exec dev cargo build
         - docker exec dev cargo fmt -- --check
         - docker exec -w=/workdir/common dev cargo test --features client,strict
+    - <<: *localnet
+      name: Permissioned Markets Tests
+      script:
+        - mkdir -p /tmp/tests && cd /tmp/tests
+        - git clone --recursive https://github.com/project-serum/permissioned-markets-quickstart.git
+        - cd permissioned-markets-quickstart
+        - yarn
+        - yarn build
+        - yarn test
