@@ -947,7 +947,7 @@ pub fn prune(
         AccountMeta::new(*bids, false),
         AccountMeta::new(*asks, false),
         AccountMeta::new_readonly(*prune_authority, true),
-        AccountMeta::new_readonly(*open_orders, false),
+        AccountMeta::new(*open_orders, false),
         AccountMeta::new_readonly(*open_orders_owner, false),
         AccountMeta::new(*event_q, false),
     ];
