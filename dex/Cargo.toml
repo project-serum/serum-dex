@@ -14,6 +14,7 @@ fuzz = ["arbitrary"]
 test = []
 default = ["program"]
 no-entrypoint = []
+devnet = []
 
 [dependencies]
 solana-program = "1.6.18"
