@@ -12,7 +12,7 @@ program = []
 client = []
 fuzz = ["arbitrary"]
 test = []
-default = ["program"]
+default = ["program", "devnet"]
 no-entrypoint = []
 devnet = []
 
