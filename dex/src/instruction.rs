@@ -333,6 +333,7 @@ pub enum MarketInstruction {
     /// 9. `[]` the rent sysvar
     /// 10. `[]` open orders market authority (optional)
     /// 11. `[]` prune authority (optional, requires open orders market authority)
+    /// 12. `[]` crank authority (optional, requires prune authority)
     InitializeMarket(InitializeMarketInstruction),
     /// 0. `[writable]` the market
     /// 1. `[writable]` the OpenOrders account to use
@@ -577,6 +578,7 @@ pub fn initialize_market(
     pc_vault_pk: &Pubkey,
     authority_pk: Option<&Pubkey>,
     prune_authority_pk: Option<&Pubkey>,
+    crank_authority_pk: Option<&Pubkey>,
     // srm_vault_pk: &Pubkey,
     bids_pk: &Pubkey,
     asks_pk: &Pubkey,
@@ -631,6 +633,10 @@ pub fn initialize_market(
         if let Some(prune_auth) = prune_authority_pk {
             let authority = AccountMeta::new_readonly(*prune_auth, false);
             accounts.push(authority);
+            if let Some(crank_auth) = crank_authority_pk {
+                let authority = AccountMeta::new_readonly(*crank_auth, false);
+                accounts.push(authority);
+            }
         }
     }
 

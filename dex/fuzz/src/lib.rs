@@ -1,4 +1,4 @@
-#![deny(safe_packed_borrows)]
+#![deny(unaligned_references)]
 use std::mem::size_of;
 
 use bumpalo::Bump;

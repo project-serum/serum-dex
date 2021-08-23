@@ -59,6 +59,7 @@ pub enum AccountFlag {
     Disabled = 1u64 << 7,
     Closed = 1u64 << 8,
     Permissioned = 1u64 << 9,
+    CrankAuthorityRequired = 1u64 << 10,
 }
 
 // Versioned frontend for market accounts.
@@ -125,6 +126,20 @@ impl<'a> Market<'a> {
         }
     }
 
+    pub fn crank_authority(&self) -> Option<&Pubkey> {
+        match &self {
+            Market::V1(_) => None,
+            Market::V2(state) => {
+                let flags = BitFlags::from_bits(state.inner.account_flags).unwrap();
+                if flags.intersects(AccountFlag::CrankAuthorityRequired) {
+                    Some(&state.crank_authority)
+                } else {
+                    None
+                }
+            }
+        }
+    }
+
     pub fn load_orders_mut(
         &self,
         orders_account: &'a AccountInfo,
@@ -177,8 +192,9 @@ pub struct MarketStateV2 {
     pub inner: MarketState,
     pub open_orders_authority: Pubkey,
     pub prune_authority: Pubkey,
+    pub crank_authority: Pubkey,
     // Unused bytes for future upgrades.
-    padding: [u8; 1024],
+    padding: [u8; 992],
 }
 
 impl Deref for MarketStateV2 {
@@ -1553,6 +1569,7 @@ pub(crate) mod account_parser {
         pub pc_vault_and_mint: TokenAccountAndMint<'a, 'b>,
         pub market_authority: Option<&'a AccountInfo<'b>>,
         pub prune_authority: Option<&'a AccountInfo<'b>>,
+        pub crank_authority: Option<&'a AccountInfo<'b>>,
     }
 
     impl<'a, 'b: 'a> InitializeMarketArgs<'a, 'b> {
@@ -1571,7 +1588,9 @@ pub(crate) mod account_parser {
             ) = array_refs![accounts, 5, 2, 2, 1; .. ;];
 
             let mut rem_iter = remaining_accounts.iter();
-            let (market_authority, prune_authority) = (rem_iter.next(), rem_iter.next());
+            let market_authority = rem_iter.next();
+            let prune_authority = rem_iter.next();
+            let crank_authority = rem_iter.next();
 
             {
                 // Dynamic sysvars don't work in unit tests.
@@ -1634,6 +1653,7 @@ pub(crate) mod account_parser {
                 pc_vault_and_mint,
                 market_authority,
                 prune_authority,
+                crank_authority,
             })
         }
 
@@ -1876,11 +1896,17 @@ pub(crate) mod account_parser {
             let (
                 &[],
                 open_orders_accounts,
-                &[ref market_acc],
-                &[ref event_q_acc],
-                _unused
-            ) = array_refs![accounts, 0; .. ; 1, 1, 2];
+                &[
+                    ref market_acc,
+                    ref event_q_acc,
+                    ref crank_authority,
+                    ref _unused,
+                ],
+            ) = array_refs![accounts, 0; .. ; 4];
             let market = Market::load(market_acc, program_id)?;
+            if let Some(crank_auth) = market.crank_authority() {
+                check_assert_eq!(crank_auth, crank_authority.key)?;
+            }
             let event_q = market.load_event_queue_mut(event_q_acc)?;
             let args = ConsumeEventsArgs {
                 limit,
@@ -3004,6 +3030,7 @@ impl State {
         let pc_mint = args.pc_vault_and_mint.get_mint().inner();
         let market_authority = args.market_authority;
         let prune_authority = args.prune_authority;
+        let crank_authority = args.crank_authority;
 
         // initialize request queue
         let mut rq_data = req_q.try_borrow_mut_data()?;
@@ -3060,6 +3087,9 @@ impl State {
         let mut account_flags = AccountFlag::Initialized | AccountFlag::Market;
         if market_authority.is_some() {
             account_flags |= AccountFlag::Permissioned;
+            if crank_authority.is_some() {
+                account_flags |= AccountFlag::CrankAuthorityRequired;
+            }
         }
         let market_state = MarketState {
             coin_lot_size,
@@ -3096,10 +3126,14 @@ impl State {
             Some(oo_auth) => {
                 let market_hdr: &mut MarketStateV2 =
                     try_from_bytes_mut(cast_slice_mut(market_view)).or(check_unreachable!())?;
-                (*market_hdr).inner = market_state;
-                (*market_hdr).open_orders_authority = *oo_auth.key;
-                (*market_hdr).prune_authority =
+                market_hdr.inner = market_state;
+                market_hdr.open_orders_authority = *oo_auth.key;
+                market_hdr.prune_authority =
                     prune_authority.map(|p| *p.key).unwrap_or(Pubkey::default());
+
+                if let Some(crank_authority) = crank_authority {
+                    market_hdr.crank_authority = *crank_authority.key;
+                }
             }
         }
         Ok(())

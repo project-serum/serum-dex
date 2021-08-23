@@ -1,4 +1,4 @@
-#![deny(safe_packed_borrows)]
+#![deny(unaligned_references)]
 #![allow(dead_code)]
 
 use std::borrow::Cow;
@@ -1210,6 +1210,7 @@ pub fn list_market(
         pc_mint,
         &coin_vault.pubkey(),
         &pc_vault.pubkey(),
+        None,
         None,
         None,
         &bids_key.pubkey(),
