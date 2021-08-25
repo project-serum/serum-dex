@@ -430,12 +430,13 @@ fn get_keys_for_market<'a>(
         if account_flags.intersects(AccountFlag::Permissioned) {
             let state = transmute_one_pedantic::<MarketStateV2>(transmute_to_bytes(&words))
                 .map_err(|e| e.without_src())?;
-            state.inner;
             state.check_flags()?;
+            state.inner
         } else {
             let state = transmute_one_pedantic::<MarketState>(transmute_to_bytes(&words))
                 .map_err(|e| e.without_src())?;
             state.check_flags()?;
+            state
         }
     };
     let vault_signer_key =
