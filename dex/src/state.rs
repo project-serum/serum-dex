@@ -698,8 +698,8 @@ pub trait QueueHeader: Pod {
 }
 
 pub struct Queue<'a, H: QueueHeader> {
-    header: RefMut<'a, H>,
-    buf: RefMut<'a, [H::Item]>,
+    pub header: RefMut<'a, H>,
+    pub buf: RefMut<'a, [H::Item]>,
 }
 
 impl<'a, H: QueueHeader> Queue<'a, H> {
