@@ -1,0 +1,13 @@
+anchor_version = "0.12.0"
+
+[workspace]
+members = [
+    ".",
+]
+
+[provider]
+cluster = "localnet"
+wallet = "~/.config/solana/id.json"
+
+[programs.mainnet]
+serum_dex = { address = "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin", path = "./target/deploy/serum_dex.so" }
