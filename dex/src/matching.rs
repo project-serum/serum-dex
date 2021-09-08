@@ -872,26 +872,10 @@ impl<'ob> OrderBookState<'ob> {
             _ => (0, 0),
         };
 
-        let out = {
-            let native_qty_still_locked = pc_qty_to_keep_locked * pc_lot_size;
-            let native_qty_unlocked = native_pc_qty_remaining - native_qty_still_locked;
+        let native_qty_still_locked = pc_qty_to_keep_locked * pc_lot_size;
+        let native_qty_unlocked = native_pc_qty_remaining - native_qty_still_locked;
 
-            to_release.unlock_native_pc(native_qty_unlocked);
-
-            Event::new(EventView::Out {
-                side: Side::Bid,
-                release_funds: false,
-                native_qty_unlocked,
-                native_qty_still_locked,
-                order_id,
-                owner,
-                owner_slot,
-                client_order_id: NonZeroU64::new(client_order_id),
-            })
-        };
-        event_q
-            .push_back(out)
-            .map_err(|_| DexErrorCode::EventQueueFull)?;
+        to_release.unlock_native_pc(native_qty_unlocked);
 
         if pc_qty_to_keep_locked > 0 {
             let bids = self.orders_mut(Side::Bid);
