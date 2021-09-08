@@ -60,6 +60,7 @@ pub enum AccountFlag {
     Closed = 1u64 << 8,
     Permissioned = 1u64 << 9,
     CrankAuthorityRequired = 1u64 << 10,
+    IncludeTakerMetadata = 1u64 << 11,
 }
 
 // Versioned frontend for market accounts.
@@ -126,13 +127,13 @@ impl<'a> Market<'a> {
         }
     }
 
-    pub fn consume_events_authority(&self) -> Option<&Pubkey> {
+    pub fn crank_authority(&self) -> Option<&Pubkey> {
         match &self {
             Market::V1(_) => None,
             Market::V2(state) => {
                 let flags = BitFlags::from_bits(state.inner.account_flags).unwrap();
                 if flags.intersects(AccountFlag::CrankAuthorityRequired) {
-                    Some(&state.consume_events_authority)
+                    Some(&state.crank_authority)
                 } else {
                     None
                 }
@@ -192,7 +193,7 @@ pub struct MarketStateV2 {
     pub inner: MarketState,
     pub open_orders_authority: Pubkey,
     pub prune_authority: Pubkey,
-    pub consume_events_authority: Pubkey,
+    pub crank_authority: Pubkey,
     // Unused bytes for future upgrades.
     padding: [u8; 992],
 }
@@ -714,7 +715,7 @@ pub trait QueueHeader: Pod {
 }
 
 pub struct Queue<'a, H: QueueHeader> {
-    header: RefMut<'a, H>,
+    pub header: RefMut<'a, H>,
     buf: RefMut<'a, [H::Item]>,
 }
 
@@ -1052,7 +1053,7 @@ impl Request {
 #[derive(Copy, Clone, Debug)]
 #[repr(packed)]
 pub struct EventQueueHeader {
-    account_flags: u64, // Initialized, EventQueue
+    pub account_flags: u64, // Initialized, EventQueue
     head: u64,
     count: u64,
     seq_num: u64,
@@ -1181,7 +1182,43 @@ impl Event {
                     client_order_id: client_order_id.map_or(0, NonZeroU64::get),
                 }
             }
+            EventView::MakerFill {
+                side,
+                maker,
+                native_qty_paid,
+                native_qty_received,
+                native_fee_or_rebate,
+                order_id,
+                owner,
+                owner_slot,
+                fee_tier,
+                client_order_id,
+                taker_id,
+            } => {
+                let maker_flag = if maker {
+                    BitFlags::from_flag(EventFlag::Maker).bits()
+                } else {
+                    0
+                };
+                let event_flags =
+                    (EventFlag::from_side(side) | EventFlag::Fill).bits() | maker_flag;
+                Event {
+                    event_flags,
+                    owner_slot,
+                    fee_tier: fee_tier.into(),
 
+                    _padding: Zeroable::zeroed(),
+
+                    native_qty_released: native_qty_received,
+                    native_qty_paid,
+                    native_fee_or_rebate,
+
+                    order_id,
+                    owner,
+
+                    client_order_id: client_order_id.map_or(0, NonZeroU64::get),
+                }
+            }
             EventView::Out {
                 side,
                 release_funds,
@@ -1279,6 +1316,19 @@ pub enum EventView {
         fee_tier: FeeTier,
         client_order_id: Option<NonZeroU64>,
     },
+    MakerFill {
+        side: Side,
+        maker: bool,
+        native_qty_paid: u64,
+        native_qty_received: u64,
+        native_fee_or_rebate: u64,
+        order_id: u128,
+        owner: [u64; 4],
+        owner_slot: u8,
+        fee_tier: FeeTier,
+        client_order_id: Option<NonZeroU64>,
+        taker_id: [u64; 4],
+    },
     Out {
         side: Side,
         release_funds: bool,
@@ -1294,7 +1344,7 @@ pub enum EventView {
 impl EventView {
     fn side(&self) -> Side {
         match self {
-            &EventView::Fill { side, .. } | &EventView::Out { side, .. } => side,
+            &EventView::Fill { side, .. } | &EventView::MakerFill { side, .. }  | &EventView::Out { side, .. } => side,
         }
     }
 }
@@ -1569,7 +1619,7 @@ pub(crate) mod account_parser {
         pub pc_vault_and_mint: TokenAccountAndMint<'a, 'b>,
         pub market_authority: Option<&'a AccountInfo<'b>>,
         pub prune_authority: Option<&'a AccountInfo<'b>>,
-        pub consume_events_authority: Option<&'a AccountInfo<'b>>,
+        pub crank_authority: Option<&'a AccountInfo<'b>>,
     }
 
     impl<'a, 'b: 'a> InitializeMarketArgs<'a, 'b> {
@@ -1590,7 +1640,7 @@ pub(crate) mod account_parser {
             let mut rem_iter = remaining_accounts.iter();
             let market_authority = rem_iter.next();
             let prune_authority = rem_iter.next();
-            let consume_events_authority = rem_iter.next();
+            let crank_authority = rem_iter.next();
 
             {
                 // Dynamic sysvars don't work in unit tests.
@@ -1653,7 +1703,7 @@ pub(crate) mod account_parser {
                 pc_vault_and_mint,
                 market_authority,
                 prune_authority,
-                consume_events_authority,
+                crank_authority,
             })
         }
 
@@ -1899,45 +1949,14 @@ pub(crate) mod account_parser {
                 &[
                     ref market_acc,
                     ref event_q_acc,
+                    ref crank_authority,
+                    ref _unused,
                 ],
-                _
-            ) = array_refs![accounts, 0; .. ; 2, 2];
+            ) = array_refs![accounts, 0; .. ; 4];
             let market = Market::load(market_acc, program_id)?;
-            check_assert!(market.consume_events_authority().is_none())?;
-            let event_q = market.load_event_queue_mut(event_q_acc)?;
-            let args = ConsumeEventsArgs {
-                limit,
-                program_id,
-                open_orders_accounts,
-                market,
-                event_q,
-            };
-            f(args)
-        }
-
-        pub fn with_parsed_args_permissioned<T>(
-            program_id: &'a Pubkey,
-            accounts: &'a [AccountInfo<'b>],
-            limit: u16,
-            f: impl FnOnce(ConsumeEventsArgs) -> DexResult<T>,
-        ) -> DexResult<T> {
-            check_assert!(accounts.len() >= 4)?;
-            #[rustfmt::skip]
-            let (
-                &[],
-                open_orders_accounts,
-                &[
-                    ref market_acc,
-                    ref event_q_acc,
-                    ref consume_events_auth,
-                ]
-            ) = array_refs![accounts, 0; .. ; 3];
-            let market = Market::load(market_acc, program_id)?;
-            check_assert!(consume_events_auth.is_signer)?;
-            check_assert_eq!(
-                Some(consume_events_auth.key),
-                market.consume_events_authority()
-            )?;
+            if let Some(crank_auth) = market.crank_authority() {
+                check_assert_eq!(crank_auth, crank_authority.key)?;
+            }
             let event_q = market.load_event_queue_mut(event_q_acc)?;
             let args = ConsumeEventsArgs {
                 limit,
@@ -2428,14 +2447,6 @@ impl State {
                     Self::process_consume_events,
                 )?
             }
-            MarketInstruction::ConsumeEventsPermissioned(limit) => {
-                account_parser::ConsumeEventsArgs::with_parsed_args_permissioned(
-                    program_id,
-                    accounts,
-                    limit,
-                    Self::process_consume_events,
-                )?
-            }
             MarketInstruction::CancelOrder(_inner) => {
                 unimplemented!()
             }
@@ -2789,6 +2800,44 @@ impl State {
                         );
                     }
                 }
+                EventView::MakerFill {
+                    side,
+                    maker,
+                    native_qty_paid,
+                    native_qty_received,
+                    native_fee_or_rebate,
+                    fee_tier: _,
+                    order_id: _,
+                    owner: _,
+                    owner_slot,
+                    client_order_id,
+                    taker_id,
+                } => {
+                    match side {
+                        Side::Bid if maker => {
+                            open_orders.native_pc_total -= native_qty_paid;
+                            open_orders.native_coin_total += native_qty_received;
+                            open_orders.native_coin_free += native_qty_received;
+                            open_orders.native_pc_free += native_fee_or_rebate;
+                        }
+                        Side::Ask if maker => {
+                            open_orders.native_coin_total -= native_qty_paid;
+                            open_orders.native_pc_total += native_qty_received;
+                            open_orders.native_pc_free += native_qty_received;
+                        }
+                        _ => (),
+                    };
+                    if !maker {
+                        let referrer_rebate = fees::referrer_rebate(native_fee_or_rebate);
+                        open_orders.referrer_rebates_accrued += referrer_rebate;
+                    }
+                    if let Some(client_id) = client_order_id {
+                        debug_assert_eq!(
+                            client_id.get(),
+                            identity(open_orders.client_order_ids[owner_slot as usize])
+                        );
+                    }
+                }
                 EventView::Out {
                     side,
                     release_funds,
@@ -3069,7 +3118,7 @@ impl State {
         let pc_mint = args.pc_vault_and_mint.get_mint().inner();
         let market_authority = args.market_authority;
         let prune_authority = args.prune_authority;
-        let consume_events_authority = args.consume_events_authority;
+        let crank_authority = args.crank_authority;
 
         // initialize request queue
         let mut rq_data = req_q.try_borrow_mut_data()?;
@@ -3100,7 +3149,7 @@ impl State {
         }
         let eq_hdr: &mut EventQueueHeader = try_cast_mut(eq_hdr_array).or(check_unreachable!())?;
         *eq_hdr = EventQueueHeader {
-            account_flags: (AccountFlag::Initialized | AccountFlag::EventQueue).bits(),
+            account_flags: (AccountFlag::Initialized | AccountFlag::EventQueue | AccountFlag::IncludeTakerMetadata).bits(),
             head: 0,
             count: 0,
             seq_num: 0,
@@ -3126,7 +3175,7 @@ impl State {
         let mut account_flags = AccountFlag::Initialized | AccountFlag::Market;
         if market_authority.is_some() {
             account_flags |= AccountFlag::Permissioned;
-            if consume_events_authority.is_some() {
+            if crank_authority.is_some() {
                 account_flags |= AccountFlag::CrankAuthorityRequired;
             }
         }
@@ -3170,8 +3219,8 @@ impl State {
                 market_hdr.prune_authority =
                     prune_authority.map(|p| *p.key).unwrap_or(Pubkey::default());
 
-                if let Some(consume_events_authority) = consume_events_authority {
-                    market_hdr.consume_events_authority = *consume_events_authority.key;
+                if let Some(crank_authority) = crank_authority {
+                    market_hdr.crank_authority = *crank_authority.key;
                 }
             }
         }
