@@ -333,6 +333,7 @@ pub enum MarketInstruction {
     /// 9. `[]` the rent sysvar
     /// 10. `[]` open orders market authority (optional)
     /// 11. `[]` prune authority (optional, requires open orders market authority)
+    /// 12. `[]` crank authority (optional, requires prune authority)
     InitializeMarket(InitializeMarketInstruction),
     /// 0. `[writable]` the market
     /// 1. `[writable]` the OpenOrders account to use
@@ -456,6 +457,11 @@ pub enum MarketInstruction {
     /// 5. `[]` open orders owner.
     /// 6. `[writable]` event queue.
     Prune(u16),
+    /// ... `[writable]` OpenOrders
+    /// accounts.len() - 3 `[writable]` market
+    /// accounts.len() - 2 `[writable]` event queue
+    /// accounts.len() - 1 `[signer]` crank authority
+    ConsumeEventsPermissioned(u16),
 }
 
 impl MarketInstruction {
@@ -553,6 +559,10 @@ impl MarketInstruction {
                 let limit = array_ref![data, 0, 2];
                 MarketInstruction::Prune(u16::from_le_bytes(*limit))
             }
+            (17, 2) => {
+                let limit = array_ref![data, 0, 2];
+                MarketInstruction::ConsumeEventsPermissioned(u16::from_le_bytes(*limit))
+            }
             _ => return None,
         })
     }
@@ -577,6 +587,7 @@ pub fn initialize_market(
     pc_vault_pk: &Pubkey,
     authority_pk: Option<&Pubkey>,
     prune_authority_pk: Option<&Pubkey>,
+    consume_events_authority_pk: Option<&Pubkey>,
     // srm_vault_pk: &Pubkey,
     bids_pk: &Pubkey,
     asks_pk: &Pubkey,
@@ -631,6 +642,10 @@ pub fn initialize_market(
         if let Some(prune_auth) = prune_authority_pk {
             let authority = AccountMeta::new_readonly(*prune_auth, false);
             accounts.push(authority);
+            if let Some(consume_events_auth) = consume_events_authority_pk {
+                let authority = AccountMeta::new_readonly(*consume_events_auth, false);
+                accounts.push(authority);
+            }
         }
     }
 
@@ -747,6 +762,31 @@ pub fn consume_events(
         AccountMeta::new(*event_queue, false),
         AccountMeta::new(*coin_fee_receivable_account, false),
         AccountMeta::new(*pc_fee_receivable_account, false),
+    ]);
+    Ok(Instruction {
+        program_id: *program_id,
+        data,
+        accounts,
+    })
+}
+
+pub fn consume_events_permissioned(
+    program_id: &Pubkey,
+    open_orders_accounts: Vec<&Pubkey>,
+    market: &Pubkey,
+    event_queue: &Pubkey,
+    consume_events_authority: &Pubkey,
+    limit: u16,
+) -> Result<Instruction, DexError> {
+    let data = MarketInstruction::ConsumeEvents(limit).pack();
+    let mut accounts: Vec<AccountMeta> = open_orders_accounts
+        .iter()
+        .map(|key| AccountMeta::new(**key, false))
+        .collect();
+    accounts.append(&mut vec![
+        AccountMeta::new(*market, false),
+        AccountMeta::new(*event_queue, false),
+        AccountMeta::new_readonly(*consume_events_authority, true),
     ]);
     Ok(Instruction {
         program_id: *program_id,
