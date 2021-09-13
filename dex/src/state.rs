@@ -60,6 +60,7 @@ pub enum AccountFlag {
     Closed = 1u64 << 8,
     Permissioned = 1u64 << 9,
     CrankAuthorityRequired = 1u64 << 10,
+    IncludeTakerMetadata = 1u64 << 11,
 }
 
 // Versioned frontend for market accounts.
@@ -1057,6 +1058,13 @@ pub struct EventQueueHeader {
     count: u64,
     seq_num: u64,
 }
+
+impl EventQueueHeader {
+    pub fn get_account_flags(&self) -> u64 {
+        self.account_flags
+    }
+}
+
 unsafe impl Zeroable for EventQueueHeader {}
 unsafe impl Pod for EventQueueHeader {}
 
@@ -1087,6 +1095,12 @@ impl QueueHeader for EventQueueHeader {
 }
 
 pub type EventQueue<'a> = Queue<'a, EventQueueHeader>;
+
+impl<'a> EventQueue<'a> {
+    pub fn get_account_flags(&self) -> u64 {
+        self.header.get_account_flags()
+    }
+}
 
 #[derive(Copy, Clone, BitFlags, Debug)]
 #[repr(u8)]
@@ -1156,6 +1170,44 @@ impl Event {
                 owner_slot,
                 fee_tier,
                 client_order_id,
+            } => {
+                let maker_flag = if maker {
+                    BitFlags::from_flag(EventFlag::Maker).bits()
+                } else {
+                    0
+                };
+                let event_flags =
+                    (EventFlag::from_side(side) | EventFlag::Fill).bits() | maker_flag;
+                Event {
+                    event_flags,
+                    owner_slot,
+                    fee_tier: fee_tier.into(),
+
+                    _padding: Zeroable::zeroed(),
+
+                    native_qty_released: native_qty_received,
+                    native_qty_paid,
+                    native_fee_or_rebate,
+
+                    order_id,
+                    owner,
+
+                    client_order_id: client_order_id.map_or(0, NonZeroU64::get),
+                }
+            }
+
+            EventView::MakerFill {
+                side,
+                maker,
+                native_qty_paid,
+                native_qty_received,
+                native_fee_or_rebate,
+                order_id,
+                owner,
+                owner_slot,
+                fee_tier,
+                client_order_id,
+                taker: _,
             } => {
                 let maker_flag = if maker {
                     BitFlags::from_flag(EventFlag::Maker).bits()
@@ -1279,6 +1331,19 @@ pub enum EventView {
         fee_tier: FeeTier,
         client_order_id: Option<NonZeroU64>,
     },
+    MakerFill {
+        side: Side,
+        maker: bool,
+        native_qty_paid: u64,
+        native_qty_received: u64,
+        native_fee_or_rebate: u64,
+        order_id: u128,
+        owner: [u64; 4],
+        owner_slot: u8,
+        fee_tier: FeeTier,
+        client_order_id: Option<NonZeroU64>,
+        taker: [u64; 4],
+    },
     Out {
         side: Side,
         release_funds: bool,
@@ -1294,7 +1359,9 @@ pub enum EventView {
 impl EventView {
     fn side(&self) -> Side {
         match self {
-            &EventView::Fill { side, .. } | &EventView::Out { side, .. } => side,
+            &EventView::Fill { side, .. }
+            | &EventView::MakerFill { side, .. }
+            | &EventView::Out { side, .. } => side,
         }
     }
 }
@@ -2789,6 +2856,44 @@ impl State {
                         );
                     }
                 }
+                EventView::MakerFill {
+                    side,
+                    maker,
+                    native_qty_paid,
+                    native_qty_received,
+                    native_fee_or_rebate,
+                    fee_tier: _,
+                    order_id: _,
+                    owner: _,
+                    owner_slot,
+                    client_order_id,
+                    taker: _,
+                } => {
+                    match side {
+                        Side::Bid if maker => {
+                            open_orders.native_pc_total -= native_qty_paid;
+                            open_orders.native_coin_total += native_qty_received;
+                            open_orders.native_coin_free += native_qty_received;
+                            open_orders.native_pc_free += native_fee_or_rebate;
+                        }
+                        Side::Ask if maker => {
+                            open_orders.native_coin_total -= native_qty_paid;
+                            open_orders.native_pc_total += native_qty_received;
+                            open_orders.native_pc_free += native_qty_received;
+                        }
+                        _ => (),
+                    };
+                    if !maker {
+                        let referrer_rebate = fees::referrer_rebate(native_fee_or_rebate);
+                        open_orders.referrer_rebates_accrued += referrer_rebate;
+                    }
+                    if let Some(client_id) = client_order_id {
+                        debug_assert_eq!(
+                            client_id.get(),
+                            identity(open_orders.client_order_ids[owner_slot as usize])
+                        );
+                    }
+                }
                 EventView::Out {
                     side,
                     release_funds,
@@ -3098,9 +3203,15 @@ impl State {
         if eq_buf.len() < 128 {
             Err(DexErrorCode::EventQueueTooSmall)?
         }
+        let account_flags = if market_authority.is_some() {
+            (AccountFlag::Initialized | AccountFlag::EventQueue | AccountFlag::IncludeTakerMetadata)
+                .bits()
+        } else {
+            (AccountFlag::Initialized | AccountFlag::EventQueue).bits()
+        };
         let eq_hdr: &mut EventQueueHeader = try_cast_mut(eq_hdr_array).or(check_unreachable!())?;
         *eq_hdr = EventQueueHeader {
-            account_flags: (AccountFlag::Initialized | AccountFlag::EventQueue).bits(),
+            account_flags,
             head: 0,
             count: 0,
             seq_num: 0,
