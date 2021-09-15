@@ -459,7 +459,7 @@ impl<'ob> OrderBookState<'ob> {
             let native_maker_rebate = maker_fee_tier.maker_rebate(native_maker_pc_qty);
             accum_maker_rebates += native_maker_rebate;
 
-            let maker_fill = if !include_taker_metadata {
+            let maker_fill = if include_taker_metadata {
                 Event::new(EventView::MakerFill {
                     side: Side::Bid,
                     maker: true,
