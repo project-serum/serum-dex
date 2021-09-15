@@ -3207,7 +3207,7 @@ impl State {
         if eq_buf.len() < 128 {
             Err(DexErrorCode::EventQueueTooSmall)?
         }
-        let account_flags = if market_authority.is_some() {
+        let account_flags = if crank_authority.is_some() {
             (AccountFlag::Initialized | AccountFlag::EventQueue | AccountFlag::IncludeTakerMetadata)
                 .bits()
         } else {
