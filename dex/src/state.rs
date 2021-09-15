@@ -1,9 +1,6 @@
 #![cfg_attr(not(feature = "program"), allow(unused))]
 use num_enum::TryFromPrimitive;
-use std::{
-    cell::RefMut, convert::identity, convert::TryInto, mem::size_of, num::NonZeroU64, ops::Deref,
-    ops::DerefMut,
-};
+use std::{cell::RefMut, convert::TryInto, convert::identity, mem::size_of, num::NonZeroU64, ops::Deref, ops::{DerefMut, Index}, process::Output};
 
 use arrayref::{array_ref, array_refs, mut_array_refs};
 
@@ -800,6 +797,13 @@ impl<'a, H: QueueHeader> Queue<'a, H> {
             queue: self,
             index: 0,
         }
+    }
+}
+
+impl<'a, H: QueueHeader> Index<usize> for Queue<'a, H> {
+    type Output = H::Item;
+    fn index(&self, i: usize) -> &Self::Output {
+        &self.buf[(self.header.head() as usize + i) % self.buf.len()]
     }
 }
 
