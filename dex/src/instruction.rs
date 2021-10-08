@@ -778,7 +778,7 @@ pub fn consume_events_permissioned(
     consume_events_authority: &Pubkey,
     limit: u16,
 ) -> Result<Instruction, DexError> {
-    let data = MarketInstruction::ConsumeEvents(limit).pack();
+    let data = MarketInstruction::ConsumeEventsPermissioned(limit).pack();
     let mut accounts: Vec<AccountMeta> = open_orders_accounts
         .iter()
         .map(|key| AccountMeta::new(**key, false))
