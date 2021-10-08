@@ -241,7 +241,7 @@ impl MarketStateV2 {
             .map_err(|_| DexErrorCode::InvalidMarketFlags)?;
         let required_flags =
             AccountFlag::Initialized | AccountFlag::Market | AccountFlag::Permissioned;
-        if flags != required_flags {
+        if !flags.contains(required_flags) {
             Err(DexErrorCode::InvalidMarketFlags)?
         }
         Ok(())
@@ -1578,7 +1578,7 @@ pub(crate) mod account_parser {
             instruction: &'a InitializeMarketInstruction,
             accounts: &'a [AccountInfo<'b>],
         ) -> DexResult<Self> {
-            check_assert!(accounts.len() >= 10 && accounts.len() <= 12)?;
+            check_assert!(accounts.len() >= 10 && accounts.len() <= 13)?;
             let (
                 unchecked_serum_dex_accounts,
                 unchecked_vaults,
