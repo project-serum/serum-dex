@@ -1265,7 +1265,7 @@ impl Event {
     }
 }
 
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug)]
 pub enum EventView {
     Fill {
         side: Side,

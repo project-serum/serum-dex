@@ -1,10 +1,11 @@
+use anchor_lang::prelude::*;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 use std::convert::TryInto;
 
 #[cfg(test)]
 use proptest_derive::Arbitrary;
 
-#[derive(Copy, Clone, IntoPrimitive, TryFromPrimitive, Debug)]
+#[derive(Copy, Clone, IntoPrimitive, TryFromPrimitive, Debug, AnchorSerialize, AnchorDeserialize)]
 #[cfg_attr(test, derive(Arbitrary))]
 #[repr(u8)]
 pub enum FeeTier {
