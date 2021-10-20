@@ -1,20 +1,22 @@
+use anchor_lang::prelude::*;
 use std::num::NonZeroU64;
 
+use crate::critbit::SlabTreeError;
+use crate::error::{DexErrorCode, DexResult, SourceFileId};
+use crate::events::FillEvent;
 use crate::instruction::SelfTradeBehavior;
+use crate::{
+    critbit::{LeafNode, NodeHandle, Slab, SlabView},
+    fees::{self, FeeTier},
+    state::{Event, EventQueue, EventView, MarketState, OpenOrders, RequestView},
+};
+use bytemuck::cast;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 #[cfg(test)]
 use proptest_derive::Arbitrary;
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "program")]
 use solana_program::msg;
-
-use crate::critbit::SlabTreeError;
-use crate::error::{DexErrorCode, DexResult, SourceFileId};
-use crate::{
-    critbit::{LeafNode, NodeHandle, Slab, SlabView},
-    fees::{self, FeeTier},
-    state::{Event, EventQueue, EventView, MarketState, OpenOrders, RequestView},
-};
 
 #[cfg(not(feature = "program"))]
 macro_rules! msg {
@@ -23,7 +25,17 @@ macro_rules! msg {
 declare_check_assert_macros!(SourceFileId::Matching);
 
 #[derive(
-    Eq, PartialEq, Copy, Clone, TryFromPrimitive, IntoPrimitive, Debug, Serialize, Deserialize,
+    Eq,
+    PartialEq,
+    Copy,
+    Clone,
+    TryFromPrimitive,
+    IntoPrimitive,
+    Debug,
+    Serialize,
+    Deserialize,
+    AnchorSerialize,
+    AnchorDeserialize,
 )]
 #[cfg_attr(test, derive(Arbitrary))]
 #[cfg_attr(feature = "fuzz", derive(arbitrary::Arbitrary))]
@@ -455,7 +467,7 @@ impl<'ob> OrderBookState<'ob> {
             let native_maker_rebate = maker_fee_tier.maker_rebate(native_maker_pc_qty);
             accum_maker_rebates += native_maker_rebate;
 
-            let maker_fill = Event::new(EventView::Fill {
+            let fill_event_view = EventView::Fill {
                 side: Side::Bid,
                 maker: true,
                 native_qty_paid: native_maker_pc_qty - native_maker_rebate,
@@ -466,11 +478,13 @@ impl<'ob> OrderBookState<'ob> {
                 owner_slot: best_bid_ref.owner_slot(),
                 fee_tier: maker_fee_tier,
                 client_order_id: NonZeroU64::new(best_bid_ref.client_order_id()),
-            });
+            };
+            let maker_fill = Event::new(fill_event_view);
             event_q
                 .push_back(maker_fill)
                 .map_err(|_| DexErrorCode::EventQueueFull)?;
 
+            emit!(fill_event_view.to_fill_event()?);
             best_bid_ref.set_quantity(best_bid_ref.quantity() - trade_qty);
             unfilled_qty -= trade_qty;
             accum_fill_price += trade_qty * trade_price.get();
