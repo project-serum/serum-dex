@@ -103,7 +103,11 @@ impl<'a> Market<'a> {
                 allow_disabled,
             )?))
         } else {
-            Ok(Market::V1(MarketState::load(market_account, program_id)?))
+            Ok(Market::V1(MarketState::load(
+                market_account,
+                program_id,
+                allow_disabled,
+            )?))
         }
     }
 
@@ -389,6 +393,7 @@ impl MarketState {
     pub fn load<'a>(
         market_account: &'a AccountInfo,
         program_id: &Pubkey,
+        allow_disabled: bool,
     ) -> DexResult<RefMut<'a, Self>> {
         check_assert_eq!(market_account.owner, program_id)?;
         let mut account_data: RefMut<'a, [u8]>;
@@ -402,17 +407,24 @@ impl MarketState {
             ))
         });
 
-        state.check_flags()?;
+        state.check_flags(allow_disabled)?;
         Ok(state)
     }
 
     #[inline]
-    pub fn check_flags(&self) -> DexResult {
+    pub fn check_flags(&self, allow_disabled: bool) -> DexResult {
         let flags = BitFlags::from_bits(self.account_flags)
             .map_err(|_| DexErrorCode::InvalidMarketFlags)?;
         let required_flags = AccountFlag::Initialized | AccountFlag::Market;
-        if flags != required_flags {
-            Err(DexErrorCode::InvalidMarketFlags)?
+        if allow_disabled {
+            let disabled_flags = required_flags | AccountFlag::Disabled;
+            if flags != required_flags && flags != disabled_flags {
+                return Err(DexErrorCode::InvalidMarketFlags.into());
+            }
+        } else {
+            if flags != required_flags {
+                return Err(DexErrorCode::InvalidMarketFlags.into());
+            }
         }
         Ok(())
     }
