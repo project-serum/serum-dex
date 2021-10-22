@@ -8,11 +8,15 @@ pub mod error;
 mod tests;
 
 pub mod critbit;
+pub mod events;
 mod fees;
 pub mod instruction;
 pub mod matching;
 pub mod state;
-pub mod events;
+
+mod program_stubs {
+    mod clock {}
+}
 
 #[cfg(all(feature = "program", not(feature = "no-entrypoint")))]
 use solana_program::entrypoint;

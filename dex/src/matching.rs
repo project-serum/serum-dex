@@ -3,14 +3,12 @@ use std::num::NonZeroU64;
 
 use crate::critbit::SlabTreeError;
 use crate::error::{DexErrorCode, DexResult, SourceFileId};
-use crate::events::FillEvent;
 use crate::instruction::SelfTradeBehavior;
 use crate::{
     critbit::{LeafNode, NodeHandle, Slab, SlabView},
     fees::{self, FeeTier},
     state::{Event, EventQueue, EventView, MarketState, OpenOrders, RequestView},
 };
-use bytemuck::cast;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 #[cfg(test)]
 use proptest_derive::Arbitrary;
