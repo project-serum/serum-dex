@@ -436,7 +436,7 @@ fn get_keys_for_market<'a>(
                 .map_err(|e| e.without_src())?
         }
     };
-    market_state.check_flags()?;
+    market_state.check_flags(true)?;
     let vault_signer_key =
         gen_vault_signer_key(market_state.vault_signer_nonce, market, program_id)?;
     assert_eq!(
