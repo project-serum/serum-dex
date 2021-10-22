@@ -33,6 +33,7 @@ num-traits = "0.2.12"
 arrayref = "0.3.6"
 bytemuck = { version = "1.4.0" }
 byteorder = "1.3.4"
+anchor-lang = "0.17.0"
 
 [lib]
 crate-type = ["cdylib", "lib"]

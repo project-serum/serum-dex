@@ -3,7 +3,7 @@
 set -euxo pipefail
 
 main() {
-    docker pull projectserum/development:latest
+    docker pull projectserum/build:v0.17.0
     #
     # Bind the relevant host directories to the docker image so that the
     # files are synced.
@@ -18,7 +18,7 @@ main() {
     #
     docker run -it -d --net host --name dev \
            -v workdir:/workdir \
-           projectserum/development:latest bash
+           projectserum/build:v0.17.0 bash
 }
 
 main

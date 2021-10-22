@@ -163,6 +163,14 @@ fn new_spl_token_program<'bump>(bump: &'bump Bump) -> AccountInfo<'bump> {
     )
 }
 
+pub struct ClockStubs;
+
+impl solana_program::program_stubs::SyscallStubs for ClockStubs {
+    fn sol_get_clock_sysvar(&self, _var_addr: *mut u8) -> u64 {
+        0
+    }
+}
+
 fn setup_market<'bump, R: Rng>(rng: &mut R, bump: &'bump Bump) -> MarketAccounts<'bump> {
     let program_id = random_pubkey(rng, bump);
     let market = new_dex_owned_account(rng, size_of::<MarketState>(), program_id, bump);
@@ -255,6 +263,8 @@ fn test_initialize_market() {
 
 #[test]
 fn test_new_order() {
+    solana_program::program_stubs::set_syscall_stubs(Box::new(ClockStubs));
+
     let mut rng = StdRng::seed_from_u64(1);
     let bump = Bump::new();
 
