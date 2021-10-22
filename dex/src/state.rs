@@ -233,13 +233,17 @@ impl MarketStateV2 {
     pub fn check_flags(&self, allow_disabled: bool) -> DexResult {
         let flags = BitFlags::from_bits(self.account_flags)
             .map_err(|_| DexErrorCode::InvalidMarketFlags)?;
-        let mut required_flags =
+        let required_flags =
             AccountFlag::Initialized | AccountFlag::Market | AccountFlag::Permissioned;
         if allow_disabled {
-            required_flags = required_flags | AccountFlag::Disabled;
-        }
-        if flags != required_flags {
-            Err(DexErrorCode::InvalidMarketFlags)?
+            let disabled_flags = required_flags | AccountFlag::Disabled;
+            if flags != required_flags && flags != disabled_flags {
+                return Err(DexErrorCode::InvalidMarketFlags.into());
+            }
+        } else {
+            if flags != required_flags {
+                return Err(DexErrorCode::InvalidMarketFlags.into());
+            }
         }
         Ok(())
     }
