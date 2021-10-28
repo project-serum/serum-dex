@@ -16,7 +16,7 @@
   <h4>
     <a href="https://projectserum.com/">Website</a>
     <span> | </span>
-    <a href="https://serum-academy.com/en/">Academy</a>
+    <a href="https://discord.gg/HSeFXbqsUX">Discord</a>
     <span> | </span>
     <a href="https://github.com/project-serum/awesome-serum">Awesome</a>
     <span> | </span>
