@@ -751,6 +751,36 @@ impl Slab {
         buf
     }
 
+    pub fn traverse_ordered(&self, bids: bool) -> Vec<&LeafNode> {
+        fn walk_rec<'a>(
+            slab: &'a Slab,
+            sub_root: NodeHandle,
+            buf: &mut Vec<&'a LeafNode>,
+            bids: bool,
+        ) {
+            match slab.get(sub_root).unwrap().case().unwrap() {
+                NodeRef::Leaf(leaf) => {
+                    buf.push(leaf);
+                }
+                NodeRef::Inner(inner) => {
+                    if bids {
+                        walk_rec(slab, inner.children[1], buf, bids);
+                        walk_rec(slab, inner.children[0], buf, bids);
+                    } else {
+                        walk_rec(slab, inner.children[0], buf, bids);
+                        walk_rec(slab, inner.children[1], buf, bids);
+                    }
+                }
+            }
+        }
+
+        let mut buf = Vec::with_capacity(self.header().leaf_count as usize);
+        if let Some(r) = self.root() {
+            walk_rec(self, r, &mut buf, bids);
+        }
+        buf
+    }
+
     #[cfg(test)]
     fn hexdump(&self) {
         println!("Header:");
