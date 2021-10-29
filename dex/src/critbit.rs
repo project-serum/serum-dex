@@ -747,6 +747,7 @@ impl Slab {
         if buf.len() != buf.capacity() {
             self.hexdump();
         }
+        assert_eq!(buf.len(), buf.capacity());
         buf
     }
 
