@@ -76,6 +76,5 @@ The easiest way to run a local cluster is to use [solana-test-validator](https:/
 * `assert-owner`: Solana utility program for checking account ownership.
 * `common`: Common rust utilities.
 * `dex`: Serum DEX program and client utility.
-* `docker`: Docker image definitions.
 * `pool`: Serum pool protocol.
 * `scripts`: Bash scripts for development.
