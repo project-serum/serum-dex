@@ -15,7 +15,7 @@ _defaults: &defaults
   before_script:
     - rustup component add rustfmt clippy
     - nvm install $NODE_VERSION
-    - sudo apt-get install -y pkg-config build-essential libudev-dev
+    - sudo apt-get install -y pkg-config build-essential libudev-dev jq
     - sh -c "$(curl -sSfL https://release.solana.com/${SOLANA_VERSION}/install)"
     - export PATH="/home/travis/.local/share/solana/install/active_release/bin:$PATH"
     - yes | solana-keygen new
