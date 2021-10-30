@@ -26,7 +26,7 @@ jobs:
       name: Dex tests
       script:
         - ./scripts/travis/dex-tests.sh
-        - cd dex/tests/permissioned/ && yarn && yarn test && cd ../../../
+        - cd dex/tests/permissioned/ && yarn && yarn build && yarn test && cd ../../../
     - <<: *defaults
       name: Fmt and Common Tests
       script:
