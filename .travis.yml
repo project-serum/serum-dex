@@ -13,6 +13,7 @@ _defaults: &defaults
   rust:
     - stable
   before_script:
+    - rustup component add rustfmt clippy
     - nvm install $NODE_VERSION
     - sudo apt-get install -y pkg-config build-essential libudev-dev
     - sh -c "$(curl -sSfL https://release.solana.com/${SOLANA_VERSION}/install)"
