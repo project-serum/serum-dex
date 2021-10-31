@@ -1,29 +1,22 @@
 dist: bionic
-language: shell
-os: linux
+language: rust
+rust:
+  - stable
+cache: cargo
 env:
   global:
     - NODE_VERSION="v14.7.0"
-    - SOLANA_VERSION="v1.6.18"
+    - SOLANA_VERSION="v1.8.0"
 
 _defaults: &defaults
-  cache: false
-  services:
-    - docker
-  before_install:
-    - scripts/travis/run-docker.sh
-  before_cache:
-    - scripts/travis/stop-docker.sh
-
-_localnet: &localnet
   language: rust
   rust:
     - stable
   before_script:
+    - rustup component add rustfmt clippy
     - nvm install $NODE_VERSION
-    - sudo apt-get install -y pkg-config build-essential libudev-dev
+    - sudo apt-get install -y pkg-config build-essential libudev-dev jq
     - sh -c "$(curl -sSfL https://release.solana.com/${SOLANA_VERSION}/install)"
-    - export PATH="/home/travis/.local/share/solana/install/active_release/bin:$PATH"
     - export PATH="/home/travis/.local/share/solana/install/active_release/bin:$PATH"
     - yes | solana-keygen new
 
@@ -31,21 +24,15 @@ jobs:
   include:
     - <<: *defaults
       name: Dex tests
-      <<: *localnet
       script:
-        - docker exec dev ./scripts/travis/dex-tests.sh
+        - ./scripts/travis/dex-tests.sh
+    - <<: *defaults
+      name: Permissioned Dex tests
+      script:
+        - cd dex/tests/permissioned/ && yarn && yarn build && yarn test && cd ../../../
     - <<: *defaults
       name: Fmt and Common Tests
       script:
-        - docker exec dev cargo build
-        - docker exec dev cargo fmt -- --check
-        - docker exec -w=/workdir/common dev cargo test --features client,strict
-    - <<: *localnet
-      name: Permissioned Markets Tests
-      script:
-        - mkdir -p /tmp/tests && cd /tmp/tests
-        - git clone --recursive https://github.com/project-serum/permissioned-markets-quickstart.git
-        - cd permissioned-markets-quickstart
-        - yarn
-        - yarn build
-        - yarn test
+        - cargo build
+        - cargo fmt -- --check
+        - cargo test --features client,strict
