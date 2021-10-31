@@ -1,5 +1,5 @@
 #![no_main]
-#![deny(safe_packed_borrows)]
+#![deny(unaligned_references)]
 
 use std::cell::RefMut;
 use std::cmp::max;

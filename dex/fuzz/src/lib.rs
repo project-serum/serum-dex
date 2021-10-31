@@ -1,4 +1,4 @@
-#![deny(safe_packed_borrows)]
+#![deny(unaligned_references)]
 use std::mem::size_of;
 
 use bumpalo::Bump;
@@ -269,6 +269,7 @@ pub fn setup_market(bump: &Bump, is_permissioned: bool) -> MarketAccounts {
         pc_vault.key,
         open_orders_authority.as_ref().map(|a| a.key),
         prune_authority.as_ref().map(|a| a.key),
+        None,
         bids.key,
         asks.key,
         req_q.key,

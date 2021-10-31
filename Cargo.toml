@@ -3,6 +3,7 @@ members = [
     "assert-owner",
     "common",
     "dex/crank",
+    "dex/permissioned",
     "pool",
     "pool/schema",
     "pool/examples/admin-controlled",
