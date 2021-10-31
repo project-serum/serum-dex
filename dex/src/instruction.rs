@@ -706,7 +706,7 @@ pub fn new_order(
         AccountMeta::new_readonly(*rent_sysvar_id, false),
     ];
     if let Some(key) = srm_account_referral {
-        accounts.push(AccountMeta::new(*key, false))
+        accounts.push(AccountMeta::new_readonly(*key, false))
     }
     Ok(Instruction {
         program_id: *program_id,
