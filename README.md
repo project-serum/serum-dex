@@ -16,7 +16,7 @@
   <h4>
     <a href="https://projectserum.com/">Website</a>
     <span> | </span>
-    <a href="https://serum-academy.com/en/">Academy</a>
+    <a href="https://discord.gg/HSeFXbqsUX">Discord</a>
     <span> | </span>
     <a href="https://github.com/project-serum/awesome-serum">Awesome</a>
     <span> | </span>
@@ -76,6 +76,5 @@ The easiest way to run a local cluster is to use [solana-test-validator](https:/
 * `assert-owner`: Solana utility program for checking account ownership.
 * `common`: Common rust utilities.
 * `dex`: Serum DEX program and client utility.
-* `docker`: Docker image definitions.
 * `pool`: Serum pool protocol.
 * `scripts`: Bash scripts for development.
