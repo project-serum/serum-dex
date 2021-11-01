@@ -66,7 +66,6 @@ pub enum AccountFlag {
     Closed = 1u64 << 8,
     Permissioned = 1u64 << 9,
     CrankAuthorityRequired = 1u64 << 10,
-    IncludeTakerMetadata = 1u64 << 11,
 }
 
 // Versioned frontend for market accounts.
@@ -841,13 +840,6 @@ impl<'a, H: QueueHeader> Queue<'a, H> {
             queue: self,
             index: 0,
         }
-    }
-}
-
-impl<'a, H: QueueHeader> Index<usize> for Queue<'a, H> {
-    type Output = H::Item;
-    fn index(&self, i: usize) -> &Self::Output {
-        &self.buf[(self.header.head() as usize + i) % self.buf.len()]
     }
 }
 
@@ -3252,7 +3244,9 @@ impl State {
             Err(DexErrorCode::EventQueueTooSmall)?
         }
         let account_flags = if consume_events_authority.is_some() {
-            (AccountFlag::Initialized | AccountFlag::EventQueue | AccountFlag::IncludeTakerMetadata)
+            (AccountFlag::Initialized
+                | AccountFlag::EventQueue
+                | AccountFlag::CrankAuthorityRequired)
                 .bits()
         } else {
             (AccountFlag::Initialized | AccountFlag::EventQueue).bits()

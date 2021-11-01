@@ -348,8 +348,8 @@ impl<'ob> OrderBookState<'ob> {
         let mut unfilled_qty = max_qty.get();
         let mut accum_fill_price = 0;
 
-        let include_taker_metadata =
-            event_q.get_account_flags() & AccountFlag::IncludeTakerMetadata as u64 > 0;
+        let is_permissioned_crank =
+            event_q.get_account_flags() & AccountFlag::CrankAuthorityRequired as u64 > 0;
 
         let pc_lot_size = self.market_state.pc_lot_size;
         let coin_lot_size = self.market_state.coin_lot_size;
@@ -459,7 +459,7 @@ impl<'ob> OrderBookState<'ob> {
             let native_maker_rebate = maker_fee_tier.maker_rebate(native_maker_pc_qty);
             accum_maker_rebates += native_maker_rebate;
 
-            let maker_fill = if include_taker_metadata {
+            let maker_fill = if is_permissioned_crank {
                 Event::new(EventView::MakerFill {
                     side: Side::Bid,
                     maker: true,
@@ -656,8 +656,8 @@ impl<'ob> OrderBookState<'ob> {
 
         let pc_lot_size = self.market_state.pc_lot_size;
         let coin_lot_size = self.market_state.coin_lot_size;
-        let include_taker_metadata =
-            event_q.get_account_flags() & AccountFlag::IncludeTakerMetadata as u64 > 0;
+        let is_permissioned_crank =
+            event_q.get_account_flags() & AccountFlag::CrankAuthorityRequired as u64 > 0;
 
         let max_pc_qty = fee_tier.remove_taker_fee(native_pc_qty_locked.get()) / pc_lot_size;
 
@@ -792,7 +792,7 @@ impl<'ob> OrderBookState<'ob> {
             let native_maker_pc_qty = trade_qty * trade_price.get() * pc_lot_size;
             let native_maker_rebate = maker_fee_tier.maker_rebate(native_maker_pc_qty);
             accum_maker_rebates += native_maker_rebate;
-            let maker_fill = if include_taker_metadata {
+            let maker_fill = if is_permissioned_crank {
                 Event::new(EventView::MakerFill {
                     side: Side::Ask,
                     maker: true,
