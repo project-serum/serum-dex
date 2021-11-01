@@ -1210,33 +1210,8 @@ impl Event {
                 owner_slot,
                 fee_tier,
                 client_order_id,
-            } => {
-                let maker_flag = if maker {
-                    BitFlags::from_flag(EventFlag::Maker).bits()
-                } else {
-                    0
-                };
-                let event_flags =
-                    (EventFlag::from_side(side) | EventFlag::Fill).bits() | maker_flag;
-                Event {
-                    event_flags,
-                    owner_slot,
-                    fee_tier: fee_tier.into(),
-
-                    _padding: Zeroable::zeroed(),
-
-                    native_qty_released: native_qty_received,
-                    native_qty_paid,
-                    native_fee_or_rebate,
-
-                    order_id,
-                    owner,
-
-                    client_order_id: client_order_id.map_or(0, NonZeroU64::get),
-                }
             }
-
-            EventView::MakerFill {
+            | EventView::MakerFill {
                 side,
                 maker,
                 native_qty_paid,
@@ -1273,7 +1248,6 @@ impl Event {
                     client_order_id: client_order_id.map_or(0, NonZeroU64::get),
                 }
             }
-
             EventView::Out {
                 side,
                 release_funds,
@@ -2870,33 +2844,8 @@ impl State {
                     owner: _,
                     owner_slot,
                     client_order_id,
-                } => {
-                    match side {
-                        Side::Bid if maker => {
-                            open_orders.native_pc_total -= native_qty_paid;
-                            open_orders.native_coin_total += native_qty_received;
-                            open_orders.native_coin_free += native_qty_received;
-                            open_orders.native_pc_free += native_fee_or_rebate;
-                        }
-                        Side::Ask if maker => {
-                            open_orders.native_coin_total -= native_qty_paid;
-                            open_orders.native_pc_total += native_qty_received;
-                            open_orders.native_pc_free += native_qty_received;
-                        }
-                        _ => (),
-                    };
-                    if !maker {
-                        let referrer_rebate = fees::referrer_rebate(native_fee_or_rebate);
-                        open_orders.referrer_rebates_accrued += referrer_rebate;
-                    }
-                    if let Some(client_id) = client_order_id {
-                        debug_assert_eq!(
-                            client_id.get(),
-                            identity(open_orders.client_order_ids[owner_slot as usize])
-                        );
-                    }
                 }
-                EventView::MakerFill {
+                | EventView::MakerFill {
                     side,
                     maker,
                     native_qty_paid,
