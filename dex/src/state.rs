@@ -2418,6 +2418,48 @@ pub(crate) mod account_parser {
             f(args)
         }
     }
+
+    pub struct CloseMarketArgs<'a, 'b: 'a> {
+        pub event_q_acc: &'a AccountInfo<'b>,
+        pub bids_acc: &'a AccountInfo<'b>,
+        pub asks_acc: &'a AccountInfo<'b>,
+        pub dest_acc: &'a AccountInfo<'b>,
+    }
+
+    impl<'a, 'b: 'a> CloseMarketArgs<'a, 'b> {
+        pub fn with_parsed_args<T>(
+            program_id: &'a Pubkey,
+            accounts: &'a [AccountInfo<'b>],
+            f: impl FnOnce(CloseMarketArgs) -> DexResult<T>,
+        ) -> DexResult<T> {
+            // Parse accounts.
+            check_assert_eq!(accounts.len(), 6)?;
+            #[rustfmt::skip]
+            let &[
+                ref market_acc,
+                ref event_q_acc,
+                ref bids_acc,
+                ref asks_acc,
+                ref prune_auth_acc,
+                ref dest_acc,
+            ] = array_ref![accounts, 0, 6];
+
+            // Validate prune authority.
+            let _prune_authority = SignerAccount::new(prune_auth_acc)?;
+            let market = Market::load(market_acc, program_id, false)?;
+            check_assert!(market.prune_authority() == Some(prune_auth_acc.key))?;
+
+            // TODO check that event q, bids and asks are all cleared and empty
+
+            // Invoke Processor
+            f(CloseMarketArgs {
+                event_q_acc,
+                bids_acc,
+                asks_acc,
+                dest_acc,
+            })
+        }
+    }
 }
 
 #[inline]
@@ -2541,6 +2583,11 @@ impl State {
                 limit,
                 Self::process_prune,
             )?,
+            MarketInstruction::CloseMarket => account_parser::CloseMarketArgs::with_parsed_args(
+                program_id,
+                accounts,
+                Self::process_close_market,
+            )?,
         };
         Ok(())
     }
@@ -2548,6 +2595,32 @@ impl State {
     #[cfg(feature = "program")]
     fn process_send_take(_args: account_parser::SendTakeArgs) -> DexResult {
         unimplemented!()
+    }
+
+    fn process_close_market(args: account_parser::CloseMarketArgs) -> DexResult {
+        let account_parser::CloseMarketArgs {
+            event_q_acc,
+            bids_acc,
+            asks_acc,
+            dest_acc,
+        } = args;
+
+        // Transfer all lamports to the desintation.
+        let dest_starting_lamports = dest_acc.lamports();
+        **dest_acc.lamports.borrow_mut() = dest_starting_lamports
+            .checked_add(event_q_acc.lamports())
+            .unwrap()
+            .checked_add(bids_acc.lamports())
+            .unwrap()
+            .checked_add(asks_acc.lamports())
+            .unwrap();
+        **event_q_acc.lamports.borrow_mut() = 0;
+        **bids_acc.lamports.borrow_mut() = 0;
+        **asks_acc.lamports.borrow_mut() = 0;
+
+        // TODO Mark the market as closed to prevent it from being used?
+
+        Ok(())
     }
 
     fn process_prune(args: account_parser::PruneArgs) -> DexResult {

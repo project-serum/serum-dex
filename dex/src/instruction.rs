@@ -462,6 +462,15 @@ pub enum MarketInstruction {
     /// accounts.len() - 2 `[writable]` event queue
     /// accounts.len() - 1 `[signer]` crank authority
     ConsumeEventsPermissioned(u16),
+    /// Closes a market and retrieves the rent from the bids, asks and event queue
+    ///
+    /// 0. `[writable]` market
+    /// 1. `[writable]` event queue
+    /// 2. `[writable]` bids
+    /// 3. `[writable]` asks
+    /// 4. `[signer]` prune authority
+    /// 5. `[writable]` the destination account to send the rent exemption SOL to.
+    CloseMarket,
 }
 
 impl MarketInstruction {
@@ -563,6 +572,7 @@ impl MarketInstruction {
                 let limit = array_ref![data, 0, 2];
                 MarketInstruction::ConsumeEventsPermissioned(u16::from_le_bytes(*limit))
             }
+            (18, 0) => MarketInstruction::CloseMarket,
             _ => return None,
         })
     }
@@ -990,6 +1000,29 @@ pub fn prune(
         AccountMeta::new(*open_orders, false),
         AccountMeta::new_readonly(*open_orders_owner, false),
         AccountMeta::new(*event_q, false),
+    ];
+    Ok(Instruction {
+        program_id: *program_id,
+        data,
+        accounts,
+    })
+}
+
+pub fn close_market(
+    program_id: &Pubkey,
+    market: &Pubkey,
+    event_q: &Pubkey,
+    bids: &Pubkey,
+    asks: &Pubkey,
+    prune_authority: &Pubkey,
+) -> Result<Instruction, DexError> {
+    let data = MarketInstruction::CloseMarket.pack();
+    let accounts: Vec<AccountMeta> = vec![
+        AccountMeta::new(*market, false),
+        AccountMeta::new(*event_q, false),
+        AccountMeta::new(*bids, false),
+        AccountMeta::new(*asks, false),
+        AccountMeta::new_readonly(*prune_authority, true),
     ];
     Ok(Instruction {
         program_id: *program_id,
