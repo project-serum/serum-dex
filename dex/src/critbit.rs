@@ -252,7 +252,7 @@ const_assert_eq!(_NODE_ALIGN, align_of::<AnyNode>());
 
 #[derive(Copy, Clone)]
 #[repr(packed)]
-struct SlabHeader {
+pub struct SlabHeader {
     bump_index: u64,
     free_list_len: u64,
     free_list_head: u32,
