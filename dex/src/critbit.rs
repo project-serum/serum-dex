@@ -258,7 +258,7 @@ pub struct SlabHeader {
     free_list_head: u32,
 
     root_node: u32,
-    leaf_count: u64,
+    pub leaf_count: u64,
 }
 unsafe impl Zeroable for SlabHeader {}
 unsafe impl Pod for SlabHeader {}
