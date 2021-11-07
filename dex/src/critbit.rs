@@ -347,7 +347,7 @@ impl Slab {
         (header, nodes)
     }
 
-    fn header(&self) -> &SlabHeader {
+    pub fn header(&self) -> &SlabHeader {
         self.parts().0
     }
 
