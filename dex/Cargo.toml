@@ -45,7 +45,13 @@ proptest-derive = "0.3.0"
 bumpalo = { version = "3.4.0", features = ["collections"] }
 
 [profile.release]
-lto = true
+lto = "fat"
+codegen-units = 1
+
+[profile.release.build-override]
+opt-level = 3
+incremental = false
+codegen-units = 1
 
 [profile.test]
 opt-level = 2
