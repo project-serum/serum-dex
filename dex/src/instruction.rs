@@ -344,21 +344,19 @@ pub enum MarketInstruction {
     /// 6. `[writable]` pc vault
     /// 7. `[]` spl token program
     /// 8. `[]` the rent sysvar
-    /// 9. `[writable]` (optional) the (M)SRM account used for fee discounts
+    /// 9. `[]` (optional) the (M)SRM account used for fee discounts
     NewOrder(NewOrderInstructionV1),
     /// 0. `[writable]` market
     /// 1. `[writable]` req_q
     /// 2. `[writable]` event_q
     /// 3. `[writable]` bids
     /// 4. `[writable]` asks
-    /// 5. `[writable]` coin fee receivable account
-    /// 6. `[writable]` pc fee receivable account
     MatchOrders(u16),
     /// ... `[writable]` OpenOrders
     /// accounts.len() - 4 `[writable]` market
     /// accounts.len() - 3 `[writable]` event queue
-    /// accounts.len() - 2 `[writable]` coin fee receivable account
-    /// accounts.len() - 1 `[writable]` pc fee receivable account
+    /// accounts.len() - 2 `[]`
+    /// accounts.len() - 1 `[]`
     ConsumeEvents(u16),
     /// 0. `[]` market
     /// 1. `[writable]` OpenOrders
@@ -400,7 +398,7 @@ pub enum MarketInstruction {
     /// 6. `[writable]` pc vault
     /// 7. `[]` spl token program
     /// 8. `[]` the rent sysvar
-    /// 9. `[writable]` (optional) the (M)SRM account used for fee discounts
+    /// 9. `[]` (optional) the (M)SRM account used for fee discounts
     NewOrderV2(NewOrderInstructionV2),
     /// 0. `[writable]` the market
     /// 1. `[writable]` the OpenOrders account to use
@@ -414,7 +412,7 @@ pub enum MarketInstruction {
     /// 9. `[writable]` pc vault
     /// 10. `[]` spl token program
     /// 11. `[]` the rent sysvar
-    /// 12. `[writable]` (optional) the (M)SRM account used for fee discounts
+    /// 12. `[]` (optional) the (M)SRM account used for fee discounts
     NewOrderV3(NewOrderInstructionV3),
     /// 0. `[writable]` market
     /// 1. `[writable]` bids
@@ -431,10 +429,17 @@ pub enum MarketInstruction {
     /// 5. `[writable]` event_q
     CancelOrderByClientIdV2(u64),
     /// 0. `[writable]` market
-    /// 1. `[writable]` bids
-    /// 2. `[writable]` asks
-    /// 3. `[writable]` OpenOrders
-    /// 4. `[]`
+    /// 1. `[writable]` the request queue
+    /// 2. `[writable]` the event queue
+    /// 3. `[writable]` bids
+    /// 4. `[writable]` asks
+    /// 5. `[writable]` the coin currency wallet account
+    /// 6. `[writable]` the price currency wallet account
+    /// 7. `[]` signer
+    /// 8. `[writable]` coin vault
+    /// 9. `[writable]` pc vault
+    /// 10. `[]` spl token program
+    /// 11. `[]` (optional) the (M)SRM account used for fee discounts
     SendTake(SendTakeInstruction),
     /// 0. `[writable]` OpenOrders
     /// 1. `[signer]` the OpenOrders owner
@@ -444,7 +449,7 @@ pub enum MarketInstruction {
     /// 0. `[writable]` OpenOrders
     /// 1. `[signer]` the OpenOrders owner
     /// 2. `[]` market
-    /// 3. `[]` the rent sysvar
+    /// 3. `[]`
     /// 4. `[signer]` open orders market authority (optional).
     InitOpenOrders,
     /// Removes all orders for a given open orders account from the orderbook.
