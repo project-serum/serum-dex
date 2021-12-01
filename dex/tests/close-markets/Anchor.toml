@@ -1,0 +1,19 @@
+[programs.localnet]
+close_markets = "Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS"
+
+[test]
+startup_wait = 20000
+
+[registry]
+url = "https://anchor.projectserum.com"
+
+[provider]
+cluster = "localnet"
+wallet = "/root/.config/solana/id.json"
+
+[[test.genesis]]
+address = "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin"
+program = "../../target/deploy/serum_dex.so"
+
+[scripts]
+test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.ts"
