@@ -3,6 +3,8 @@ import { Program, BN } from '@project-serum/anchor';
 import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { PublicKey } from "@solana/web3.js";
 import { CloseMarkets } from '../target/types/close_markets';
+import { Market } from "@project-serum/serum";
+
 
 const DEX_PID = new anchor.web3.PublicKey(
   "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin",
@@ -14,6 +16,10 @@ describe('close-markets', () => {
   anchor.setProvider(anchor.Provider.env());
 
   const program = anchor.workspace.CloseMarkets as Program<CloseMarkets>;
+
+  let eventQueueKeypair;
+  let bidsKeypair;
+  let asksKeypair;
 
   it('Initialize Market!', async () => {
     let [pruneAuth, pruneAuthBump] = await anchor.web3.PublicKey.findProgramAddress(
@@ -53,9 +59,9 @@ describe('close-markets', () => {
     let [vaultSigner, vaultSignerNonce] = await getVaultSignerAndNonce(
       serumMarket,
     );
-    let eventQueueKeypair = anchor.web3.Keypair.generate();
-    let bidsKeypair = anchor.web3.Keypair.generate();
-    let asksKeypair = anchor.web3.Keypair.generate();
+    eventQueueKeypair = anchor.web3.Keypair.generate();
+    bidsKeypair = anchor.web3.Keypair.generate();
+    asksKeypair = anchor.web3.Keypair.generate();
 
     let bumps = new Bumps();
     bumps.pruneAuth = pruneAuthBump;
@@ -122,8 +128,55 @@ describe('close-markets', () => {
         }),
       ],
       signers: [eventQueueKeypair, bidsKeypair, asksKeypair],
-    })
+    });
+
+    let serumMarketData = await Market.load(
+      program.provider.connection,
+      serumMarket,
+      {},
+      DEX_PID,
+    );
+    // TODO assert Market._decoded.accountFlags.initialized = true
+    // console.log("serum market data", serumMarketData);
   });
+
+  it('Close Market!', async () => {
+
+    console.log("payer account balance: ", (await program.provider.connection.getBalance(program.provider.wallet.publicKey)).toString());
+
+    let [pruneAuth] = await anchor.web3.PublicKey.findProgramAddress(
+      [Buffer.from("prune_auth")],
+      program.programId,
+    );
+    let [serumMarket] =
+      await anchor.web3.PublicKey.findProgramAddress(
+        [Buffer.from("serum_market")],
+        program.programId,
+      );
+    let [requestQueue] =
+      await anchor.web3.PublicKey.findProgramAddress(
+        [Buffer.from("request_queue")],
+        program.programId,
+      );
+
+    await program.rpc.closeMarket({
+      accounts: {
+        payer: program.provider.wallet.publicKey,
+        pruneAuth,
+        serumMarket,
+        requestQueue,
+        eventQueue: eventQueueKeypair.publicKey,
+        bids: bidsKeypair.publicKey,
+        asks: asksKeypair.publicKey,
+        dexProgram: DEX_PID,
+      }
+    })
+
+    console.log("payer account balance: ", (await program.provider.connection.getBalance(program.provider.wallet.publicKey)).toString());
+
+
+  });
+
 
   function Bumps() {
     this.pruneAuth;

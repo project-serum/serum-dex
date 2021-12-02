@@ -158,7 +158,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a6d6c8fbc834319618581a4e19807a30e76326b9981abd069addb55acf0647db"
 dependencies = [
  "anchor-lang",
- "serum_dex",
+ "serum_dex 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "solana-program",
  "spl-associated-token-account",
  "spl-token",
@@ -387,6 +387,8 @@ version = "0.1.0"
 dependencies = [
  "anchor-lang",
  "anchor-spl",
+ "serum_dex 0.4.0",
+ "solana-program",
 ]
 
 [[package]]
@@ -1000,6 +1002,28 @@ dependencies = [
  "itoa",
  "ryu",
  "serde",
+]
+
+[[package]]
+name = "serum_dex"
+version = "0.4.0"
+dependencies = [
+ "arrayref",
+ "bincode",
+ "bytemuck",
+ "byteorder",
+ "enumflags2",
+ "field-offset",
+ "itertools",
+ "num-traits",
+ "num_enum",
+ "safe-transmute",
+ "serde",
+ "solana-program",
+ "spl-token",
+ "static_assertions",
+ "thiserror",
+ "without-alloc",
 ]
 
 [[package]]

@@ -2420,6 +2420,7 @@ pub(crate) mod account_parser {
     }
 
     pub struct CloseMarketArgs<'a, 'b: 'a> {
+        pub request_q_acc: &'a AccountInfo<'b>,
         pub event_q_acc: &'a AccountInfo<'b>,
         pub bids_acc: &'a AccountInfo<'b>,
         pub asks_acc: &'a AccountInfo<'b>,
@@ -2433,16 +2434,17 @@ pub(crate) mod account_parser {
             f: impl FnOnce(CloseMarketArgs) -> DexResult<T>,
         ) -> DexResult<T> {
             // Parse accounts.
-            check_assert_eq!(accounts.len(), 6)?;
+            check_assert_eq!(accounts.len(), 7)?;
             #[rustfmt::skip]
             let &[
                 ref market_acc,
+                ref request_q_acc,
                 ref event_q_acc,
                 ref bids_acc,
                 ref asks_acc,
                 ref prune_auth_acc,
                 ref dest_acc,
-            ] = array_ref![accounts, 0, 6];
+            ] = array_ref![accounts, 0, 7];
 
             // Validate prune authority.
             let _prune_authority = SignerAccount::new(prune_auth_acc)?;
@@ -2453,6 +2455,7 @@ pub(crate) mod account_parser {
 
             // Invoke Processor
             f(CloseMarketArgs {
+                request_q_acc,
                 event_q_acc,
                 bids_acc,
                 asks_acc,
@@ -2599,6 +2602,7 @@ impl State {
 
     fn process_close_market(args: account_parser::CloseMarketArgs) -> DexResult {
         let account_parser::CloseMarketArgs {
+            request_q_acc,
             event_q_acc,
             bids_acc,
             asks_acc,
@@ -2608,12 +2612,15 @@ impl State {
         // Transfer all lamports to the desintation.
         let dest_starting_lamports = dest_acc.lamports();
         **dest_acc.lamports.borrow_mut() = dest_starting_lamports
+            .checked_add(request_q_acc.lamports())
+            .unwrap()
             .checked_add(event_q_acc.lamports())
             .unwrap()
             .checked_add(bids_acc.lamports())
             .unwrap()
             .checked_add(asks_acc.lamports())
             .unwrap();
+        **request_q_acc.lamports.borrow_mut() = 0;
         **event_q_acc.lamports.borrow_mut() = 0;
         **bids_acc.lamports.borrow_mut() = 0;
         **asks_acc.lamports.borrow_mut() = 0;

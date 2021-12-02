@@ -2,7 +2,7 @@ use anchor_lang::prelude::*;
 use anchor_spl::token::{Token, TokenAccount, Mint};
 use anchor_spl::dex;
 
-
+pub use serum_dex;
 
 declare_id!("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS");
 
@@ -41,11 +41,36 @@ pub mod close_markets {
 
         Ok(())
     }
+
+    pub fn close_market(ctx: Context<CloseMarket>) -> ProgramResult {
+        let ix = serum_dex::instruction::close_market(
+            &ctx.accounts.dex_program.key(),
+            &ctx.accounts.serum_market.key(),
+            &ctx.accounts.request_queue.key(),
+            &ctx.accounts.event_queue.key(),
+            &ctx.accounts.bids.key(),
+            &ctx.accounts.asks.key(),
+            &ctx.accounts.prune_auth.key(),
+            &ctx.accounts.payer.key(),
+        )?;
+
+        let seeds = &[b"prune_auth".as_ref(), &[ctx.accounts.prune_auth.bumps.prune_auth]];
+        let signer = &[&seeds[..]];
+
+        solana_program::program::invoke_signed(
+            &ix,
+            &ToAccountInfos::to_account_infos(ctx.accounts),
+            signer,
+        )?;
+
+        Ok(())
+    }
 }
 
 #[derive(Accounts)]
 #[instruction(bumps: Bumps)]
 pub struct InitializeMarket<'info> {
+    #[account(mut)]
     pub payer: Signer<'info>,
     #[account(
         init,
@@ -144,6 +169,32 @@ impl<'info> InitializeMarket<'info> {
             self.prune_auth.to_account_info() ,self.prune_auth.to_account_info()
             ])
     }
+}
+
+#[derive(Accounts)]
+pub struct CloseMarket<'info> {
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    #[account(
+        seeds = [b"prune_auth".as_ref()],
+        bump = prune_auth.bumps.prune_auth,
+    )]
+    pub prune_auth: Box<Account<'info, PruneAuth>>,
+    #[account(
+        mut,
+        seeds = [SERUM_MARKET_SEED.as_ref()],
+        bump = prune_auth.bumps.serum_market,
+    )]
+    pub serum_market: UncheckedAccount<'info>,
+    #[account(mut)]
+    pub request_queue: UncheckedAccount<'info>,
+    #[account(mut)]
+    pub event_queue: UncheckedAccount<'info>,
+    #[account(mut)]
+    pub bids: UncheckedAccount<'info>,
+    #[account(mut)]
+    pub asks: UncheckedAccount<'info>,
+    pub dex_program: UncheckedAccount<'info>,
 }
 
 

@@ -470,11 +470,12 @@ pub enum MarketInstruction {
     /// Closes a market and retrieves the rent from the bids, asks and event queue
     ///
     /// 0. `[writable]` market
-    /// 1. `[writable]` event queue
-    /// 2. `[writable]` bids
-    /// 3. `[writable]` asks
-    /// 4. `[signer]` prune authority
-    /// 5. `[writable]` the destination account to send the rent exemption SOL to.
+    /// 1. `[writable]` request queue
+    /// 2. `[writable]` event queue
+    /// 3. `[writable]` bids
+    /// 4. `[writable]` asks
+    /// 5. `[signer]` prune authority
+    /// 6. `[writable]` the destination account to send the rent exemption SOL to.
     CloseMarket,
 }
 
@@ -1016,18 +1017,22 @@ pub fn prune(
 pub fn close_market(
     program_id: &Pubkey,
     market: &Pubkey,
-    event_q: &Pubkey,
+    request_queue: &Pubkey,
+    event_queue: &Pubkey,
     bids: &Pubkey,
     asks: &Pubkey,
     prune_authority: &Pubkey,
+    destination: &Pubkey,
 ) -> Result<Instruction, DexError> {
     let data = MarketInstruction::CloseMarket.pack();
     let accounts: Vec<AccountMeta> = vec![
         AccountMeta::new(*market, false),
-        AccountMeta::new(*event_q, false),
+        AccountMeta::new(*request_queue, false),
+        AccountMeta::new(*event_queue, false),
         AccountMeta::new(*bids, false),
         AccountMeta::new(*asks, false),
         AccountMeta::new_readonly(*prune_authority, true),
+        AccountMeta::new(*destination, false),
     ];
     Ok(Instruction {
         program_id: *program_id,

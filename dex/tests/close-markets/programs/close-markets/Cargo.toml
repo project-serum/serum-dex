@@ -17,3 +17,5 @@ default = []
 [dependencies]
 anchor-lang = "0.18.2"
 anchor-spl = {version = "0.18.2", features = ["dex"]}
+serum_dex = { path = "../../../..", features = ["no-entrypoint"]}
+solana-program = "1.8.0"
