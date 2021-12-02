@@ -752,7 +752,7 @@ pub trait QueueHeader: Pod {
 }
 
 pub struct Queue<'a, H: QueueHeader> {
-    header: RefMut<'a, H>,
+    pub header: RefMut<'a, H>,
     buf: RefMut<'a, [H::Item]>,
 }
 
@@ -2451,7 +2451,26 @@ pub(crate) mod account_parser {
             let market = Market::load(market_acc, program_id, false)?;
             check_assert!(market.prune_authority() == Some(prune_auth_acc.key))?;
 
-            // TODO check that event q, bids and asks are all cleared and empty
+            // Check that request q, event q, bids and asks are completely cleared and empty
+            let bids = market.load_bids_mut(bids_acc).or(check_unreachable!())?;
+            let asks = market.load_asks_mut(asks_acc).or(check_unreachable!())?;
+            let req_q = market.load_request_queue_mut(request_q_acc)?;
+            let event_q = market.load_event_queue_mut(event_q_acc)?;
+
+            let bids_header = bids.header();
+            if bids_header.leaf_count != 0 {
+                solana_program::msg!("send error");
+            }
+            let asks_header = asks.header();
+            if asks_header.leaf_count != 0 {
+                solana_program::msg!("send error");
+            }
+            if req_q.header.count != 0 {
+                solana_program::msg!("send error");
+            }
+            if event_q.header.count != 0 {
+                solana_program::msg!("send error");
+            }
 
             // Invoke Processor
             f(CloseMarketArgs {
