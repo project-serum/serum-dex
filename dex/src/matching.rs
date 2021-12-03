@@ -1,6 +1,7 @@
 use std::num::NonZeroU64;
 
 use crate::instruction::SelfTradeBehavior;
+use crate::state::AccountFlag;
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 #[cfg(test)]
 use proptest_derive::Arbitrary;
@@ -347,6 +348,9 @@ impl<'ob> OrderBookState<'ob> {
         let mut unfilled_qty = max_qty.get();
         let mut accum_fill_price = 0;
 
+        let is_permissioned_crank =
+            event_q.get_account_flags() & AccountFlag::CrankAuthorityRequired as u64 > 0;
+
         let pc_lot_size = self.market_state.pc_lot_size;
         let coin_lot_size = self.market_state.coin_lot_size;
 
@@ -455,18 +459,34 @@ impl<'ob> OrderBookState<'ob> {
             let native_maker_rebate = maker_fee_tier.maker_rebate(native_maker_pc_qty);
             accum_maker_rebates += native_maker_rebate;
 
-            let maker_fill = Event::new(EventView::Fill {
-                side: Side::Bid,
-                maker: true,
-                native_qty_paid: native_maker_pc_qty - native_maker_rebate,
-                native_qty_received: trade_qty * coin_lot_size,
-                native_fee_or_rebate: native_maker_rebate,
-                order_id: best_bid_ref.order_id(),
-                owner: best_bid_ref.owner(),
-                owner_slot: best_bid_ref.owner_slot(),
-                fee_tier: maker_fee_tier,
-                client_order_id: NonZeroU64::new(best_bid_ref.client_order_id()),
-            });
+            let maker_fill = if is_permissioned_crank {
+                Event::new(EventView::MakerFill {
+                    side: Side::Bid,
+                    maker: true,
+                    native_qty_paid: native_maker_pc_qty - native_maker_rebate,
+                    native_qty_received: trade_qty * coin_lot_size,
+                    native_fee_or_rebate: native_maker_rebate,
+                    order_id: best_bid_ref.order_id(),
+                    owner: best_bid_ref.owner(),
+                    owner_slot: best_bid_ref.owner_slot(),
+                    fee_tier: maker_fee_tier,
+                    client_order_id: NonZeroU64::new(best_bid_ref.client_order_id()),
+                    taker: owner,
+                })
+            } else {
+                Event::new(EventView::Fill {
+                    side: Side::Bid,
+                    maker: true,
+                    native_qty_paid: native_maker_pc_qty - native_maker_rebate,
+                    native_qty_received: trade_qty * coin_lot_size,
+                    native_fee_or_rebate: native_maker_rebate,
+                    order_id: best_bid_ref.order_id(),
+                    owner: best_bid_ref.owner(),
+                    owner_slot: best_bid_ref.owner_slot(),
+                    fee_tier: maker_fee_tier,
+                    client_order_id: NonZeroU64::new(best_bid_ref.client_order_id()),
+                })
+            };
             event_q
                 .push_back(maker_fill)
                 .map_err(|_| DexErrorCode::EventQueueFull)?;
@@ -636,6 +656,8 @@ impl<'ob> OrderBookState<'ob> {
 
         let pc_lot_size = self.market_state.pc_lot_size;
         let coin_lot_size = self.market_state.coin_lot_size;
+        let is_permissioned_crank =
+            event_q.get_account_flags() & AccountFlag::CrankAuthorityRequired as u64 > 0;
 
         let max_pc_qty = fee_tier.remove_taker_fee(native_pc_qty_locked.get()) / pc_lot_size;
 
@@ -770,19 +792,34 @@ impl<'ob> OrderBookState<'ob> {
             let native_maker_pc_qty = trade_qty * trade_price.get() * pc_lot_size;
             let native_maker_rebate = maker_fee_tier.maker_rebate(native_maker_pc_qty);
             accum_maker_rebates += native_maker_rebate;
-
-            let maker_fill = Event::new(EventView::Fill {
-                side: Side::Ask,
-                maker: true,
-                native_qty_paid: trade_qty * coin_lot_size,
-                native_qty_received: native_maker_pc_qty + native_maker_rebate,
-                native_fee_or_rebate: native_maker_rebate,
-                order_id: best_offer_ref.order_id(),
-                owner: best_offer_ref.owner(),
-                owner_slot: best_offer_ref.owner_slot(),
-                fee_tier: maker_fee_tier,
-                client_order_id: NonZeroU64::new(best_offer_ref.client_order_id()),
-            });
+            let maker_fill = if is_permissioned_crank {
+                Event::new(EventView::MakerFill {
+                    side: Side::Ask,
+                    maker: true,
+                    native_qty_paid: trade_qty * coin_lot_size,
+                    native_qty_received: native_maker_pc_qty + native_maker_rebate,
+                    native_fee_or_rebate: native_maker_rebate,
+                    order_id: best_offer_ref.order_id(),
+                    owner: best_offer_ref.owner(),
+                    owner_slot: best_offer_ref.owner_slot(),
+                    fee_tier: maker_fee_tier,
+                    client_order_id: NonZeroU64::new(best_offer_ref.client_order_id()),
+                    taker: owner,
+                })
+            } else {
+                Event::new(EventView::Fill {
+                    side: Side::Ask,
+                    maker: true,
+                    native_qty_paid: trade_qty * coin_lot_size,
+                    native_qty_received: native_maker_pc_qty + native_maker_rebate,
+                    native_fee_or_rebate: native_maker_rebate,
+                    order_id: best_offer_ref.order_id(),
+                    owner: best_offer_ref.owner(),
+                    owner_slot: best_offer_ref.owner_slot(),
+                    fee_tier: maker_fee_tier,
+                    client_order_id: NonZeroU64::new(best_offer_ref.client_order_id()),
+                })
+            };
             event_q
                 .push_back(maker_fill)
                 .map_err(|_| DexErrorCode::EventQueueFull)?;

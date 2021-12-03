@@ -1,8 +1,14 @@
 #![cfg_attr(not(feature = "program"), allow(unused))]
 use num_enum::TryFromPrimitive;
 use std::{
-    cell::RefMut, convert::identity, convert::TryInto, mem::size_of, num::NonZeroU64, ops::Deref,
-    ops::DerefMut,
+    cell::RefMut,
+    convert::identity,
+    convert::TryInto,
+    mem::size_of,
+    num::NonZeroU64,
+    ops::Deref,
+    ops::{DerefMut, Index},
+    process::Output,
 };
 
 use arrayref::{array_ref, array_refs, mut_array_refs};
@@ -491,10 +497,7 @@ impl MarketState {
         let (header, buf) = strip_header::<EventQueueHeader, Event>(queue, false)?;
 
         let flags = BitFlags::from_bits(header.account_flags).unwrap();
-        check_assert_eq!(
-            &flags,
-            &(AccountFlag::Initialized | AccountFlag::EventQueue)
-        )?;
+        check_assert!(flags.contains(AccountFlag::Initialized | AccountFlag::EventQueue))?;
         Ok(Queue { header, buf })
     }
 
@@ -1095,6 +1098,13 @@ pub struct EventQueueHeader {
     count: u64,
     seq_num: u64,
 }
+
+impl EventQueueHeader {
+    pub fn get_account_flags(&self) -> u64 {
+        self.account_flags
+    }
+}
+
 unsafe impl Zeroable for EventQueueHeader {}
 unsafe impl Pod for EventQueueHeader {}
 
@@ -1125,6 +1135,12 @@ impl QueueHeader for EventQueueHeader {
 }
 
 pub type EventQueue<'a> = Queue<'a, EventQueueHeader>;
+
+impl<'a> EventQueue<'a> {
+    pub fn get_account_flags(&self) -> u64 {
+        self.header.get_account_flags()
+    }
+}
 
 #[derive(Copy, Clone, BitFlags, Debug)]
 #[repr(u8)]
@@ -1194,6 +1210,19 @@ impl Event {
                 owner_slot,
                 fee_tier,
                 client_order_id,
+            }
+            | EventView::MakerFill {
+                side,
+                maker,
+                native_qty_paid,
+                native_qty_received,
+                native_fee_or_rebate,
+                order_id,
+                owner,
+                owner_slot,
+                fee_tier,
+                client_order_id,
+                taker: _,
             } => {
                 let maker_flag = if maker {
                     BitFlags::from_flag(EventFlag::Maker).bits()
@@ -1219,7 +1248,6 @@ impl Event {
                     client_order_id: client_order_id.map_or(0, NonZeroU64::get),
                 }
             }
-
             EventView::Out {
                 side,
                 release_funds,
@@ -1317,6 +1345,19 @@ pub enum EventView {
         fee_tier: FeeTier,
         client_order_id: Option<NonZeroU64>,
     },
+    MakerFill {
+        side: Side,
+        maker: bool,
+        native_qty_paid: u64,
+        native_qty_received: u64,
+        native_fee_or_rebate: u64,
+        order_id: u128,
+        owner: [u64; 4],
+        owner_slot: u8,
+        fee_tier: FeeTier,
+        client_order_id: Option<NonZeroU64>,
+        taker: [u64; 4],
+    },
     Out {
         side: Side,
         release_funds: bool,
@@ -1332,7 +1373,9 @@ pub enum EventView {
 impl EventView {
     fn side(&self) -> Side {
         match self {
-            &EventView::Fill { side, .. } | &EventView::Out { side, .. } => side,
+            &EventView::Fill { side, .. }
+            | &EventView::MakerFill { side, .. }
+            | &EventView::Out { side, .. } => side,
         }
     }
 }
@@ -2801,6 +2844,19 @@ impl State {
                     owner: _,
                     owner_slot,
                     client_order_id,
+                }
+                | EventView::MakerFill {
+                    side,
+                    maker,
+                    native_qty_paid,
+                    native_qty_received,
+                    native_fee_or_rebate,
+                    fee_tier: _,
+                    order_id: _,
+                    owner: _,
+                    owner_slot,
+                    client_order_id,
+                    taker: _,
                 } => {
                     match side {
                         Side::Bid if maker => {
@@ -3136,9 +3192,17 @@ impl State {
         if eq_buf.len() < 128 {
             Err(DexErrorCode::EventQueueTooSmall)?
         }
+        let account_flags = if consume_events_authority.is_some() {
+            (AccountFlag::Initialized
+                | AccountFlag::EventQueue
+                | AccountFlag::CrankAuthorityRequired)
+                .bits()
+        } else {
+            (AccountFlag::Initialized | AccountFlag::EventQueue).bits()
+        };
         let eq_hdr: &mut EventQueueHeader = try_cast_mut(eq_hdr_array).or(check_unreachable!())?;
         *eq_hdr = EventQueueHeader {
-            account_flags: (AccountFlag::Initialized | AccountFlag::EventQueue).bits(),
+            account_flags,
             head: 0,
             count: 0,
             seq_num: 0,
