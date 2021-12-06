@@ -343,7 +343,7 @@ async function crankEventQueue(provider, marketProxy) {
   while (eq.length > 0) {
     const tx = new Transaction();
     tx.add(
-      marketProxy.market.makeConsumeEventsInstruction([eq[0].openOrders], 1)
+      marketProxy.instruction.consumeEventsPermissioned([eq[0].openOrders], 1)
     );
     await provider.send(tx);
     eq = await marketProxy.market.loadEventQueue(provider.connection);
