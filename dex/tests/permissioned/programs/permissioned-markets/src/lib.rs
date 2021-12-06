@@ -1,14 +1,18 @@
 // Note. This example depends on unreleased Serum DEX changes.
 
 use anchor_lang::prelude::*;
-use anchor_spl::dex::serum_dex::instruction::{CancelOrderInstructionV2, NewOrderInstructionV3};
-use anchor_spl::dex::{
+use serum_dex_permissioned::serum_dex::instruction::{
+    CancelOrderInstructionV2, NewOrderInstructionV3,
+};
+use serum_dex_permissioned::{
     Context, Logger, MarketMiddleware, MarketProxy, OpenOrdersPda, ReferralFees,
 };
 use solana_program::account_info::AccountInfo;
 use solana_program::entrypoint::ProgramResult;
 use solana_program::pubkey::Pubkey;
 use solana_program::sysvar::rent;
+
+declare_id!("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS");
 
 /// # Permissioned Markets
 ///
@@ -89,7 +93,7 @@ impl MarketMiddleware for Identity {
     ///
     /// 0. Authorization token.
     /// ..
-    fn new_order_v3(&self, ctx: &mut Context, _ix: &NewOrderInstructionV3) -> ProgramResult {
+    fn new_order_v3(&self, ctx: &mut Context, _ix: &mut NewOrderInstructionV3) -> ProgramResult {
         verify_and_strip_auth(ctx)
     }
 
@@ -97,7 +101,11 @@ impl MarketMiddleware for Identity {
     ///
     /// 0. Authorization token.
     /// ..
-    fn cancel_order_v2(&self, ctx: &mut Context, _ix: &CancelOrderInstructionV2) -> ProgramResult {
+    fn cancel_order_v2(
+        &self,
+        ctx: &mut Context,
+        _ix: &mut CancelOrderInstructionV2,
+    ) -> ProgramResult {
         verify_and_strip_auth(ctx)
     }
 
@@ -105,7 +113,11 @@ impl MarketMiddleware for Identity {
     ///
     /// 0. Authorization token.
     /// ..
-    fn cancel_order_by_client_id_v2(&self, ctx: &mut Context, _client_id: u64) -> ProgramResult {
+    fn cancel_order_by_client_id_v2(
+        &self,
+        ctx: &mut Context,
+        _client_id: &mut u64,
+    ) -> ProgramResult {
         verify_and_strip_auth(ctx)
     }
 
@@ -129,7 +141,7 @@ impl MarketMiddleware for Identity {
     ///
     /// 0. Authorization token (revoked).
     /// ..
-    fn prune(&self, ctx: &mut Context, _limit: u16) -> ProgramResult {
+    fn prune(&self, ctx: &mut Context, _limit: &mut u16) -> ProgramResult {
         verify_revoked_and_strip_auth(ctx)?;
 
         // Sign with the prune authority.

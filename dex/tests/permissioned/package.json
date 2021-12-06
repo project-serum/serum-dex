@@ -1,5 +1,5 @@
 {
-  "name": "permissioned-markets-quickstart",
+  "name": "permissioned-markets",
   "version": "1.0.0",
   "description": "This repo demonstrates how to create \"permissioned markets\" on Serum via a proxy smart contract. A permissioned market is a regular Serum market with an additional open orders authority, which must sign every transaction to create an open orders account.",
   "main": "index.js",
@@ -23,7 +23,7 @@
   },
   "homepage": "https://github.com/project-serum/permissioned-markets-quickstart#readme",
   "devDependencies": {
-    "@project-serum/anchor": "^0.18.0",
+    "@project-serum/anchor": "^0.18.2",
     "@project-serum/anchor-cli": "^0.18.2",
     "@project-serum/common": "^0.0.1-beta.3",
     "@project-serum/serum": "^0.13.55",
