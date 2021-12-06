@@ -158,6 +158,28 @@ impl MarketMiddleware for Identity {
 
     /// Accounts:
     ///
+    /// 0. Authorization token (revoked).
+    /// ..
+    fn consume_events_permissioned(&self, ctx: &mut Context, _limit: &mut u16) -> ProgramResult {
+        verify_revoked_and_strip_auth(ctx)?;
+
+        let market_idx = ctx.accounts.len() - 3;
+        let auth_idx = ctx.accounts.len() - 1;
+
+        // Sign with the consume_events authority.
+        let market = &ctx.accounts[market_idx];
+        ctx.seeds.push(consume_events_authority! {
+            program = ctx.program_id,
+            dex_program = ctx.dex_program_id,
+            market = market.key
+        });
+
+        ctx.accounts[auth_idx] = Self::prepare_pda(&ctx.accounts[auth_idx]);
+        Ok(())
+    }
+
+    /// Accounts:
+    ///
     /// 0. Authorization token.
     /// ..
     fn fallback(&self, ctx: &mut Context) -> ProgramResult {
@@ -224,6 +246,21 @@ macro_rules! prune_authority {
                 .1,
             ],
         ]
+    };
+}
+
+#[macro_export]
+macro_rules! consume_events_authority {
+    (
+        program = $program:expr,
+        dex_program = $dex_program:expr,
+        market = $market:expr
+    ) => {
+        prune_authority!(
+            program = $program,
+            dex_program = $dex_program,
+            market = $market
+        )
     };
 }
 

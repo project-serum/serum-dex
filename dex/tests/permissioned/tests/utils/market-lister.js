@@ -136,6 +136,11 @@ async function list({
         DEX_PID,
         proxyProgramId
       ),
+      crankAuthority: await Identity.consumeEventsAuthority(
+        market.publicKey,
+        DEX_PID,
+        proxyProgramId
+      ),
     })
   );
 
