@@ -2,7 +2,7 @@
 
 use anchor_lang::prelude::*;
 use anchor_spl::dex::serum_dex::instruction::{CancelOrderInstructionV2, NewOrderInstructionV3};
-use anchor_spl::dex::{
+use serum_dex_permissioned::{
     Context, Logger, MarketMiddleware, MarketProxy, OpenOrdersPda, ReferralFees,
 };
 use solana_program::account_info::AccountInfo;
