@@ -61,8 +61,8 @@ const fn fee_tenth_of_bps(tenth_of_bps: u64) -> U64F64 {
 }
 
 #[inline(always)]
-const fn rebate_tenth_of_bps(bps: u64) -> U64F64 {
-    U64F64(fee_tenth_of_bps(bps).0 + 1)
+const fn rebate_tenth_of_bps(tenth_of_bps: u64) -> U64F64 {
+    U64F64(fee_tenth_of_bps(tenth_of_bps).0 + 1)
 }
 
 impl FeeTier {
