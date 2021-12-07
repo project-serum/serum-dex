@@ -126,16 +126,16 @@ mod tests {
             let fee = tt.taker_fee(qty);
             let rebate = mt.maker_rebate(qty) + referrer_rebate(fee);
             assert!(fee > rebate);
-            let net_bps_u64f64 = (fee - rebate) as u128 * 10_000;
+            let net_bps_u64f64 = (fee - rebate) as u128 * 100_000;
             let three_bps = (qty as u128) * 3;
             let dust_qty_u64f64 = 1 << 32;
             assert!(net_bps_u64f64 + dust_qty_u64f64 > three_bps, "{:x}, {:x}, {:x}", qty, net_bps_u64f64, three_bps);
         }
 
         #[test]
-        fn fee_bps_approx(bps in 1..100u64) {
-            let rate = fee_bps(bps);
-            let rate_bps: U64F64 = rate.mul_u64(10_000);
+        fn fee_bps_approx(bps in 1..1000u64) {
+            let rate = fee_tenth_of_bps(bps);
+            let rate_bps: U64F64 = rate.mul_u64(100_000);
             let rate_bps_int: u64 = rate_bps.floor();
             let rate_bps_frac: u64 = rate_bps.frac_part();
             let inexact = rate_bps_frac != 0;
