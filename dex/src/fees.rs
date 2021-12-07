@@ -133,13 +133,13 @@ mod tests {
         }
 
         #[test]
-        fn fee_bps_approx(bps in 1..1000u64) {
-            let rate = fee_tenth_of_bps(bps);
+        fn fee_tenth_of_bps_approx(tenth_of_bps in 1..1000u64) {
+            let rate = fee_tenth_of_bps(tenth_of_bps);
             let rate_bps: U64F64 = rate.mul_u64(100_000);
             let rate_bps_int: u64 = rate_bps.floor();
             let rate_bps_frac: u64 = rate_bps.frac_part();
             let inexact = rate_bps_frac != 0;
-            assert!(rate_bps_int == bps - (inexact as u64));
+            assert!(rate_bps_int == tenth_of_bps - (inexact as u64));
         }
 
         #[test]
