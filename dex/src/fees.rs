@@ -60,6 +60,11 @@ const fn fee_tenth_of_bps(tenth_of_bps: u64) -> U64F64 {
     U64F64(((tenth_of_bps as u128) << 64) / 100_000)
 }
 
+#[inline(always)]
+const fn rebate_tenth_of_bps(bps: u64) -> U64F64 {
+    U64F64(fee_tenth_of_bps(bps).0 + 1)
+}
+
 impl FeeTier {
     #[inline]
     pub fn from_srm_and_msrm_balances(srm_held: u64, msrm_held: u64) -> FeeTier {
@@ -76,8 +81,8 @@ impl FeeTier {
     }
 
     #[inline]
-    pub fn maker_rebate(self, _pc_qty: u64) -> u64 {
-        0
+    pub fn maker_rebate(self, pc_qty: u64) -> u64 {
+        rebate_tenth_of_bps(0).mul_u64(pc_qty).floor()
     }
 
     fn taker_rate(self) -> U64F64 {
