@@ -982,7 +982,7 @@ dependencies = [
 
 [[package]]
 name = "serum_dex"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "arbitrary",
  "arrayref",
