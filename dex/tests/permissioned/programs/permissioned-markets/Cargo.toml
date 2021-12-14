@@ -15,6 +15,8 @@ cpi = ["no-entrypoint"]
 default = []
 
 [dependencies]
-anchor-lang = "0.13.2"
-anchor-spl = "0.13.2"
-solana-program = "=1.7.8"
+anchor-lang = "0.18.2"
+anchor-spl = { version = "0.18.2", features = ["dex"] }
+serum_dex = { path = "../../../../" }
+serum-dex-permissioned = { path = "../../../../permissioned" }
+solana-program = "1.8.0"

@@ -236,7 +236,7 @@ fn run_actions(seq: ActionSequence) {
 
     for owner in owners.values() {
         let market_state =
-            Market::load(&market_accounts.market, market_accounts.market.owner).unwrap();
+            Market::load(&market_accounts.market, market_accounts.market.owner, false).unwrap();
         let load_orders_result = market_state.load_orders_mut(
             &owner.orders_account,
             Some(&owner.signer_account),
@@ -263,7 +263,8 @@ fn run_actions(seq: ActionSequence) {
         assert_eq!(identity(open_orders.native_pc_total), 0);
     }
 
-    let market_state = Market::load(&market_accounts.market, market_accounts.market.owner).unwrap();
+    let market_state =
+        Market::load(&market_accounts.market, market_accounts.market.owner, false).unwrap();
     let total_coin_bal: u64 = owners
         .values()
         .map(|owner| get_token_account_balance(&owner.coin_account))
@@ -716,7 +717,7 @@ fn run_action<'bump>(
             .values()
             .map(|owner| get_token_account_balance(&owner.coin_account))
             .sum();
-        let fees = Market::load(&market_accounts.market, market_accounts.market.owner)
+        let fees = Market::load(&market_accounts.market, market_accounts.market.owner, false)
             .unwrap()
             .coin_fees_accrued;
         println!(

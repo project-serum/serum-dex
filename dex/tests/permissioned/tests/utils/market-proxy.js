@@ -9,6 +9,7 @@ const {
   OpenOrdersPda,
   Logger,
   ReferralFees,
+  PermissionedCrank,
   MarketProxyBuilder,
 } = require("@project-serum/serum");
 
@@ -71,6 +72,14 @@ class Identity {
       ...ix.keys,
     ];
   }
+  consumeEventsPermissioned(ix) {
+    ix.keys = [
+      { pubkey: SYSVAR_CLOCK_PUBKEY, isWritable: false, isSigner: false },
+      ...ix.keys,
+    ];
+    // PDA: so ensure the signer is false.
+    ix.keys[ix.keys.length-1].isSigner = false;
+  }
   static async pruneAuthority(market, dexProgramId, proxyProgramId) {
     const [addr] = await PublicKey.findProgramAddress(
       [
@@ -81,6 +90,10 @@ class Identity {
       proxyProgramId
     );
     return addr;
+  }
+
+  static async consumeEventsAuthority(market, dexProgramId, proxyProgramId) {
+    return Identity.pruneAuthority(market, dexProgramId, proxyProgramId);
   }
 }
 
