@@ -2420,6 +2420,7 @@ pub(crate) mod account_parser {
     }
 
     pub struct CloseMarketArgs<'a, 'b: 'a> {
+        pub market: &'a mut MarketState,
         pub request_q_acc: &'a AccountInfo<'b>,
         pub event_q_acc: &'a AccountInfo<'b>,
         pub bids_acc: &'a AccountInfo<'b>,
@@ -2448,7 +2449,7 @@ pub(crate) mod account_parser {
 
             // Validate prune authority.
             let _prune_authority = SignerAccount::new(prune_auth_acc)?;
-            let market = Market::load(market_acc, program_id, false)?;
+            let mut market = Market::load(market_acc, program_id, false)?;
             check_assert!(market.prune_authority() == Some(prune_auth_acc.key))?;
 
             // Check that request q, event q, bids and asks are completely cleared and empty
@@ -2459,21 +2460,22 @@ pub(crate) mod account_parser {
 
             let bids_header = bids.header();
             if bids_header.leaf_count != 0 {
-                solana_program::msg!("send error");
+                return Err(DexErrorCode::QueueNotEmpty.into());
             }
             let asks_header = asks.header();
             if asks_header.leaf_count != 0 {
-                solana_program::msg!("send error");
+                return Err(DexErrorCode::QueueNotEmpty.into());
             }
             if req_q.header.count != 0 {
-                solana_program::msg!("send error");
+                return Err(DexErrorCode::QueueNotEmpty.into());
             }
             if event_q.header.count != 0 {
-                solana_program::msg!("send error");
+                return Err(DexErrorCode::QueueNotEmpty.into());
             }
 
             // Invoke Processor
             f(CloseMarketArgs {
+                market: market.deref_mut(),
                 request_q_acc,
                 event_q_acc,
                 bids_acc,
@@ -2621,6 +2623,7 @@ impl State {
 
     fn process_close_market(args: account_parser::CloseMarketArgs) -> DexResult {
         let account_parser::CloseMarketArgs {
+            market,
             request_q_acc,
             event_q_acc,
             bids_acc,
@@ -2644,7 +2647,7 @@ impl State {
         **bids_acc.lamports.borrow_mut() = 0;
         **asks_acc.lamports.borrow_mut() = 0;
 
-        // TODO Mark the market as closed to prevent it from being used?
+        market.account_flags = market.account_flags | (AccountFlag::Disabled as u64);
 
         Ok(())
     }

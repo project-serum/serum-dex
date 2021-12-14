@@ -7,3 +7,5 @@ target/
 node_modules
 yarn.lock
 .anchor
+.DS_Store
+**/*.rs.bk

@@ -29,14 +29,47 @@ pub mod close_markets {
 
         let prune_auth = &mut *ctx.accounts.prune_auth;
         prune_auth.payer = ctx.accounts.payer.key();
+        prune_auth.signer_bump = [bumps.prune_auth];
         prune_auth.bumps = bumps;
 
         dex::initialize_market(
-            ctx.accounts.as_initialize_serum_market(),
+            ctx.accounts.initialize_serum_market_ctx(),
             COIN_LOT_SIZE,
             PC_LOT_SIZE,
             vault_signer_nonce,
             PC_DUST_THRESHOLD,
+        )?;
+
+        Ok(())
+    }
+
+    pub fn init_open_orders(ctx: Context<InitOpenOrders>) -> ProgramResult {
+        dex::init_open_orders(
+            ctx.accounts
+            .init_open_orders_ctx()
+            .with_signer(&[&ctx.accounts.prune_auth.signer_seeds()])
+        )?;
+
+        Ok(())
+    }
+
+    pub fn prune_open_orders(ctx: Context<PruneOpenOrders>) -> ProgramResult {
+        let ix = serum_dex::instruction::prune(
+            &ctx.accounts.dex_program.key(),
+            &ctx.accounts.serum_market.key(),
+            &ctx.accounts.bids.key(),
+            &ctx.accounts.asks.key(),
+            &ctx.accounts.prune_auth.key(),
+            &ctx.accounts.open_orders.key(),
+            &ctx.accounts.payer.key(),
+            &ctx.accounts.event_queue.key(),
+            u16::MAX,
+        )?;
+
+        solana_program::program::invoke_signed(
+            &ix,
+            &ToAccountInfos::to_account_infos(ctx.accounts),
+            &[&ctx.accounts.prune_auth.signer_seeds()],
         )?;
 
         Ok(())
@@ -150,7 +183,7 @@ pub struct InitializeMarket<'info> {
 }
 
 impl<'info> InitializeMarket<'info> {
-    pub fn as_initialize_serum_market(&self) -> CpiContext<'_, '_, '_, 'info, dex::InitializeMarket<'info>> {
+    pub fn initialize_serum_market_ctx(&self) -> CpiContext<'_, '_, '_, 'info, dex::InitializeMarket<'info>> {
         let cpi_accounts = dex::InitializeMarket {
             market: self.serum_market.to_account_info(),
             req_q: self.request_queue.to_account_info(),
@@ -169,6 +202,82 @@ impl<'info> InitializeMarket<'info> {
             self.prune_auth.to_account_info() ,self.prune_auth.to_account_info()
             ])
     }
+}
+
+#[derive(Accounts)]
+pub struct InitOpenOrders<'info> {
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    #[account(
+        seeds = [b"prune_auth".as_ref()],
+        bump = prune_auth.bumps.prune_auth,
+    )]
+    pub prune_auth: Box<Account<'info, PruneAuth>>,
+    #[account(
+        mut,
+        seeds = [SERUM_MARKET_SEED.as_ref()],
+        bump = prune_auth.bumps.serum_market,
+    )]
+    pub serum_market: UncheckedAccount<'info>,
+    #[account(
+        init,
+        seeds = [payer.key().as_ref() ,b"open_orders".as_ref()],
+        bump,
+        space = OPEN_ORDERS_SPACE,
+        payer = payer,
+        owner = dex_program.key()
+    )]
+    pub open_orders: UncheckedAccount<'info>,
+    pub system_program: Program<'info, System>,
+    // TODO switch this to a Program<'info, Dex> check, except our ProgramIDs will be different
+    pub dex_program: UncheckedAccount<'info>,
+    pub rent: Sysvar<'info, Rent>, 
+}
+
+impl<'info> InitOpenOrders<'info> {
+    pub fn init_open_orders_ctx(&self) -> CpiContext<'_, '_, '_, 'info, dex::InitOpenOrders<'info>> {
+        let cpi_accounts = dex::InitOpenOrders{
+            open_orders: self.open_orders.to_account_info(),
+            authority: self.payer.to_account_info(),
+            market: self.serum_market.to_account_info(),
+            rent: self.rent.to_account_info(),
+        };
+        let cpi_ctx = CpiContext::new(self.dex_program.to_account_info(), cpi_accounts);
+        cpi_ctx.with_remaining_accounts(vec![self.prune_auth.to_account_info()])
+    }
+}
+
+#[derive(Accounts)]
+pub struct PruneOpenOrders<'info> {
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    #[account(
+        seeds = [b"prune_auth".as_ref()],
+        bump = prune_auth.bumps.prune_auth,
+    )]
+    pub prune_auth: Box<Account<'info, PruneAuth>>,
+    #[account(
+        mut,
+        seeds = [SERUM_MARKET_SEED.as_ref()],
+        bump = prune_auth.bumps.serum_market,
+    )]
+    pub serum_market: UncheckedAccount<'info>,
+    #[account(mut)]
+    pub event_queue: UncheckedAccount<'info>,
+    #[account(mut)]
+    pub bids: UncheckedAccount<'info>,
+    #[account(mut)]
+    pub asks: UncheckedAccount<'info>,
+    #[account(
+        seeds = [payer.key().as_ref() ,b"open_orders".as_ref()],
+        bump,
+    )]
+    pub open_orders: UncheckedAccount<'info>,
+    pub system_program: Program<'info, System>,
+    // TODO switch this to a Program<'info, Dex> check, except our ProgramIDs will be different
+    pub dex_program: UncheckedAccount<'info>,
+    pub rent: Sysvar<'info, Rent>, 
+
 }
 
 #[derive(Accounts)]
@@ -202,7 +311,17 @@ pub struct CloseMarket<'info> {
 #[derive(Default)]
 pub struct PruneAuth {
     pub payer: Pubkey,
+    pub signer_bump: [u8; 1],
     pub bumps: Bumps,
+}
+
+impl PruneAuth {
+    pub fn signer_seeds(&self) -> [&[u8]; 2] {
+        [
+            b"prune_auth".as_ref(),
+            &self.signer_bump,
+        ]
+    }
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Default, Clone)]

@@ -467,7 +467,7 @@ pub enum MarketInstruction {
     /// accounts.len() - 2 `[writable]` event queue
     /// accounts.len() - 1 `[signer]` crank authority
     ConsumeEventsPermissioned(u16),
-    /// Closes a market and retrieves the rent from the bids, asks and event queue
+    /// Closes a market and retrieves the rent from the bids, asks, event and request queues
     ///
     /// 0. `[writable]` market
     /// 1. `[writable]` request queue
