@@ -1,0 +1,10 @@
+[0m[38;5;8m[[0m2021-12-15T20:05:43.617494000Z [0m[32mINFO [0m solana_test_validator[0m[38;5;8m][0m solana-validator 1.9.0 (src:7782d34b; feat:378846963)
+[0m[38;5;8m[[0m2021-12-15T20:05:43.617801000Z [0m[32mINFO [0m solana_test_validator[0m[38;5;8m][0m Starting validator with: ArgsOs {
+        inner: [
+            "solana-test-validator",
+        ],
+    }
+[0m[38;5;8m[[0m2021-12-15T20:05:43.617841000Z [0m[33mWARN [0m solana_perf[0m[38;5;8m][0m CUDA is disabled
+[0m[38;5;8m[[0m2021-12-15T20:05:43.620248000Z [0m[32mINFO [0m solana_perf[0m[38;5;8m][0m AVX detected
+[0m[38;5;8m[[0m2021-12-15T20:05:43.621966000Z [0m[1m[31mERROR[0m solana_faucet::faucet[0m[38;5;8m][0m Faucet failed to start: Address already in use (os error 48)
+[0m[38;5;8m[[0m2021-12-15T20:05:43.622013000Z [0m[32mINFO [0m solana_metrics::metrics[0m[38;5;8m][0m metrics disabled: SOLANA_METRICS_CONFIG: environment variable not found

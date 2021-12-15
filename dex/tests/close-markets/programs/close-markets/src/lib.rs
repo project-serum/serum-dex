@@ -199,7 +199,7 @@ impl<'info> InitializeMarket<'info> {
         let cpi_ctx = CpiContext::new(self.dex_program.to_account_info(), cpi_accounts);
         // prune_auth will be the open orders auth and prune auth
         cpi_ctx.with_remaining_accounts(vec![
-            self.prune_auth.to_account_info() ,self.prune_auth.to_account_info()
+            self.prune_auth.to_account_info(), self.prune_auth.to_account_info()
             ])
     }
 }
@@ -221,7 +221,7 @@ pub struct InitOpenOrders<'info> {
     pub serum_market: UncheckedAccount<'info>,
     #[account(
         init,
-        seeds = [payer.key().as_ref() ,b"open_orders".as_ref()],
+        seeds = [payer.key().as_ref(), b"open_orders".as_ref()],
         bump,
         space = OPEN_ORDERS_SPACE,
         payer = payer,
@@ -270,7 +270,7 @@ pub struct PruneOpenOrders<'info> {
     pub asks: UncheckedAccount<'info>,
     #[account(
         mut,
-        seeds = [payer.key().as_ref(), b"open_orders".as_ref()],
+        seeds = [payer.key().as_ref() ,b"open_orders".as_ref()],
         bump,
     )]
     pub open_orders: UncheckedAccount<'info>,
