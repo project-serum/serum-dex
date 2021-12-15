@@ -52,9 +52,7 @@ export async function mintToAccount(
 async function crankEventQueue(provider, marketClient) {
   let eq = await marketClient.loadEventQueue(provider.connection);
   let count = 0;
-  console.log(eq.length);
   while (eq.length > 0) {
-    console.log("begin");
     const accounts = new Set();
     for (const event of eq) {
       accounts.add(event.openOrders.toBase58());
@@ -67,24 +65,15 @@ async function crankEventQueue(provider, marketClient) {
     let openOrdersRaw = await provider.connection.getAccountInfo(
       orderedAccounts[0],
     );
-    let thisOpenOrders = OpenOrders.fromAccountInfo(
-      orderedAccounts[0],
-      openOrdersRaw,
-      DEX_PID,
-    );
-    console.log("loaded up open orders: ", thisOpenOrders.owner);
+    OpenOrders.fromAccountInfo(orderedAccounts[0], openOrdersRaw, DEX_PID);
 
     const tx = new anchor.web3.Transaction();
     tx.add(marketClient.makeConsumeEventsInstruction(orderedAccounts, 20));
-    console.log("TEST");
     await provider.send(tx);
     eq = await marketClient.loadEventQueue(provider.connection);
-    console.log("WEEE");
     console.log(eq.length);
-    console.log("end");
     count += 1;
     if (count > 4) {
-      console.log(orderedAccounts);
       break;
     }
   }
@@ -510,7 +499,7 @@ describe("close-markets", () => {
         payer: secondarySignerSerumPubkey,
         side: "sell",
         price: 50,
-        size: 2,
+        size: 10,
         orderType: "limit",
         clientId: new BN(0),
         openOrdersAddressKey: openOrders,
@@ -522,6 +511,9 @@ describe("close-markets", () => {
     await market._sendTransaction(program.provider.connection, newTransaction, [
       secondarySigner,
     ]);
+
+    await crankEventQueue(program.provider, market);
+    await sleep(1000);
 
     try {
       await program.rpc.closeMarket({
@@ -596,7 +588,6 @@ describe("close-markets", () => {
       openOrders,
       DEX_PID,
     );
-    console.log("markte is closed!!", getOpenOrders);
 
     const recentBlockhash = await (
       await program.provider.connection.getRecentBlockhash()
