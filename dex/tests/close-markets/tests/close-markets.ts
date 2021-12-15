@@ -10,15 +10,74 @@ import {
   Keypair,
   SystemProgram,
   Transaction,
+  Account,
 } from "@solana/web3.js";
 // import { CloseMarkets } from '../target/types/close_markets';
-import { Market, TokenInstructions } from "@project-serum/serum";
+import {
+  Market,
+  TokenInstructions,
+  OpenOrders,
+  DexInstructions,
+} from "@project-serum/serum";
 
 const DEX_PID = new anchor.web3.PublicKey(
   "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin",
 );
 
-// const { genesis, sleep } = require("./utils");
+async function sendTransaction(connection, transaction, signers) {
+  const signature = await connection.sendTransaction(transaction, signers, {
+    skipPreflight: true,
+  });
+  const { value } = await connection.confirmTransaction(signature, "processed");
+  if (value === null || value === void 0 ? void 0 : value.err) {
+    throw new Error(JSON.stringify(value.err));
+  }
+  return signature;
+}
+
+async function crankEventQueue(provider, marketClient) {
+  let eq = await marketClient.loadEventQueue(provider.connection);
+  let count = 0;
+  console.log(eq.length);
+  while (eq.length > 0) {
+    console.log("begin");
+    const accounts = new Set();
+    for (const event of eq) {
+      accounts.add(event.openOrders.toBase58());
+      // TODO in Daffy's code they have a max of 10 pubkey per consumeEvents call
+    }
+    let orderedAccounts = Array.from(accounts)
+      .map((s) => new PublicKey(s))
+      .sort((a, b) => a.toBuffer().swap64().compare(b.toBuffer().swap64()));
+    console.log(
+      "Here are the ordered accounts to be processed",
+      orderedAccounts,
+    );
+    let openOrdersRaw = await provider.connection.getAccountInfo(
+      orderedAccounts[0],
+    );
+    let thisOpenOrders = OpenOrders.fromAccountInfo(
+      orderedAccounts[0],
+      openOrdersRaw,
+      DEX_PID,
+    );
+    console.log("loaded up open orders: ", thisOpenOrders.owner);
+
+    const tx = new anchor.web3.Transaction();
+    tx.add(marketClient.makeConsumeEventsInstruction(orderedAccounts, 20));
+    console.log("TEST");
+    await provider.send(tx);
+    eq = await marketClient.loadEventQueue(provider.connection);
+    console.log("WEEE");
+    console.log(eq.length);
+    console.log("end");
+    count += 1;
+    if (count > 4) {
+      console.log(orderedAccounts);
+      break;
+    }
+  }
+}
 
 async function createMintToAccountInstrs(
   mint,
@@ -99,11 +158,37 @@ describe("close-markets", () => {
 
   const program = anchor.workspace.CloseMarkets as Program<any>;
 
-  let secondarySigner = new Keypair();
+  let secondarySigner = new Account();
   let eventQueueKeypair;
   let bidsKeypair;
   let asksKeypair;
   let secondarySignerUsdcPubkey;
+  let signerUsdcPubkey;
+  let secondarySignerSerumPubkey;
+
+  let pruneAuth;
+  let serumMint;
+  let usdcMint;
+  let serumMarket;
+
+  let serumMarketBump;
+  let pruneAuthBump;
+  let usdcMintBump;
+  let serumMintBump;
+
+  let requestQueue;
+  let requestQueueBump;
+  let coinVault;
+  let coinVaultBump;
+
+  let pcVault;
+  let pcVaultBump;
+
+  let vaultSigner;
+  let vaultSignerNonce;
+
+  let openOrders;
+  let openOrdersTwo;
 
   // let usdcClient;
   // let openOrders, openOrdersBump, openOrdersInitAuthority, openOrdersBumpinit;
@@ -128,45 +213,40 @@ describe("close-markets", () => {
   // });
 
   it("Initialize Market!", async () => {
-    let [pruneAuth, pruneAuthBump] =
-      await anchor.web3.PublicKey.findProgramAddress(
-        [Buffer.from("prune_auth")],
-        program.programId,
-      );
-    let [serumMint, serumMintBump] =
-      await anchor.web3.PublicKey.findProgramAddress(
-        [Buffer.from("serum_mint")],
-        program.programId,
-      );
-    let [usdcMint, usdcMintBump] =
-      await anchor.web3.PublicKey.findProgramAddress(
-        [Buffer.from("usdc_mint")],
-        program.programId,
-      );
+    [pruneAuth, pruneAuthBump] = await anchor.web3.PublicKey.findProgramAddress(
+      [Buffer.from("prune_auth")],
+      program.programId,
+    );
 
-    let [serumMarket, serumMarketBump] =
+    [serumMint, serumMintBump] = await anchor.web3.PublicKey.findProgramAddress(
+      [Buffer.from("serum_mint")],
+      program.programId,
+    );
+    [usdcMint, usdcMintBump] = await anchor.web3.PublicKey.findProgramAddress(
+      [Buffer.from("usdc_mint")],
+      program.programId,
+    );
+
+    [serumMarket, serumMarketBump] =
       await anchor.web3.PublicKey.findProgramAddress(
         [Buffer.from("serum_market")],
         program.programId,
       );
-    let [requestQueue, requestQueueBump] =
+    [requestQueue, requestQueueBump] =
       await anchor.web3.PublicKey.findProgramAddress(
         [Buffer.from("request_queue")],
         program.programId,
       );
-    let [coinVault, coinVaultBump] =
-      await anchor.web3.PublicKey.findProgramAddress(
-        [Buffer.from("coin_vault")],
-        program.programId,
-      );
-    let [pcVault, pcVaultBump] = await anchor.web3.PublicKey.findProgramAddress(
+    [coinVault, coinVaultBump] = await anchor.web3.PublicKey.findProgramAddress(
+      [Buffer.from("coin_vault")],
+      program.programId,
+    );
+    [pcVault, pcVaultBump] = await anchor.web3.PublicKey.findProgramAddress(
       [Buffer.from("pc_vault")],
       program.programId,
     );
 
-    let [vaultSigner, vaultSignerNonce] = await getVaultSignerAndNonce(
-      serumMarket,
-    );
+    [vaultSigner, vaultSignerNonce] = await getVaultSignerAndNonce(serumMarket);
     eventQueueKeypair = anchor.web3.Keypair.generate();
     bidsKeypair = anchor.web3.Keypair.generate();
     asksKeypair = anchor.web3.Keypair.generate();
@@ -180,10 +260,7 @@ describe("close-markets", () => {
     bumps.coinVault = coinVaultBump;
     bumps.pcVault = pcVaultBump;
     bumps.vaultSigner = vaultSignerNonce;
-    // Add your test here.
-    // await
-    // const tx = await program.rpc.initialize({});
-    // console.log("Your transaction signature", tx);
+
     await program.rpc.initializeMarket(bumps, {
       accounts: {
         payer: program.provider.wallet.publicKey,
@@ -249,11 +326,10 @@ describe("close-markets", () => {
   });
 
   it("Mints Tokens!", async () => {
-    let [usdcMint, usdcMintBump] =
-      await anchor.web3.PublicKey.findProgramAddress(
-        [Buffer.from("usdc_mint")],
-        program.programId,
-      );
+    await program.provider.connection.requestAirdrop(
+      secondarySigner.publicKey,
+      1_000_000_000,
+    );
 
     secondarySignerUsdcPubkey = await Token.getAssociatedTokenAddress(
       ASSOCIATED_TOKEN_PROGRAM_ID,
@@ -284,9 +360,62 @@ describe("close-markets", () => {
       program.provider.wallet.publicKey,
     );
 
-    await program.provider.connection.requestAirdrop(
+    signerUsdcPubkey = await Token.getAssociatedTokenAddress(
+      ASSOCIATED_TOKEN_PROGRAM_ID,
+      TOKEN_PROGRAM_ID,
+      usdcMint,
+      program.provider.wallet.publicKey,
+    );
+
+    let createSignerUsdcInstr = Token.createAssociatedTokenAccountInstruction(
+      ASSOCIATED_TOKEN_PROGRAM_ID,
+      TOKEN_PROGRAM_ID,
+      usdcMint,
+      signerUsdcPubkey,
+      program.provider.wallet.publicKey,
+
+      program.provider.wallet.publicKey,
+    );
+    let createSignerUsdcTrns = new anchor.web3.Transaction().add(
+      createSignerUsdcInstr,
+    );
+    await program.provider.send(createSignerUsdcTrns);
+
+    await mintToAccount(
+      program.provider,
+      usdcMint,
+      signerUsdcPubkey,
+      new anchor.BN(500000000),
+      program.provider.wallet.publicKey,
+    );
+
+    secondarySignerSerumPubkey = await Token.getAssociatedTokenAddress(
+      ASSOCIATED_TOKEN_PROGRAM_ID,
+      TOKEN_PROGRAM_ID,
+      serumMint,
       secondarySigner.publicKey,
-      1_000_000_000,
+    );
+
+    let createUserSerumInstr = Token.createAssociatedTokenAccountInstruction(
+      ASSOCIATED_TOKEN_PROGRAM_ID,
+      TOKEN_PROGRAM_ID,
+      serumMint,
+      secondarySignerSerumPubkey,
+      secondarySigner.publicKey,
+
+      program.provider.wallet.publicKey,
+    );
+    let createUserSerumTrns = new anchor.web3.Transaction().add(
+      createUserSerumInstr,
+    );
+    await program.provider.send(createUserSerumTrns);
+
+    await mintToAccount(
+      program.provider,
+      serumMint,
+      secondarySignerSerumPubkey,
+      new anchor.BN(500000000),
+      program.provider.wallet.publicKey,
     );
   });
 
@@ -296,50 +425,23 @@ describe("close-markets", () => {
         secondarySignerUsdcPubkey,
       );
 
-    let [pruneAuth, pruneAuthBump] =
-      await anchor.web3.PublicKey.findProgramAddress(
-        [Buffer.from("prune_auth")],
-        program.programId,
-      );
-    let [serumMint, serumMintBump] =
-      await anchor.web3.PublicKey.findProgramAddress(
-        [Buffer.from("serum_mint")],
-        program.programId,
-      );
-    let [usdcMint, usdcMintBump] =
-      await anchor.web3.PublicKey.findProgramAddress(
-        [Buffer.from("usdc_mint")],
-        program.programId,
-      );
-
-    let [serumMarket, serumMarketBump] =
-      await anchor.web3.PublicKey.findProgramAddress(
-        [Buffer.from("serum_market")],
-        program.programId,
-      );
-    let [requestQueue, requestQueueBump] =
-      await anchor.web3.PublicKey.findProgramAddress(
-        [Buffer.from("request_queue")],
-        program.programId,
-      );
-    let [coinVault, coinVaultBump] =
-      await anchor.web3.PublicKey.findProgramAddress(
-        [Buffer.from("coin_vault")],
-        program.programId,
-      );
-    let [pcVault, pcVaultBump] = await anchor.web3.PublicKey.findProgramAddress(
-      [Buffer.from("pc_vault")],
-      program.programId,
+    const hello = await program.provider.connection.getAccountInfo(
+      secondarySigner.publicKey,
     );
 
-    let [openOrders] = await anchor.web3.PublicKey.findProgramAddress(
+    [openOrders] = await anchor.web3.PublicKey.findProgramAddress(
       [secondarySigner.publicKey.toBuffer(), Buffer.from("open_orders")],
       program.programId,
     );
 
-    let [vaultSigner, vaultSignerNonce] = await getVaultSignerAndNonce(
-      serumMarket,
+    [openOrdersTwo] = await anchor.web3.PublicKey.findProgramAddress(
+      [
+        program.provider.wallet.publicKey.toBuffer(),
+        Buffer.from("open_orders"),
+      ],
+      program.programId,
     );
+
     await program.rpc.initOpenOrders({
       accounts: {
         payer: secondarySigner.publicKey,
@@ -350,32 +452,100 @@ describe("close-markets", () => {
         dexProgram: DEX_PID,
         rent: anchor.web3.SYSVAR_RENT_PUBKEY,
       },
+      signers: [secondarySigner],
     });
 
-    console.log(tokenAccount, "token account!!!");
-  });
-  it("Close Market!", async () => {
-    console.log(
-      "payer account balance: ",
-      (
-        await program.provider.connection.getBalance(
-          program.provider.wallet.publicKey,
-        )
-      ).toString(),
+    await program.rpc.initOpenOrders({
+      accounts: {
+        payer: program.provider.wallet.publicKey,
+        pruneAuth,
+        serumMarket,
+        openOrders: openOrdersTwo,
+        systemProgram: anchor.web3.SystemProgram.programId,
+        dexProgram: DEX_PID,
+        rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+      },
+    });
+
+    let market = await Market.load(
+      program.provider.connection,
+      serumMarket,
+      undefined,
+      DEX_PID,
     );
 
-    let [pruneAuth] = await anchor.web3.PublicKey.findProgramAddress(
-      [Buffer.from("prune_auth")],
-      program.programId,
+    const newTransaction = new Transaction();
+    const getInstr = await market.makePlaceOrderInstruction(
+      program.provider.connection,
+      {
+        owner: secondarySigner,
+        payer: secondarySignerUsdcPubkey,
+        side: "buy",
+        price: 50,
+        size: 2,
+        orderType: "limit",
+        clientId: new BN(0),
+        openOrdersAddressKey: openOrders,
+      },
     );
-    let [serumMarket] = await anchor.web3.PublicKey.findProgramAddress(
-      [Buffer.from("serum_market")],
-      program.programId,
+
+    newTransaction.add(getInstr);
+
+    try {
+      await market._sendTransaction(
+        program.provider.connection,
+        newTransaction,
+        [secondarySigner],
+      );
+    } catch (e) {
+      console.error(e);
+    }
+
+    await program.rpc.pruneOpenOrders({
+      accounts: {
+        payer: secondarySigner.publicKey,
+        pruneAuth,
+        serumMarket,
+        requestQueue,
+        eventQueue: eventQueueKeypair.publicKey,
+        bids: bidsKeypair.publicKey,
+        asks: asksKeypair.publicKey,
+        openOrders: openOrders,
+        systemProgram: anchor.web3.SystemProgram.programId,
+        dexProgram: DEX_PID,
+        rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+      },
+    });
+
+    await program.rpc.pruneOpenOrders({
+      accounts: {
+        payer: program.provider.wallet.publicKey,
+        pruneAuth,
+        serumMarket,
+        requestQueue,
+        eventQueue: eventQueueKeypair.publicKey,
+        bids: bidsKeypair.publicKey,
+        asks: asksKeypair.publicKey,
+        openOrders: openOrdersTwo,
+        systemProgram: anchor.web3.SystemProgram.programId,
+        dexProgram: DEX_PID,
+        rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+      },
+    });
+
+    const pie = await market.loadAsks(program.provider.connection);
+    const pie2 = await market.loadBids(program.provider.connection);
+
+    await crankEventQueue(program.provider, market);
+  });
+  it("Close Market!", async () => {
+    let market = await Market.load(
+      program.provider.connection,
+      serumMarket,
+      undefined,
+      DEX_PID,
     );
-    let [requestQueue] = await anchor.web3.PublicKey.findProgramAddress(
-      [Buffer.from("request_queue")],
-      program.programId,
-    );
+    let { baseVault, quoteVault } = market.decoded;
 
     await program.rpc.closeMarket({
       accounts: {
@@ -390,12 +560,67 @@ describe("close-markets", () => {
       },
     });
 
+    console.log("markte is closed!!");
+
+    const recentBlockhash = await (
+      await program.provider.connection.getRecentBlockhash()
+    ).blockhash;
+
+    const newTransaction = new Transaction({
+      recentBlockhash,
+    });
+
+    console.log(baseVault, quoteVault);
+    const getSettle = DexInstructions.settleFunds({
+      market: serumMarket,
+      openOrders,
+      owner: secondarySigner.publicKey,
+      baseVault,
+      quoteVault,
+      vaultSigner,
+      quoteWallet: secondarySignerUsdcPubkey,
+      baseWallet: secondarySignerSerumPubkey,
+      programId: DEX_PID,
+    });
+
+    newTransaction.add(getSettle);
+
     console.log(
       "payer account balance: ",
       (
-        await program.provider.connection.getBalance(
-          program.provider.wallet.publicKey,
-        )
+        await program.provider.connection.getBalance(secondarySigner.publicKey)
+      ).toString(),
+    );
+
+    await program.provider.connection.sendTransaction(newTransaction, [
+      secondarySigner,
+    ]);
+
+    const nextBlockhash =
+      await program.provider.connection.getRecentBlockhash();
+
+    const secondTxn = new Transaction({
+      recentBlockhash: nextBlockhash.blockhash,
+    });
+
+    const getInstr = DexInstructions.closeOpenOrders({
+      market: serumMarket,
+      openOrders,
+      solWallet: secondarySigner.publicKey,
+      owner: secondarySigner.publicKey,
+      programId: DEX_PID,
+    });
+
+    secondTxn.add(getInstr);
+
+    await program.provider.connection.sendTransaction(secondTxn, [
+      secondarySigner,
+    ]);
+
+    console.log(
+      "payer account balance: ",
+      (
+        await program.provider.connection.getBalance(secondarySigner.publicKey)
       ).toString(),
     );
   });

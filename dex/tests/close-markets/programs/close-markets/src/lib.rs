@@ -250,7 +250,7 @@ impl<'info> InitOpenOrders<'info> {
 #[derive(Accounts)]
 pub struct PruneOpenOrders<'info> {
     #[account(mut)]
-    pub payer: Signer<'info>,
+    pub payer: UncheckedAccount<'info>,
     #[account(
         seeds = [b"prune_auth".as_ref()],
         bump = prune_auth.bumps.prune_auth,
@@ -269,7 +269,8 @@ pub struct PruneOpenOrders<'info> {
     #[account(mut)]
     pub asks: UncheckedAccount<'info>,
     #[account(
-        seeds = [payer.key().as_ref() ,b"open_orders".as_ref()],
+        mut,
+        seeds = [payer.key().as_ref(), b"open_orders".as_ref()],
         bump,
     )]
     pub open_orders: UncheckedAccount<'info>,
