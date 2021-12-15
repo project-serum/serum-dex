@@ -2460,17 +2460,17 @@ pub(crate) mod account_parser {
 
             let bids_header = bids.header();
             if bids_header.leaf_count != 0 {
-                return Err(DexErrorCode::QueueNotEmpty.into());
+                return Err(DexErrorCode::BidQueueNotEmpty.into());
             }
             let asks_header = asks.header();
             if asks_header.leaf_count != 0 {
-                return Err(DexErrorCode::QueueNotEmpty.into());
+                return Err(DexErrorCode::AskQueueNotEmpty.into());
             }
             if req_q.header.count != 0 {
-                return Err(DexErrorCode::QueueNotEmpty.into());
+                return Err(DexErrorCode::RequestQueueNotEmpty.into());
             }
             if event_q.header.count != 0 {
-                return Err(DexErrorCode::QueueNotEmpty.into());
+                return Err(DexErrorCode::EventQueueNotEmpty.into());
             }
 
             // Invoke Processor
