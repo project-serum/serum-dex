@@ -9,3 +9,5 @@ yarn.lock
 .anchor
 .DS_Store
 **/*.rs.bk
+close-markets/Cargo.lock
+close-markets/package-lock.json
