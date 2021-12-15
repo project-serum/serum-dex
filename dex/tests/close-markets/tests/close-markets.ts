@@ -5,121 +5,14 @@ import {
   Token,
   TOKEN_PROGRAM_ID,
 } from "@solana/spl-token";
-import {
-  PublicKey,
-  Keypair,
-  SystemProgram,
-  Transaction,
-  Account,
-} from "@solana/web3.js";
-// import { CloseMarkets } from '../target/types/close_markets';
-import {
-  Market,
-  TokenInstructions,
-  OpenOrders,
-  DexInstructions,
-} from "@project-serum/serum";
+import { PublicKey, Keypair, Transaction } from "@solana/web3.js";
+
+import { Market, OpenOrders, DexInstructions } from "@project-serum/serum";
+import { crankEventQueue, mintToAccount, sleep } from "./utils";
 
 const DEX_PID = new anchor.web3.PublicKey(
   "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin",
 );
-
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-export async function mintToAccount(
-  provider,
-  mint,
-  destination,
-  amount,
-  mintAuthority,
-) {
-  // mint authority is the provider
-  const tx = new Transaction();
-  tx.add(
-    ...(await createMintToAccountInstrs(
-      mint,
-      destination,
-      amount,
-      mintAuthority,
-    )),
-  );
-  await provider.send(tx, []);
-  return;
-}
-
-async function crankEventQueue(provider, marketClient) {
-  let eq = await marketClient.loadEventQueue(provider.connection);
-  let count = 0;
-  while (eq.length > 0) {
-    const accounts = new Set();
-    for (const event of eq) {
-      accounts.add(event.openOrders.toBase58());
-      // TODO in Daffy's code they have a max of 10 pubkey per consumeEvents call
-    }
-    let orderedAccounts = Array.from(accounts)
-      .map((s) => new PublicKey(s))
-      .sort((a, b) => a.toBuffer().swap64().compare(b.toBuffer().swap64()));
-
-    let openOrdersRaw = await provider.connection.getAccountInfo(
-      orderedAccounts[0],
-    );
-    OpenOrders.fromAccountInfo(orderedAccounts[0], openOrdersRaw, DEX_PID);
-
-    const tx = new anchor.web3.Transaction();
-    tx.add(marketClient.makeConsumeEventsInstruction(orderedAccounts, 20));
-    await provider.send(tx);
-    eq = await marketClient.loadEventQueue(provider.connection);
-    console.log(eq.length);
-    count += 1;
-    if (count > 4) {
-      break;
-    }
-  }
-}
-
-async function createMintToAccountInstrs(
-  mint,
-  destination,
-  amount,
-  mintAuthority,
-) {
-  return [
-    TokenInstructions.mintTo({
-      mint,
-      destination,
-      amount,
-      mintAuthority,
-    }),
-  ];
-}
-
-async function createTokenAccountInstrs(
-  provider,
-  newAccountPubkey,
-  mint,
-  owner,
-  lamports,
-) {
-  if (lamports === undefined) {
-    lamports = await provider.connection.getMinimumBalanceForRentExemption(165);
-  }
-  return [
-    SystemProgram.createAccount({
-      fromPubkey: provider.wallet.publicKey,
-      newAccountPubkey,
-      space: 165,
-      lamports,
-      programId: TokenInstructions.TOKEN_PROGRAM_ID,
-    }),
-    TokenInstructions.initializeAccount({
-      account: newAccountPubkey,
-      mint,
-      owner,
-    }),
-  ];
-}
 
 describe("close-markets", () => {
   // Configure the client to use the local cluster.
@@ -263,9 +156,6 @@ describe("close-markets", () => {
       ],
       signers: [eventQueueKeypair, bidsKeypair, asksKeypair],
     });
-
-    // TODO assert Market._decoded.accountFlags.initialized = true
-    // console.log("serum market data", serumMarketData);
   });
 
   it("Mints Tokens for all the accounts", async () => {
@@ -583,11 +473,7 @@ describe("close-markets", () => {
 
     let { baseVault, quoteVault } = market.decoded;
 
-    const getOpenOrders = await OpenOrders.load(
-      program.provider.connection,
-      openOrders,
-      DEX_PID,
-    );
+    await OpenOrders.load(program.provider.connection, openOrders, DEX_PID);
 
     const recentBlockhash = await (
       await program.provider.connection.getRecentBlockhash()
