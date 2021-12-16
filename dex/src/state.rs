@@ -1676,6 +1676,10 @@ pub(crate) mod account_parser {
                 let delegate_tag = array_ref![vault_data, 0x48, 0x4];
                 check_assert_eq!(*delegate_tag, [0u8; 4])?;
 
+                // check that the vault has no close authority
+                let close_authority_tag = array_ref![vault_data, 0x81, 0x4];
+                check_assert_eq!(*close_authority_tag, [0u8; 4])?;
+
                 checked_vaults[i] = Some(TokenAccountAndMint::new(vault, mint)?);
             }
             let [coin_vault_and_mint, pc_vault_and_mint] = match checked_vaults {
