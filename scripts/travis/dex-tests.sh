@@ -5,6 +5,7 @@ set -euxo pipefail
 CLUSTER=localnet
 KEYPAIR_FILE=$HOME/.config/solana/id.json
 CLUSTER_URL=http://localhost:8899
+PROGRAM_ID="2SXFv8tTmavm8uSAg3ft1JjttzJvgwXZiUPa9xuUbqH2"
 
 #
 # Assumes the current working directory is top-level serum-dex dir.
@@ -12,13 +13,23 @@ CLUSTER_URL=http://localhost:8899
 main() {
     set +e
     #
+    # Build the program.
+    #
+    cd ./dex && cargo build-bpf && cd ../
+    #
     # Start the local validator.
     #
-    solana-test-validator > validator.log &
+    solana-test-validator --bpf-program $PROGRAM_ID dex/target/deploy/serum_dex.so > validator.log &
     #
     # Wait for the validator to start.
     #
     sleep 5
+    #
+    # Run the whole-shebang.
+    #
+    pushd dex/crank
+    cargo run -- $CLUSTER whole-shebang $KEYPAIR_FILE $PROGRAM_ID
+    popd
     #
     # Create a keypair for the tests.
     #
@@ -33,27 +44,6 @@ main() {
     #
     pushd dex
     cargo test
-    popd
-    #
-    # Run the integration tests.
-    #
-    dex_whole_shebang
-}
-
-dex_whole_shebang() {
-    #
-    # Build the program.
-    #
-    cd ./dex && cargo build-bpf && cd ../
-    #
-    # Deploy the program.
-    #
-    local dex_program_id="$(solana deploy --output json-compact --url ${CLUSTER_URL} dex/target/deploy/serum_dex.so | jq .programId -r)"
-    #
-    # Run the whole-shebang.
-    #
-    pushd dex/crank
-    cargo run -- $CLUSTER whole-shebang $KEYPAIR_FILE $dex_program_id
     popd
 }
 
