@@ -45,10 +45,6 @@ main() {
     pushd dex
     cargo test
     popd
-    #
-    # Run the integration tests.
-    #
-    dex_whole_shebang
 }
 
 main
