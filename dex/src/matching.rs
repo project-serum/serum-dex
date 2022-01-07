@@ -7,6 +7,7 @@ use proptest_derive::Arbitrary;
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "program")]
 use solana_program::msg;
+use solana_program::pubkey::Pubkey;
 
 use crate::critbit::SlabTreeError;
 use crate::error::{DexErrorCode, DexResult, SourceFileId};
@@ -226,12 +227,9 @@ struct OrderRemaining {
 impl<'ob> OrderBookState<'ob> {
     fn new_order(
         &mut self,
-
         params: NewOrderParams,
         event_q: &mut EventQueue,
-
         proceeds: &mut RequestProceeds,
-
         limit: &mut u16,
     ) -> DexResult<Option<OrderRemaining>> {
         let NewOrderParams {
