@@ -111,7 +111,7 @@ impl FeeTier {
             SRM5 => fee_tenth_of_bps(34),
             SRM6 => fee_tenth_of_bps(32),
             MSRM => fee_tenth_of_bps(30),
-            Stable => fee_tenth_of_bps(25),
+            Stable => fee_tenth_of_bps(10),
         }
     }
 
