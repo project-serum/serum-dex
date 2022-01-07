@@ -31,6 +31,10 @@ jobs:
       script:
         - cd dex/tests/permissioned/ && yarn && yarn build && yarn test && cd ../../../
     - <<: *defaults
+      name: Closed Market tests
+      script:
+        - cd dex/tests/close-market/ && yarn && yarn build && yarn test && cd ../../../
+    - <<: *defaults
       name: Fmt and Common Tests
       script:
         - cargo build
