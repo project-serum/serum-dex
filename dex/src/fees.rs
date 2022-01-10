@@ -1,8 +1,18 @@
 use num_enum::{IntoPrimitive, TryFromPrimitive};
+use solana_program::pubkey::Pubkey;
 use std::convert::TryInto;
 
 #[cfg(test)]
 use proptest_derive::Arbitrary;
+
+mod stable_markets {
+    pub mod usdt_usdc {
+        solana_program::declare_id!("77quYg4MGneUdjgXCunt9GgM1usmrxKY31twEy3WHwcS");
+    }
+    pub mod msol_sol {
+        solana_program::declare_id!("5cLrMai1DsLRYc1Nio9qMTicsWtvzjzZfJPXyAoF4t1Z");
+    }
+}
 
 #[derive(Copy, Clone, IntoPrimitive, TryFromPrimitive, Debug)]
 #[cfg_attr(test, derive(Arbitrary))]
@@ -15,6 +25,7 @@ pub enum FeeTier {
     SRM5,
     SRM6,
     MSRM,
+    Stable,
 }
 
 #[repr(transparent)]
@@ -67,8 +78,13 @@ const fn rebate_tenth_of_bps(tenth_of_bps: u64) -> U64F64 {
 
 impl FeeTier {
     #[inline]
-    pub fn from_srm_and_msrm_balances(srm_held: u64, msrm_held: u64) -> FeeTier {
+    pub fn from_srm_and_msrm_balances(market: &Pubkey, srm_held: u64, msrm_held: u64) -> FeeTier {
         let one_srm = 1_000_000;
+
+        if market == &stable_markets::usdt_usdc::ID || market == &stable_markets::msol_sol::ID {
+            return FeeTier::Stable;
+        }
+
         match () {
             () if msrm_held >= 1 => FeeTier::MSRM,
             () if srm_held >= one_srm * 1_000_000 => FeeTier::SRM6,
@@ -95,6 +111,7 @@ impl FeeTier {
             SRM5 => fee_tenth_of_bps(34),
             SRM6 => fee_tenth_of_bps(32),
             MSRM => fee_tenth_of_bps(30),
+            Stable => fee_tenth_of_bps(10),
         }
     }
 

@@ -547,16 +547,26 @@ impl MarketState {
         bytes_of_mut(&mut aligned_data).copy_from_slice(&data[..72]);
         let (mint, owner, &[balance]) = array_refs![&aligned_data, 4, 4, 1];
 
+        let market_addr = self.pubkey();
+
         check_assert_eq!(owner, expected_owner)?;
         if mint == &srm_token::ID.to_aligned_bytes() {
-            return Ok(FeeTier::from_srm_and_msrm_balances(balance, 0));
+            return Ok(FeeTier::from_srm_and_msrm_balances(
+                &market_addr,
+                balance,
+                0,
+            ));
         }
 
         if mint == &msrm_token::ID.to_aligned_bytes() {
-            return Ok(FeeTier::from_srm_and_msrm_balances(0, balance));
+            return Ok(FeeTier::from_srm_and_msrm_balances(
+                &market_addr,
+                0,
+                balance,
+            ));
         }
 
-        Ok(FeeTier::from_srm_and_msrm_balances(0, 0))
+        Ok(FeeTier::from_srm_and_msrm_balances(&market_addr, 0, 0))
     }
 
     fn check_enabled(&self) -> DexResult {
