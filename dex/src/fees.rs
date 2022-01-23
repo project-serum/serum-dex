@@ -12,6 +12,15 @@ mod stable_markets {
     pub mod msol_sol {
         solana_program::declare_id!("5cLrMai1DsLRYc1Nio9qMTicsWtvzjzZfJPXyAoF4t1Z");
     }
+    pub mod ust_usdc {
+        solana_program::declare_id!("EERNEEnBqdGzBS8dd46wwNY5F2kwnaCQ3vsq2fNKGogZ");
+    }
+    pub mod ust_usdt {
+        solana_program::declare_id!("8sFf9TW3KzxLiBXcDcjAxqabEsRroo4EiRr3UG1xbJ9m");
+    }
+    pub mod stsol_sol {
+        solana_program::declare_id!("2iDSTGhjJEiRxNaLF27CY6daMYPs5hgYrP2REHd5YD62");
+    }
 }
 
 #[derive(Copy, Clone, IntoPrimitive, TryFromPrimitive, Debug)]
