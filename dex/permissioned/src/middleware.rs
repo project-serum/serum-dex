@@ -190,7 +190,7 @@ impl MarketMiddleware for OpenOrdersPda {
         ctx.accounts = (&ctx.accounts[2..]).to_vec();
 
         // Set PDAs.
-        ctx.accounts[1] = Self::prepare_pda(&ctx.accounts[0]);
+        ctx.accounts[0] = Self::prepare_pda(&ctx.accounts[0]);
         ctx.accounts[4].is_signer = true;
 
         Ok(())

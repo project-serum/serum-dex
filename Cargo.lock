@@ -195,7 +195,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a6d6c8fbc834319618581a4e19807a30e76326b9981abd069addb55acf0647db"
 dependencies = [
  "anchor-lang",
- "serum_dex 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "serum_dex 0.4.0",
  "solana-program",
  "spl-associated-token-account",
  "spl-token 3.2.0",
@@ -771,7 +771,7 @@ dependencies = [
  "rand 0.7.3",
  "safe-transmute",
  "serum-common",
- "serum_dex 0.4.0",
+ "serum_dex 0.5.4",
  "slog-scope",
  "slog-stdlog",
  "sloggers",
@@ -3157,11 +3157,11 @@ dependencies = [
 
 [[package]]
 name = "serum-dex-permissioned"
-version = "0.1.0"
+version = "0.5.1"
 dependencies = [
  "anchor-lang",
  "anchor-spl",
- "serum_dex 0.4.0",
+ "serum_dex 0.5.4",
  "spl-token 3.2.0",
 ]
 
@@ -3219,6 +3219,8 @@ dependencies = [
 [[package]]
 name = "serum_dex"
 version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "02705854bae4622e552346c8edd43ab90c7425da35d63d2c689f39238f8d8b25"
 dependencies = [
  "arrayref",
  "bincode",
@@ -3240,9 +3242,7 @@ dependencies = [
 
 [[package]]
 name = "serum_dex"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "02705854bae4622e552346c8edd43ab90c7425da35d63d2c689f39238f8d8b25"
+version = "0.5.4"
 dependencies = [
  "arrayref",
  "bincode",
