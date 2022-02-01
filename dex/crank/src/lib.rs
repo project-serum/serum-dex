@@ -705,7 +705,7 @@ fn consume_events_wrapper(
     };
 }
 
-fn consume_events_once(
+pub fn consume_events_once(
     client: &RpcClient,
     program_id: &Pubkey,
     payer: &Keypair,
