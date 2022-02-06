@@ -1023,7 +1023,7 @@ mod tests {
 
         let mut rng = StdRng::from_entropy();
 
-        for i in 0..100 {
+        for _i in 0..100 {
             let offset = rng.gen();
             let key = rng.gen();
             let owner = rng.gen();

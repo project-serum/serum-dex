@@ -12,6 +12,7 @@ mod fees;
 pub mod instruction;
 pub mod matching;
 pub mod state;
+pub mod utils;
 
 #[cfg(all(feature = "program", not(feature = "no-entrypoint")))]
 use solana_program::entrypoint;
