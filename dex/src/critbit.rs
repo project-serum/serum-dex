@@ -768,31 +768,6 @@ impl Slab {
     }
 
     #[cfg(test)]
-    fn traverse(&self) -> Vec<&LeafNode> {
-        fn walk_rec<'a>(slab: &'a Slab, sub_root: NodeHandle, buf: &mut Vec<&'a LeafNode>) {
-            match slab.get(sub_root).unwrap().case().unwrap() {
-                NodeRef::Leaf(leaf) => {
-                    buf.push(leaf);
-                }
-                NodeRef::Inner(inner) => {
-                    walk_rec(slab, inner.children[0], buf);
-                    walk_rec(slab, inner.children[1], buf);
-                }
-            }
-        }
-
-        let mut buf = Vec::with_capacity(self.header().leaf_count as usize);
-        if let Some(r) = self.root() {
-            walk_rec(self, r, &mut buf);
-        }
-        if buf.len() != buf.capacity() {
-            self.hexdump();
-        }
-        assert_eq!(buf.len(), buf.capacity());
-        buf
-    }
-
-    #[cfg(test)]
     fn hexdump(&self) {
         println!("Header:");
         hexdump::hexdump(bytemuck::bytes_of(self.header()));
@@ -973,7 +948,7 @@ mod tests {
             for i in 0..100_000 {
                 slab.check_invariants();
                 let model_state = model.values().collect::<Vec<_>>();
-                let slab_state = slab.traverse();
+                let slab_state: Vec<&LeafNode> = slab.iter(false).collect();
                 assert_eq!(model_state, slab_state);
 
                 match weights[dist.sample(&mut rng)].0 {
