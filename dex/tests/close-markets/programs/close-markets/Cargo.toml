@@ -1,0 +1,21 @@
+[package]
+name = "close-markets"
+version = "0.1.0"
+description = "Created with Anchor"
+edition = "2018"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "close_markets"
+
+[features]
+no-entrypoint = []
+no-idl = []
+cpi = ["no-entrypoint"]
+default = []
+
+[dependencies]
+anchor-lang = "0.19.0"
+anchor-spl = {version = "0.19.0", features = ["dex"]}
+serum_dex = { path = "../../../..", features = ["no-entrypoint"]}
+solana-program = "1.8.0"
