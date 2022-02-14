@@ -537,17 +537,16 @@ impl MarketState {
         expected_owner: &[u64; 4],
         srm_or_msrm_account: Option<account_parser::TokenAccount>,
     ) -> DexResult<FeeTier> {
+        let market_addr = self.pubkey();
         let srm_or_msrm_account = match srm_or_msrm_account {
             Some(a) => a,
-            None => return Ok(FeeTier::Base),
+            None => return Ok(FeeTier::from_srm_and_msrm_balances(&market_addr, 0, 0)),
         };
         let data = srm_or_msrm_account.inner().try_borrow_data()?;
 
         let mut aligned_data: [u64; 9] = Zeroable::zeroed();
         bytes_of_mut(&mut aligned_data).copy_from_slice(&data[..72]);
         let (mint, owner, &[balance]) = array_refs![&aligned_data, 4, 4, 1];
-
-        let market_addr = self.pubkey();
 
         check_assert_eq!(owner, expected_owner)?;
         if mint == &srm_token::ID.to_aligned_bytes() {
