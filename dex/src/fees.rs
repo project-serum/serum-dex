@@ -90,7 +90,7 @@ impl FeeTier {
     pub fn from_srm_and_msrm_balances(market: &Pubkey, srm_held: u64, msrm_held: u64) -> FeeTier {
         let one_srm = 1_000_000;
 
-        if market == &stable_markets::usdt_usdc::ID || market == &stable_markets::msol_sol::ID {
+        if market == &stable_markets::usdt_usdc::ID || market == &stable_markets::msol_sol::ID || market == &stable_markets::ust_usdc::ID || market == &stable_markets::ust_usdt::ID || market == &stable_markets::stsol_sol::ID {
             return FeeTier::Stable;
         }
 
