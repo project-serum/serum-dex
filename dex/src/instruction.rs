@@ -4,6 +4,7 @@ use crate::matching::{OrderType, Side};
 use bytemuck::cast;
 use serde::{Deserialize, Serialize};
 use solana_program::{
+    declare_id,
     entrypoint::ProgramResult,
     instruction::{AccountMeta, Instruction},
     program_error::ProgramError,
