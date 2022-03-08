@@ -164,7 +164,7 @@ fn new_spl_token_program<'bump>(bump: &'bump Bump) -> AccountInfo<'bump> {
 }
 
 fn setup_market<'bump, R: Rng>(rng: &mut R, bump: &'bump Bump) -> MarketAccounts<'bump> {
-    let program_id = random_pubkey(rng, bump);
+    let program_id = &crate::instruction::ID;
     let market = new_dex_owned_account(rng, size_of::<MarketState>(), program_id, bump);
     let bids = new_dex_owned_account(rng, 1 << 23, program_id, bump);
     let asks = new_dex_owned_account(rng, 1 << 23, program_id, bump);
@@ -260,7 +260,7 @@ fn test_new_order() {
 
     let accounts = setup_market(&mut rng, &bump);
 
-    let dex_program_id = accounts.market.owner;
+    let dex_program_id = &crate::instruction::ID;
 
     let owner = new_sol_account(&mut rng, 1_000_000_000, &bump);
     let orders_account_buyer =
