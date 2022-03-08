@@ -4,7 +4,9 @@ use crate::matching::{OrderType, Side};
 use bytemuck::cast;
 use serde::{Deserialize, Serialize};
 use solana_program::{
+    entrypoint::ProgramResult,
     instruction::{AccountMeta, Instruction},
+    program_error::ProgramError,
     pubkey::Pubkey,
     sysvar::rent,
 };
@@ -18,6 +20,8 @@ use std::num::NonZeroU64;
 use proptest::prelude::*;
 #[cfg(test)]
 use proptest_derive::Arbitrary;
+
+declare_id!("9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin");
 
 pub mod srm_token {
     use solana_program::declare_id;
@@ -603,6 +607,7 @@ pub fn initialize_market(
     vault_signer_nonce: u64,
     pc_dust_threshold: u64,
 ) -> Result<solana_program::instruction::Instruction, DexError> {
+    check_program_account(program_id)?;
     let data = MarketInstruction::InitializeMarket(InitializeMarketInstruction {
         coin_lot_size,
         pc_lot_size,
@@ -685,6 +690,7 @@ pub fn new_order(
     limit: u16,
     max_native_pc_qty_including_fees: NonZeroU64,
 ) -> Result<Instruction, DexError> {
+    check_program_account(program_id)?;
     let data = MarketInstruction::NewOrderV3(NewOrderInstructionV3 {
         side,
         limit_price,
@@ -731,6 +737,7 @@ pub fn match_orders(
     pc_fee_receivable_account: &Pubkey,
     limit: u16,
 ) -> Result<Instruction, DexError> {
+    check_program_account(program_id)?;
     let data = MarketInstruction::MatchOrders(limit).pack();
     let accounts: Vec<AccountMeta> = vec![
         AccountMeta::new(*market, false),
@@ -757,6 +764,7 @@ pub fn consume_events(
     pc_fee_receivable_account: &Pubkey,
     limit: u16,
 ) -> Result<Instruction, DexError> {
+    check_program_account(program_id)?;
     let data = MarketInstruction::ConsumeEvents(limit).pack();
     let mut accounts: Vec<AccountMeta> = open_orders_accounts
         .iter()
@@ -783,6 +791,7 @@ pub fn consume_events_permissioned(
     consume_events_authority: &Pubkey,
     limit: u16,
 ) -> Result<Instruction, DexError> {
+    check_program_account(program_id)?;
     let data = MarketInstruction::ConsumeEventsPermissioned(limit).pack();
     let mut accounts: Vec<AccountMeta> = open_orders_accounts
         .iter()
@@ -811,6 +820,7 @@ pub fn cancel_order(
     side: Side,
     order_id: u128,
 ) -> Result<Instruction, DexError> {
+    check_program_account(program_id)?;
     let data = MarketInstruction::CancelOrderV2(CancelOrderInstructionV2 { side, order_id }).pack();
     let accounts: Vec<AccountMeta> = vec![
         AccountMeta::new(*market, false),
@@ -840,6 +850,7 @@ pub fn settle_funds(
     referrer_pc_wallet: Option<&Pubkey>,
     vault_signer: &Pubkey,
 ) -> Result<Instruction, DexError> {
+    check_program_account(program_id)?;
     let data = MarketInstruction::SettleFunds.pack();
     let mut accounts: Vec<AccountMeta> = vec![
         AccountMeta::new(*market, false),
@@ -872,6 +883,7 @@ pub fn cancel_order_by_client_order_id(
     event_queue: &Pubkey,
     client_order_id: u64,
 ) -> Result<Instruction, DexError> {
+    check_program_account(program_id)?;
     let data = MarketInstruction::CancelOrderByClientIdV2(client_order_id).pack();
     let accounts: Vec<AccountMeta> = vec![
         AccountMeta::new(*market, false),
@@ -893,6 +905,7 @@ pub fn disable_market(
     market: &Pubkey,
     disable_authority_key: &Pubkey,
 ) -> Result<Instruction, DexError> {
+    check_program_account(program_id)?;
     let data = MarketInstruction::DisableMarket.pack();
     let accounts: Vec<AccountMeta> = vec![
         AccountMeta::new(*market, false),
@@ -914,6 +927,7 @@ pub fn sweep_fees(
     vault_signer: &Pubkey,
     spl_token_program_id: &Pubkey,
 ) -> Result<Instruction, DexError> {
+    check_program_account(program_id)?;
     let data = MarketInstruction::SweepFees.pack();
     let accounts: Vec<AccountMeta> = vec![
         AccountMeta::new(*market, false),
@@ -937,6 +951,7 @@ pub fn close_open_orders(
     destination: &Pubkey,
     market: &Pubkey,
 ) -> Result<Instruction, DexError> {
+    check_program_account(program_id)?;
     let data = MarketInstruction::CloseOpenOrders.pack();
     let accounts: Vec<AccountMeta> = vec![
         AccountMeta::new(*open_orders, false),
@@ -958,6 +973,7 @@ pub fn init_open_orders(
     market: &Pubkey,
     market_authority: Option<&Pubkey>,
 ) -> Result<Instruction, DexError> {
+    check_program_account(program_id)?;
     let data = MarketInstruction::InitOpenOrders.pack();
     let mut accounts: Vec<AccountMeta> = vec![
         AccountMeta::new(*open_orders, false),
@@ -986,6 +1002,7 @@ pub fn prune(
     event_q: &Pubkey,
     limit: u16,
 ) -> Result<Instruction, DexError> {
+    check_program_account(program_id)?;
     let data = MarketInstruction::Prune(limit).pack();
     let accounts: Vec<AccountMeta> = vec![
         AccountMeta::new(*market, false),
@@ -1209,4 +1226,11 @@ mod fuzzing {
     arbitrary_impl!(NewOrderInstructionV3, NewOrderInstructionV3U64);
     arbitrary_impl!(NewOrderInstructionV2, NewOrderInstructionU64);
     arbitrary_impl!(NewOrderInstructionV1, NewOrderInstructionU64);
+}
+
+fn check_program_account(program_id: &Pubkey) -> ProgramResult {
+    if program_id != &ID {
+        return Err(ProgramError::IncorrectProgramId);
+    }
+    Ok(())
 }
