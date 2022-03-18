@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 use std::{thread, time};
 
 use anyhow::{format_err, Result};
-use clap::Clap;
+use clap::Parser;
 use debug_print::debug_println;
 use enumflags2::BitFlags;
 use log::{error, info};
@@ -63,7 +63,7 @@ fn read_keypair_file(s: &str) -> Result<Keypair> {
         .map_err(|_| format_err!("failed to read keypair from {}", s))
 }
 
-#[derive(Clap, Debug)]
+#[derive(Parser, Debug)]
 pub struct Opts {
     #[clap(default_value = "mainnet")]
     pub cluster: Cluster,
@@ -77,7 +77,7 @@ impl Opts {
     }
 }
 
-#[derive(Clap, Debug)]
+#[derive(Parser, Debug)]
 pub enum Command {
     Genesis {
         #[clap(long, short)]
