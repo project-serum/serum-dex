@@ -726,7 +726,7 @@ pub fn consume_events_once(
         &payer.pubkey(),
         rand::random::<u64>() % 10000 + 1,
     );
-    let (recent_hash, _fee_calc) = client.get_recent_blockhash()?;
+    let recent_hash = client.get_latest_blockhash()?;
     let txn = Transaction::new_signed_with_payer(
         &[instruction, random_instruction],
         Some(&payer.pubkey()),
@@ -761,7 +761,7 @@ fn consume_events(
             Some(i) => i,
         }
     };
-    let (recent_hash, _fee_calc) = client.get_recent_blockhash()?;
+    let recent_hash = client.get_latest_blockhash()?;
     info!("Consuming events ...");
     let txn = Transaction::new_signed_with_payer(
         std::slice::from_ref(&instruction),
@@ -968,7 +968,7 @@ pub fn cancel_order_by_client_order_id(
         &state.event_q,
         client_order_id,
     )?];
-    let (recent_hash, _fee_calc) = client.get_recent_blockhash()?;
+    let recent_hash = client.get_latest_blockhash()?;
     let txn = Transaction::new_signed_with_payer(ixs, Some(&owner.pubkey()), &[owner], recent_hash);
 
     debug_println!("Canceling order by client order id instruction ...");
@@ -997,7 +997,7 @@ pub fn close_open_orders(
         &owner.pubkey(),
         &state.market,
     )?];
-    let (recent_hash, _fee_calc) = client.get_recent_blockhash()?;
+    let recent_hash = client.get_latest_blockhash()?;
     let txn = Transaction::new_signed_with_payer(ixs, Some(&owner.pubkey()), &[owner], recent_hash);
 
     debug_println!("Simulating close open orders instruction ...");
@@ -1046,7 +1046,7 @@ pub fn init_open_orders(
     )?);
     signers.push(owner);
 
-    let (recent_hash, _fee_calc) = client.get_recent_blockhash()?;
+    let recent_hash = client.get_latest_blockhash()?;
     let txn = Transaction::new_signed_with_payer(
         &instructions,
         Some(&owner.pubkey()),
@@ -1109,7 +1109,7 @@ pub fn place_order(
     instructions.push(instruction);
     signers.push(payer);
 
-    let (recent_hash, _fee_calc) = client.get_recent_blockhash()?;
+    let recent_hash = client.get_latest_blockhash()?;
     let txn = Transaction::new_signed_with_payer(
         &instructions,
         Some(&payer.pubkey()),
@@ -1146,7 +1146,7 @@ fn settle_funds(
             AccountMeta::new_readonly(spl_token::ID, false),
         ],
     };
-    let (recent_hash, _fee_calc) = client.get_recent_blockhash()?;
+    let recent_hash = client.get_latest_blockhash()?;
     let mut signers = vec![payer];
     if let Some(s) = signer {
         signers.push(s);
@@ -1231,7 +1231,7 @@ pub fn list_market(
 
     instructions.push(init_market_instruction);
 
-    let (recent_hash, _fee_calc) = client.get_recent_blockhash()?;
+    let recent_hash = client.get_latest_blockhash()?;
     let signers = vec![
         payer,
         &market_key,
@@ -1363,7 +1363,7 @@ pub fn match_orders(
         data: instruction_data,
     };
 
-    let (recent_hash, _fee_calc) = client.get_recent_blockhash()?;
+    let recent_hash = client.get_latest_blockhash()?;
     let txn = Transaction::new_signed_with_payer(
         std::slice::from_ref(&instruction),
         Some(&payer.pubkey()),
@@ -1412,7 +1412,7 @@ fn create_account(
 
     let instructions = vec![create_account_instr, init_account_instr];
 
-    let (recent_hash, _fee_calc) = client.get_recent_blockhash()?;
+    let recent_hash = client.get_latest_blockhash()?;
 
     let txn = Transaction::new_signed_with_payer(
         &instructions,
@@ -1446,7 +1446,7 @@ fn mint_to_existing_account(
     )?;
 
     let instructions = vec![mint_tokens_instr];
-    let (recent_hash, _fee_calc) = client.get_recent_blockhash()?;
+    let recent_hash = client.get_latest_blockhash()?;
     let txn = Transaction::new_signed_with_payer(
         &instructions,
         Some(&payer.pubkey()),
@@ -1475,7 +1475,7 @@ fn initialize_token_account(client: &RpcClient, mint: &Pubkey, owner: &Keypair) 
     )?;
     let signers = vec![owner, &recip_keypair];
     let instructions = vec![create_recip_instr, init_recip_instr];
-    let (recent_hash, _fee_calc) = client.get_recent_blockhash()?;
+    let recent_hash = client.get_latest_blockhash()?;
     let txn = Transaction::new_signed_with_payer(
         &instructions,
         Some(&owner.pubkey()),
