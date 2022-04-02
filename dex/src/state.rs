@@ -3014,6 +3014,17 @@ impl State {
             fee_tier,
         } = args;
 
+        if instruction.max_ts < i64::MAX {
+            // Dynamic sysvars don't work in unit tests.
+            #[cfg(any(test, feature = "fuzz"))]
+            let cur_ts = 1_650_000_000;
+            #[cfg(not(any(test, feature = "fuzz")))]
+            let cur_ts = Clock::get()?.unix_timestamp;
+            if cur_ts > instruction.max_ts {
+                return Err(DexErrorCode::OrderMaxTimestampExceeded.into());
+            }
+        }
+
         let open_orders_mut = open_orders.deref_mut();
 
         check_assert_eq!(req_q.header.count(), 0)?;
@@ -3135,6 +3146,10 @@ impl State {
         // `invoke_spl_token` will try to borrow the account info refcell,
         // which would cause an error (as there would be two borrows while
         // one of them is mutable).
+
+        use solana_program::clock::Clock;
+
+        use crate::error::DexError;
         drop(open_orders);
 
         if deposit_amount != 0 {

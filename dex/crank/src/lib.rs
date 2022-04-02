@@ -8,6 +8,7 @@ use std::convert::identity;
 use std::mem::size_of;
 use std::num::NonZeroU64;
 use std::sync::{Arc, Mutex};
+use std::time::SystemTime;
 use std::{thread, time};
 
 use anyhow::{format_err, Result};
@@ -866,7 +867,11 @@ fn whole_shebang(client: &RpcClient, program_id: &Pubkey, payer: &Keypair) -> Re
     debug_println!("Initializing open orders");
     init_open_orders(client, program_id, payer, &market_keys, &mut orders)?;
 
-    debug_println!("Placing bid...");
+    debug_println!("Placing successful bid...");
+    let now = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64;
     place_order(
         client,
         program_id,
@@ -883,10 +888,34 @@ fn whole_shebang(client: &RpcClient, program_id: &Pubkey, payer: &Keypair) -> Re
             client_order_id: 019269,
             self_trade_behavior: SelfTradeBehavior::DecrementTake,
             limit: std::u16::MAX,
+            max_ts: now + 20,
         },
     )?;
 
     debug_println!("Bid account: {}", orders.unwrap());
+
+    debug_println!("Placing failing bid...");
+
+    let result = place_order(
+        client,
+        program_id,
+        payer,
+        &pc_wallet.pubkey(),
+        &market_keys,
+        &mut orders,
+        NewOrderInstructionV3 {
+            side: Side::Bid,
+            limit_price: NonZeroU64::new(500).unwrap(),
+            max_coin_qty: NonZeroU64::new(1_000).unwrap(),
+            max_native_pc_qty_including_fees: NonZeroU64::new(500_000).unwrap(),
+            order_type: OrderType::Limit,
+            client_order_id: 019269,
+            self_trade_behavior: SelfTradeBehavior::DecrementTake,
+            limit: std::u16::MAX,
+            max_ts: now - 5,
+        },
+    );
+    assert!(result.is_err());
 
     debug_println!("Placing 3 offers...");
 
@@ -910,11 +939,12 @@ fn whole_shebang(client: &RpcClient, program_id: &Pubkey, payer: &Keypair) -> Re
                 self_trade_behavior: SelfTradeBehavior::DecrementTake,
                 // 985982, 985983, 985984
                 client_order_id: 985982 + i,
+                max_ts: i64::MAX,
             },
         )?;
-
-        debug_println!("Ask account #{}: {}", i + 1, orders.unwrap());
     }
+
+    debug_println!("Ask account: {}", orders.unwrap());
 
     // Cancel 1st open offer (985982), 3rd open offer (985984), and fake orders
     cancel_orders_by_client_order_ids(

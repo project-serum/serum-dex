@@ -21,6 +21,7 @@ use matching::{OrderType, Side};
 use state::gen_vault_signer_key;
 use state::{Market, MarketState, OpenOrders, State, ToAlignedBytes};
 
+use crate::error::DexErrorCode;
 use crate::state::account_parser::CancelOrderByClientIdV2Args;
 
 use super::*;
@@ -283,6 +284,7 @@ fn test_new_order() {
         client_order_id: 0xabcd,
         self_trade_behavior: SelfTradeBehavior::AbortTransaction,
         limit: 5,
+        max_ts: i64::MAX,
     })
     .pack();
     let instruction_accounts: &[AccountInfo] = bump_vec![in &bump;
@@ -312,6 +314,7 @@ fn test_new_order() {
         self_trade_behavior: SelfTradeBehavior::AbortTransaction,
         client_order_id: 0,
         limit: 5,
+        max_ts: i64::MAX,
     })
     .pack();
     let instruction_accounts = bump_vec![in &bump;
@@ -438,6 +441,7 @@ fn test_cancel_orders() {
             client_order_id: 0x123a + i,
             self_trade_behavior: SelfTradeBehavior::AbortTransaction,
             limit: 5,
+            max_ts: i64::MAX,
         })
         .pack();
 
@@ -501,5 +505,93 @@ fn test_cancel_orders() {
         assert_eq!(identity(open_orders.native_coin_total), 0);
         assert_eq!(identity(open_orders.native_pc_free), 100_000);
         assert_eq!(identity(open_orders.native_pc_total), 150_000);
+    }
+}
+
+#[test]
+fn test_max_ts_order() {
+    let mut rng = StdRng::seed_from_u64(1);
+    let bump = Bump::new();
+
+    let accounts = setup_market(&mut rng, &bump);
+
+    let dex_program_id = accounts.market.owner;
+
+    let owner = new_sol_account(&mut rng, 1_000_000_000, &bump);
+    let orders_account =
+        new_dex_owned_account(&mut rng, size_of::<OpenOrders>(), dex_program_id, &bump);
+    let coin_account =
+        new_token_account(&mut rng, accounts.coin_mint.key, owner.key, 10_000, &bump);
+    let pc_account = new_token_account(&mut rng, accounts.pc_mint.key, owner.key, 1_000_000, &bump);
+    let spl_token_program = new_spl_token_program(&bump);
+
+    let instruction_data = MarketInstruction::NewOrderV3(NewOrderInstructionV3 {
+        side: Side::Bid,
+        limit_price: NonZeroU64::new(10_000).unwrap(),
+        max_coin_qty: NonZeroU64::new(10).unwrap(),
+        max_native_pc_qty_including_fees: NonZeroU64::new(50_000).unwrap(),
+        order_type: OrderType::Limit,
+        client_order_id: 0xabcd,
+        self_trade_behavior: SelfTradeBehavior::AbortTransaction,
+        limit: 5,
+        max_ts: 1_649_999_999,
+    })
+    .pack();
+
+    let instruction_accounts: &[AccountInfo] = bump_vec![in &bump;
+        accounts.market.clone(),
+        orders_account.clone(),
+        accounts.req_q.clone(),
+        accounts.event_q.clone(),
+        accounts.bids.clone(),
+        accounts.asks.clone(),
+        pc_account.clone(),
+        owner.clone(),
+        accounts.coin_vault.clone(),
+        accounts.pc_vault.clone(),
+        spl_token_program.clone(),
+        accounts.rent_sysvar.clone(),
+    ]
+    .into_bump_slice();
+
+    {
+        let result = State::process(dex_program_id, instruction_accounts, &instruction_data);
+        let expected = Err(DexErrorCode::OrderMaxTimestampExceeded.into());
+        assert_eq!(result, expected);
+    }
+
+    let instruction_data = MarketInstruction::NewOrderV3(NewOrderInstructionV3 {
+        side: Side::Bid,
+        limit_price: NonZeroU64::new(10_000).unwrap(),
+        max_coin_qty: NonZeroU64::new(10).unwrap(),
+        max_native_pc_qty_including_fees: NonZeroU64::new(50_000).unwrap(),
+        order_type: OrderType::Limit,
+        client_order_id: 0xabcd,
+        self_trade_behavior: SelfTradeBehavior::AbortTransaction,
+        limit: 5,
+        max_ts: 1_650_000_000,
+    })
+    .pack();
+
+    let instruction_accounts: &[AccountInfo] = bump_vec![in &bump;
+        accounts.market.clone(),
+        orders_account.clone(),
+        accounts.req_q.clone(),
+        accounts.event_q.clone(),
+        accounts.bids.clone(),
+        accounts.asks.clone(),
+        pc_account.clone(),
+        owner.clone(),
+        accounts.coin_vault.clone(),
+        accounts.pc_vault.clone(),
+        spl_token_program.clone(),
+        accounts.rent_sysvar.clone(),
+    ]
+    .into_bump_slice();
+
+    {
+        let result = State::process(dex_program_id, instruction_accounts, &instruction_data);
+        let expected = Ok(());
+        assert_eq!(result, expected);
     }
 }

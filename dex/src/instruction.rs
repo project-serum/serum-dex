@@ -126,6 +126,7 @@ pub struct NewOrderInstructionV3 {
     pub order_type: OrderType,
     pub client_order_id: u64,
     pub limit: u16,
+    pub max_ts: i64,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Serialize, Deserialize)]
@@ -222,7 +223,7 @@ impl SendTakeInstruction {
 }
 
 impl NewOrderInstructionV3 {
-    fn unpack(data: &[u8; 46]) -> Option<Self> {
+    fn unpack(data: &[u8; 54]) -> Option<Self> {
         let (
             &side_arr,
             &price_arr,
@@ -232,7 +233,8 @@ impl NewOrderInstructionV3 {
             &otype_arr,
             &client_order_id_bytes,
             &limit_arr,
-        ) = array_refs![data, 4, 8, 8, 8, 4, 4, 8, 2];
+            &max_ts,
+        ) = array_refs![data, 4, 8, 8, 8, 4, 4, 8, 2, 8];
 
         let side = Side::try_from_primitive(u32::from_le_bytes(side_arr).try_into().ok()?).ok()?;
         let limit_price = NonZeroU64::new(u64::from_le_bytes(price_arr))?;
@@ -249,6 +251,7 @@ impl NewOrderInstructionV3 {
             OrderType::try_from_primitive(u32::from_le_bytes(otype_arr).try_into().ok()?).ok()?;
         let client_order_id = u64::from_le_bytes(client_order_id_bytes);
         let limit = u16::from_le_bytes(limit_arr);
+        let max_ts = i64::from_le_bytes(max_ts);
 
         Some(NewOrderInstructionV3 {
             side,
@@ -259,6 +262,7 @@ impl NewOrderInstructionV3 {
             order_type,
             client_order_id,
             limit,
+            max_ts,
         })
     }
 }
@@ -549,8 +553,13 @@ impl MarketInstruction {
                 .ok()?;
                 v1_instr.add_self_trade_behavior(self_trade_behavior)
             }),
-            (10, 46) => MarketInstruction::NewOrderV3({
-                let data_arr = array_ref![data, 0, 46];
+            (10, len) if len == 46 || len == 54 => MarketInstruction::NewOrderV3({
+                let extended_data = match len {
+                    46 => Some([data, &i64::MAX.to_le_bytes()].concat()),
+                    54 => Some(data.to_vec()),
+                    _ => None,
+                }?;
+                let data_arr = array_ref![extended_data, 0, 54];
                 NewOrderInstructionV3::unpack(data_arr)?
             }),
             (11, 20) => MarketInstruction::CancelOrderV2({
@@ -700,6 +709,7 @@ pub fn new_order(
     self_trade_behavior: SelfTradeBehavior,
     limit: u16,
     max_native_pc_qty_including_fees: NonZeroU64,
+    max_ts: i64,
 ) -> Result<Instruction, DexError> {
     let data = MarketInstruction::NewOrderV3(NewOrderInstructionV3 {
         side,
@@ -710,6 +720,7 @@ pub fn new_order(
         self_trade_behavior,
         limit,
         max_native_pc_qty_including_fees,
+        max_ts,
     })
     .pack();
     let mut accounts = vec![
