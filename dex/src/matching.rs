@@ -7,7 +7,6 @@ use proptest_derive::Arbitrary;
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "program")]
 use solana_program::msg;
-use solana_program::pubkey::Pubkey;
 
 use crate::critbit::SlabTreeError;
 use crate::error::{DexErrorCode, DexResult, SourceFileId};

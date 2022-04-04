@@ -126,6 +126,7 @@ pub struct NewOrderInstructionV3 {
     pub order_type: OrderType,
     pub client_order_id: u64,
     pub limit: u16,
+    pub max_ts: i64,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Serialize, Deserialize)]
@@ -222,7 +223,7 @@ impl SendTakeInstruction {
 }
 
 impl NewOrderInstructionV3 {
-    fn unpack(data: &[u8; 46]) -> Option<Self> {
+    fn unpack(data: &[u8; 54]) -> Option<Self> {
         let (
             &side_arr,
             &price_arr,
@@ -232,7 +233,8 @@ impl NewOrderInstructionV3 {
             &otype_arr,
             &client_order_id_bytes,
             &limit_arr,
-        ) = array_refs![data, 4, 8, 8, 8, 4, 4, 8, 2];
+            &max_ts,
+        ) = array_refs![data, 4, 8, 8, 8, 4, 4, 8, 2, 8];
 
         let side = Side::try_from_primitive(u32::from_le_bytes(side_arr).try_into().ok()?).ok()?;
         let limit_price = NonZeroU64::new(u64::from_le_bytes(price_arr))?;
@@ -249,6 +251,7 @@ impl NewOrderInstructionV3 {
             OrderType::try_from_primitive(u32::from_le_bytes(otype_arr).try_into().ok()?).ok()?;
         let client_order_id = u64::from_le_bytes(client_order_id_bytes);
         let limit = u16::from_le_bytes(limit_arr);
+        let max_ts = i64::from_le_bytes(max_ts);
 
         Some(NewOrderInstructionV3 {
             side,
@@ -259,6 +262,7 @@ impl NewOrderInstructionV3 {
             order_type,
             client_order_id,
             limit,
+            max_ts,
         })
     }
 }
@@ -467,6 +471,13 @@ pub enum MarketInstruction {
     /// accounts.len() - 2 `[writable]` event queue
     /// accounts.len() - 1 `[signer]` crank authority
     ConsumeEventsPermissioned(u16),
+    /// 0. `[writable]` market
+    /// 1. `[writable]` bids
+    /// 2. `[writable]` asks
+    /// 3. `[writable]` OpenOrders
+    /// 4. `[signer]` the OpenOrders owner
+    /// 5. `[writable]` event_q
+    CancelOrdersByClientIds([u64; 8]),
 }
 
 impl MarketInstruction {
@@ -475,7 +486,7 @@ impl MarketInstruction {
     }
 
     pub fn unpack(versioned_bytes: &[u8]) -> Option<Self> {
-        if versioned_bytes.len() < 5 || versioned_bytes.len() > 58 {
+        if versioned_bytes.len() < 5 || versioned_bytes.len() > 69 {
             return None;
         }
         let (&[version], &discrim, data) = array_refs![versioned_bytes, 1, 4; ..;];
@@ -542,8 +553,13 @@ impl MarketInstruction {
                 .ok()?;
                 v1_instr.add_self_trade_behavior(self_trade_behavior)
             }),
-            (10, 46) => MarketInstruction::NewOrderV3({
-                let data_arr = array_ref![data, 0, 46];
+            (10, len) if len == 46 || len == 54 => MarketInstruction::NewOrderV3({
+                let extended_data = match len {
+                    46 => Some([data, &i64::MAX.to_le_bytes()].concat()),
+                    54 => Some(data.to_vec()),
+                    _ => None,
+                }?;
+                let data_arr = array_ref![extended_data, 0, 54];
                 NewOrderInstructionV3::unpack(data_arr)?
             }),
             (11, 20) => MarketInstruction::CancelOrderV2({
@@ -567,6 +583,15 @@ impl MarketInstruction {
             (17, 2) => {
                 let limit = array_ref![data, 0, 2];
                 MarketInstruction::ConsumeEventsPermissioned(u16::from_le_bytes(*limit))
+            }
+            // At most 8 client ids, each of which is 8 bytes
+            (18, len) if len % 8 == 0 && len <= 8 * 8 => {
+                let mut client_ids = [0; 8];
+                // convert chunks of 8 bytes to client ids
+                for (chunk, client_id) in data.chunks_exact(8).zip(client_ids.iter_mut()) {
+                    *client_id = u64::from_le_bytes(chunk.try_into().unwrap());
+                }
+                MarketInstruction::CancelOrdersByClientIds(client_ids)
             }
             _ => return None,
         })
@@ -684,6 +709,7 @@ pub fn new_order(
     self_trade_behavior: SelfTradeBehavior,
     limit: u16,
     max_native_pc_qty_including_fees: NonZeroU64,
+    max_ts: i64,
 ) -> Result<Instruction, DexError> {
     let data = MarketInstruction::NewOrderV3(NewOrderInstructionV3 {
         side,
@@ -694,6 +720,7 @@ pub fn new_order(
         self_trade_behavior,
         limit,
         max_native_pc_qty_including_fees,
+        max_ts,
     })
     .pack();
     let mut accounts = vec![
@@ -873,6 +900,32 @@ pub fn cancel_order_by_client_order_id(
     client_order_id: u64,
 ) -> Result<Instruction, DexError> {
     let data = MarketInstruction::CancelOrderByClientIdV2(client_order_id).pack();
+    let accounts: Vec<AccountMeta> = vec![
+        AccountMeta::new(*market, false),
+        AccountMeta::new(*market_bids, false),
+        AccountMeta::new(*market_asks, false),
+        AccountMeta::new(*open_orders_account, false),
+        AccountMeta::new_readonly(*open_orders_account_owner, true),
+        AccountMeta::new(*event_queue, false),
+    ];
+    Ok(Instruction {
+        program_id: *program_id,
+        data,
+        accounts,
+    })
+}
+
+pub fn cancel_orders_by_client_order_ids(
+    program_id: &Pubkey,
+    market: &Pubkey,
+    market_bids: &Pubkey,
+    market_asks: &Pubkey,
+    open_orders_account: &Pubkey,
+    open_orders_account_owner: &Pubkey,
+    event_queue: &Pubkey,
+    client_order_ids: [u64; 8],
+) -> Result<Instruction, DexError> {
+    let data = MarketInstruction::CancelOrdersByClientIds(client_order_ids).pack();
     let accounts: Vec<AccountMeta> = vec![
         AccountMeta::new(*market, false),
         AccountMeta::new(*market_bids, false),

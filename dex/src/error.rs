@@ -107,10 +107,11 @@ pub enum DexErrorCode {
     RentNotProvided,
     OrdersNotRentExempt,
     OrderNotFound,
-    OrderNotYours,
+    OrderNotYours = 60,
 
     WouldSelfTrade,
     InvalidOpenOrdersAuthority,
+    OrderMaxTimestampExceeded,
 
     Unknown = 1000,
 
