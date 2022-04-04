@@ -492,7 +492,7 @@ pub enum SlabTreeError {
 }
 
 impl Slab {
-    fn root(&self) -> Option<NodeHandle> {
+    pub fn root(&self) -> Option<NodeHandle> {
         if self.header().leaf_count == 0 {
             return None;
         }
