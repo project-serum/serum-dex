@@ -8,6 +8,7 @@ use std::convert::identity;
 use std::mem::size_of;
 use std::num::NonZeroU64;
 use std::sync::{Arc, Mutex};
+use std::time::SystemTime;
 use std::{thread, time};
 
 use anyhow::{format_err, Result};
@@ -42,6 +43,7 @@ use serum_common::client::rpc::{
 use serum_common::client::Cluster;
 use serum_dex::instruction::{
     cancel_order_by_client_order_id as cancel_order_by_client_order_id_ix,
+    cancel_orders_by_client_order_ids as cancel_orders_by_client_order_ids_ix,
     close_open_orders as close_open_orders_ix, init_open_orders as init_open_orders_ix,
     MarketInstruction, NewOrderInstructionV3, SelfTradeBehavior,
 };
@@ -865,7 +867,11 @@ fn whole_shebang(client: &RpcClient, program_id: &Pubkey, payer: &Keypair) -> Re
     debug_println!("Initializing open orders");
     init_open_orders(client, program_id, payer, &market_keys, &mut orders)?;
 
-    debug_println!("Placing bid...");
+    debug_println!("Placing successful bid...");
+    let now = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64;
     place_order(
         client,
         program_id,
@@ -882,43 +888,83 @@ fn whole_shebang(client: &RpcClient, program_id: &Pubkey, payer: &Keypair) -> Re
             client_order_id: 019269,
             self_trade_behavior: SelfTradeBehavior::DecrementTake,
             limit: std::u16::MAX,
+            max_ts: now + 20,
         },
     )?;
 
     debug_println!("Bid account: {}", orders.unwrap());
 
-    debug_println!("Placing offer...");
-    let mut orders = None;
-    place_order(
+    debug_println!("Placing failing bid...");
+
+    let result = place_order(
         client,
         program_id,
         payer,
-        &coin_wallet.pubkey(),
+        &pc_wallet.pubkey(),
         &market_keys,
         &mut orders,
         NewOrderInstructionV3 {
-            side: Side::Ask,
-            limit_price: NonZeroU64::new(499).unwrap(),
+            side: Side::Bid,
+            limit_price: NonZeroU64::new(500).unwrap(),
             max_coin_qty: NonZeroU64::new(1_000).unwrap(),
-            max_native_pc_qty_including_fees: NonZeroU64::new(std::u64::MAX).unwrap(),
+            max_native_pc_qty_including_fees: NonZeroU64::new(500_000).unwrap(),
             order_type: OrderType::Limit,
-            limit: std::u16::MAX,
+            client_order_id: 019269,
             self_trade_behavior: SelfTradeBehavior::DecrementTake,
-            client_order_id: 985982,
+            limit: std::u16::MAX,
+            max_ts: now - 5,
         },
+    );
+    assert!(result.is_err());
+
+    debug_println!("Placing 3 offers...");
+
+    let mut orders = None;
+
+    for i in 0..3 {
+        place_order(
+            client,
+            program_id,
+            payer,
+            &coin_wallet.pubkey(),
+            &market_keys,
+            &mut orders,
+            NewOrderInstructionV3 {
+                side: Side::Ask,
+                limit_price: NonZeroU64::new(499).unwrap(),
+                max_coin_qty: NonZeroU64::new(1_000).unwrap(),
+                max_native_pc_qty_including_fees: NonZeroU64::new(std::u64::MAX).unwrap(),
+                order_type: OrderType::Limit,
+                limit: std::u16::MAX,
+                self_trade_behavior: SelfTradeBehavior::DecrementTake,
+                // 985982, 985983, 985984
+                client_order_id: 985982 + i,
+                max_ts: i64::MAX,
+            },
+        )?;
+    }
+
+    debug_println!("Ask account: {}", orders.unwrap());
+
+    // Cancel 1st open offer (985982), 3rd open offer (985984), and fake orders
+    cancel_orders_by_client_order_ids(
+        client,
+        program_id,
+        payer,
+        &market_keys,
+        &orders.unwrap(),
+        [985985, 985982, 100, 985984, 234, 0, 985984, 0],
     )?;
 
-    // Cancel the open order so that we can close it later.
+    // Cancel the 2nd open order so that we can close it later.
     cancel_order_by_client_order_id(
         client,
         program_id,
         payer,
         &market_keys,
         &orders.unwrap(),
-        985982,
+        985983,
     )?;
-
-    debug_println!("Ask account: {}", orders.unwrap());
 
     debug_println!("Consuming events in 15s ...");
     std::thread::sleep(std::time::Duration::new(15, 0));
@@ -973,12 +1019,45 @@ pub fn cancel_order_by_client_order_id(
 
     debug_println!("Canceling order by client order id instruction ...");
     let result = simulate_transaction(client, &txn, true, CommitmentConfig::confirmed())?;
+    debug_println!("{:#?}", result.value.logs);
     if let Some(e) = result.value.err {
-        debug_println!("{:#?}", result.value.logs);
         return Err(format_err!("simulate_transaction error: {:?}", e));
     }
 
     send_txn(client, &txn, false)?;
+    Ok(())
+}
+
+pub fn cancel_orders_by_client_order_ids(
+    client: &RpcClient,
+    program_id: &Pubkey,
+    owner: &Keypair,
+    state: &MarketPubkeys,
+    orders: &Pubkey,
+    client_order_ids: [u64; 8],
+) -> Result<()> {
+    let ixs = &[cancel_orders_by_client_order_ids_ix(
+        program_id,
+        &state.market,
+        &state.bids,
+        &state.asks,
+        orders,
+        &owner.pubkey(),
+        &state.event_q,
+        client_order_ids,
+    )?];
+    let recent_hash = client.get_latest_blockhash()?;
+    let txn = Transaction::new_signed_with_payer(ixs, Some(&owner.pubkey()), &[owner], recent_hash);
+
+    debug_println!("Canceling orders by client order ids instruction ...");
+    let result = simulate_transaction(client, &txn, true, CommitmentConfig::confirmed())?;
+    debug_println!("{:#?}", result.value.logs);
+    if let Some(e) = result.value.err {
+        return Err(format_err!("simulate_transaction error: {:?}", e));
+    }
+
+    send_txn(client, &txn, false)?;
+
     Ok(())
 }
 

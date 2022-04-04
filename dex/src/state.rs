@@ -2125,6 +2125,73 @@ pub(crate) mod account_parser {
         }
     }
 
+    pub struct CancelOrdersByClientIdsArgs<'a, 'b: 'a> {
+        pub client_order_ids: &'a [NonZeroU64],
+        pub open_orders_address: [u64; 4],
+        pub open_orders: &'a mut OpenOrders,
+        pub open_orders_signer: SignerAccount<'a, 'b>,
+        pub order_book_state: OrderBookState<'a>,
+        pub event_q: EventQueue<'a>,
+    }
+    impl<'a, 'b: 'a> CancelOrdersByClientIdsArgs<'a, 'b> {
+        pub fn with_parsed_args<T>(
+            program_id: &'a Pubkey,
+            accounts: &'a [AccountInfo<'b>],
+            client_order_ids: [u64; 8],
+            f: impl FnOnce(CancelOrdersByClientIdsArgs) -> DexResult<T>,
+        ) -> DexResult<T> {
+            check_assert!(accounts.len() >= 6)?;
+            #[rustfmt::skip]
+            let &[
+                ref market_acc,
+                ref bids_acc,
+                ref asks_acc,
+                ref open_orders_acc,
+                ref open_orders_signer_acc,
+                ref event_q_acc,
+            ] = array_ref![accounts, 0, 6];
+
+            let client_order_ids = client_order_ids
+                .iter()
+                .cloned()
+                .filter_map(NonZeroU64::new)
+                .collect::<Vec<NonZeroU64>>();
+
+            let mut market = Market::load(market_acc, program_id, true).or(check_unreachable!())?;
+
+            let open_orders_signer = SignerAccount::new(open_orders_signer_acc)?;
+            let mut open_orders = market.load_orders_mut(
+                open_orders_acc,
+                Some(open_orders_signer.inner()),
+                program_id,
+                None,
+                None,
+            )?;
+            let open_orders_address = open_orders_acc.key.to_aligned_bytes();
+
+            let mut bids = market.load_bids_mut(bids_acc).or(check_unreachable!())?;
+            let mut asks = market.load_asks_mut(asks_acc).or(check_unreachable!())?;
+
+            let event_q = market.load_event_queue_mut(event_q_acc)?;
+
+            let order_book_state = OrderBookState {
+                bids: bids.deref_mut(),
+                asks: asks.deref_mut(),
+                market_state: market.deref_mut(),
+            };
+
+            let args = CancelOrdersByClientIdsArgs {
+                client_order_ids: client_order_ids.as_slice(),
+                open_orders_address,
+                open_orders: open_orders.deref_mut(),
+                open_orders_signer,
+                order_book_state,
+                event_q,
+            };
+            f(args)
+        }
+    }
+
     pub struct SettleFundsArgs<'a, 'b: 'a> {
         pub market: Market<'a>,
         pub open_orders: &'a mut OpenOrders,
@@ -2514,6 +2581,14 @@ impl State {
                     Self::process_cancel_order_by_client_id_v2,
                 )?
             }
+            MarketInstruction::CancelOrdersByClientIds(client_ids) => {
+                account_parser::CancelOrdersByClientIdsArgs::with_parsed_args(
+                    program_id,
+                    accounts,
+                    client_ids,
+                    Self::process_cancel_orders_by_client_ids,
+                )?
+            }
             MarketInstruction::DisableMarket => {
                 account_parser::DisableMarketArgs::with_parsed_args(
                     program_id,
@@ -2744,6 +2819,39 @@ impl State {
         )
     }
 
+    fn process_cancel_orders_by_client_ids(
+        args: account_parser::CancelOrdersByClientIdsArgs,
+    ) -> DexResult {
+        let account_parser::CancelOrdersByClientIdsArgs {
+            client_order_ids,
+            open_orders_address,
+            open_orders,
+            open_orders_signer: _,
+
+            mut order_book_state,
+            mut event_q,
+        } = args;
+
+        let mut orders = Vec::new();
+        for (client_order_id, order_id, side) in open_orders.orders_with_client_ids() {
+            if client_order_ids.contains(&client_order_id) {
+                orders.push((order_id, side));
+            }
+        }
+
+        for (order_id, side) in orders {
+            let _ = order_book_state.cancel_order_v2(
+                side,
+                open_orders_address,
+                open_orders,
+                order_id,
+                &mut event_q,
+            );
+        }
+
+        Ok(())
+    }
+
     fn process_cancel_order_v2(args: account_parser::CancelOrderV2Args) -> DexResult {
         let account_parser::CancelOrderV2Args {
             instruction: &CancelOrderInstructionV2 { side, order_id },
@@ -2906,6 +3014,17 @@ impl State {
             fee_tier,
         } = args;
 
+        if instruction.max_ts < i64::MAX {
+            // Dynamic sysvars don't work in unit tests.
+            #[cfg(any(test, feature = "fuzz"))]
+            let cur_ts = 1_650_000_000;
+            #[cfg(not(any(test, feature = "fuzz")))]
+            let cur_ts = Clock::get()?.unix_timestamp;
+            if cur_ts > instruction.max_ts {
+                return Err(DexErrorCode::OrderMaxTimestampExceeded.into());
+            }
+        }
+
         let open_orders_mut = open_orders.deref_mut();
 
         check_assert_eq!(req_q.header.count(), 0)?;
@@ -3027,6 +3146,10 @@ impl State {
         // `invoke_spl_token` will try to borrow the account info refcell,
         // which would cause an error (as there would be two borrows while
         // one of them is mutable).
+
+        use solana_program::clock::Clock;
+
+        use crate::error::DexError;
         drop(open_orders);
 
         if deposit_amount != 0 {
