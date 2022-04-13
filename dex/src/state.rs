@@ -1928,6 +1928,39 @@ pub(crate) mod account_parser {
         }
     }
 
+    pub struct ReplaceOrdersByClientIdsArgs<'a, 'b: 'a> {
+        pub program_id: &'a Pubkey,
+        pub cancel_accounts: &'a [AccountInfo<'b>],
+        pub client_order_ids: [u64; 8],
+        pub instructions: &'a Vec<NewOrderInstructionV3>,
+        pub accounts: &'a [AccountInfo<'b>],
+    }
+    impl<'a, 'b: 'a> ReplaceOrdersByClientIdsArgs<'a, 'b> {
+        pub fn with_parsed_args<T>(
+            program_id: &'a Pubkey,
+            accounts: &'a [AccountInfo<'b>],
+            instructions: &'a Vec<NewOrderInstructionV3>,
+            f: impl FnOnce(ReplaceOrdersByClientIdsArgs) -> DexResult<T>,
+        ) -> DexResult<T> {
+            // Account indices for market, bids, asks, OpenOrders, owner, event_q
+            let cancel_accounts = [0, 4, 5, 1, 7, 3].map(|i| accounts[i].clone());
+            let mut client_order_ids = [0; 8];
+            for (instruction, client_order_id) in
+                instructions.iter().zip(client_order_ids.iter_mut())
+            {
+                *client_order_id = instruction.client_order_id;
+            }
+
+            f(ReplaceOrdersByClientIdsArgs {
+                program_id,
+                instructions,
+                accounts,
+                cancel_accounts: &cancel_accounts[..],
+                client_order_ids,
+            })
+        }
+    }
+
     pub struct ConsumeEventsArgs<'a, 'b: 'a> {
         pub limit: u16,
         pub program_id: &'a Pubkey,
@@ -2535,6 +2568,22 @@ impl State {
                     inner,
                     accounts,
                     Self::process_new_order_v3,
+                )?
+            }
+            MarketInstruction::ReplaceOrderByClientId(instruction) => {
+                account_parser::ReplaceOrdersByClientIdsArgs::with_parsed_args(
+                    program_id,
+                    accounts,
+                    &vec![instruction],
+                    Self::process_replace_orders_by_client_ids,
+                )?
+            }
+            MarketInstruction::ReplaceOrdersByClientIds(ref instructions) => {
+                account_parser::ReplaceOrdersByClientIdsArgs::with_parsed_args(
+                    program_id,
+                    accounts,
+                    instructions,
+                    Self::process_replace_orders_by_client_ids,
                 )?
             }
             MarketInstruction::MatchOrders(_limit) => {}
@@ -3183,6 +3232,36 @@ impl State {
             let balance_after = deposit_vault.balance()?;
             let balance_change = balance_after.checked_sub(balance_before);
             check_assert_eq!(Some(deposit_amount), balance_change)?;
+        }
+
+        Ok(())
+    }
+
+    fn process_replace_orders_by_client_ids(
+        args: account_parser::ReplaceOrdersByClientIdsArgs,
+    ) -> DexResult {
+        let account_parser::ReplaceOrdersByClientIdsArgs {
+            program_id,
+            cancel_accounts,
+            client_order_ids,
+            instructions,
+            accounts,
+        } = args;
+
+        account_parser::CancelOrdersByClientIdsArgs::with_parsed_args(
+            program_id,
+            &cancel_accounts,
+            client_order_ids,
+            Self::process_cancel_orders_by_client_ids,
+        )?;
+
+        for instruction in instructions {
+            account_parser::NewOrderV3Args::with_parsed_args(
+                program_id,
+                instruction,
+                accounts,
+                Self::process_new_order_v3,
+            )?;
         }
 
         Ok(())
