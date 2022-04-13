@@ -21,6 +21,9 @@ mod stable_markets {
     pub mod stsol_sol {
         solana_program::declare_id!("2iDSTGhjJEiRxNaLF27CY6daMYPs5hgYrP2REHd5YD62");
     }
+    pub mod usdh_usdc {
+        solana_program::declare_id!("CaFjigEgJdtGPxQxRjneA1hzNcY5MsHoAAL6Et67QrC5");
+    }
 }
 
 #[derive(Copy, Clone, IntoPrimitive, TryFromPrimitive, Debug)]
@@ -90,7 +93,13 @@ impl FeeTier {
     pub fn from_srm_and_msrm_balances(market: &Pubkey, srm_held: u64, msrm_held: u64) -> FeeTier {
         let one_srm = 1_000_000;
 
-        if market == &stable_markets::usdt_usdc::ID || market == &stable_markets::msol_sol::ID || market == &stable_markets::ust_usdc::ID || market == &stable_markets::ust_usdt::ID || market == &stable_markets::stsol_sol::ID {
+        if market == &stable_markets::usdt_usdc::ID
+            || market == &stable_markets::msol_sol::ID
+            || market == &stable_markets::ust_usdc::ID
+            || market == &stable_markets::ust_usdt::ID
+            || market == &stable_markets::stsol_sol::ID
+            || market == &stable_markets::usdh_usdc::ID
+        {
             return FeeTier::Stable;
         }
 
