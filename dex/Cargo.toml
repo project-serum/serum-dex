@@ -1,6 +1,6 @@
 [package]
 name = "serum_dex"
-version = "0.4.0"
+version = "0.5.5"
 description = "Serum DEX"
 repository = "https://github.com/project-serum/serum-dex"
 edition = "2018"
@@ -41,12 +41,18 @@ crate-type = ["cdylib", "lib"]
 [dev-dependencies]
 rand = "0.7.3"
 hexdump = "0.1.0"
-proptest = "0.10.0"
-proptest-derive = "0.2.0"
+proptest = "1.0.0"
+proptest-derive = "0.3.0"
 bumpalo = { version = "3.4.0", features = ["collections"] }
 
 [profile.release]
-lto = true
+lto = "fat"
+codegen-units = 1
+
+[profile.release.build-override]
+opt-level = 3
+incremental = false
+codegen-units = 1
 
 [profile.test]
 opt-level = 2

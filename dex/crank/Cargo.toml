@@ -11,7 +11,7 @@ path = "src/bin/main.rs"
 serum_dex = { path = "../", default-features = false, features = ["client"] }
 serum-common = { path = "../../common", features = ["client"] }
 spl-token = { version = "3.0.0-pre1", features = ["no-entrypoint"], default-features = false }
-clap = "3.0.0-beta.1"
+clap = { version = "3.1.6", features = ["derive"] }
 enumflags2 = "0.6.4"
 solana-client = "1.6.18"
 solana-sdk = "1.6.18"

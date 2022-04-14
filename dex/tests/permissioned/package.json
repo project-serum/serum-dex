@@ -1,0 +1,33 @@
+{
+  "name": "permissioned-markets",
+  "version": "1.0.0",
+  "description": "This repo demonstrates how to create \"permissioned markets\" on Serum via a proxy smart contract. A permissioned market is a regular Serum market with an additional open orders authority, which must sign every transaction to create an open orders account.",
+  "main": "index.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "anchor test",
+    "localnet": "./scripts/localnet.sh",
+    "build": "yarn build:dex && anchor build",
+    "build:dex": "cd ../../ && cargo build-bpf && cd tests/permissioned/"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/project-serum/permissioned-markets-quickstart.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/project-serum/permissioned-markets-quickstart/issues"
+  },
+  "homepage": "https://github.com/project-serum/permissioned-markets-quickstart#readme",
+  "devDependencies": {
+    "@project-serum/anchor": "^0.18.2",
+    "@project-serum/anchor-cli": "^0.18.2",
+    "@project-serum/common": "^0.0.1-beta.3",
+    "@project-serum/serum": "^0.13.61",
+    "@solana/spl-token": "^0.1.6",
+    "mocha": "^9.0.3"
+  }
+}

@@ -1,8 +1,30 @@
 use num_enum::{IntoPrimitive, TryFromPrimitive};
+use solana_program::pubkey::Pubkey;
 use std::convert::TryInto;
 
 #[cfg(test)]
 use proptest_derive::Arbitrary;
+
+mod stable_markets {
+    pub mod usdt_usdc {
+        solana_program::declare_id!("77quYg4MGneUdjgXCunt9GgM1usmrxKY31twEy3WHwcS");
+    }
+    pub mod msol_sol {
+        solana_program::declare_id!("5cLrMai1DsLRYc1Nio9qMTicsWtvzjzZfJPXyAoF4t1Z");
+    }
+    pub mod ust_usdc {
+        solana_program::declare_id!("EERNEEnBqdGzBS8dd46wwNY5F2kwnaCQ3vsq2fNKGogZ");
+    }
+    pub mod ust_usdt {
+        solana_program::declare_id!("8sFf9TW3KzxLiBXcDcjAxqabEsRroo4EiRr3UG1xbJ9m");
+    }
+    pub mod stsol_sol {
+        solana_program::declare_id!("2iDSTGhjJEiRxNaLF27CY6daMYPs5hgYrP2REHd5YD62");
+    }
+    pub mod usdh_usdc {
+        solana_program::declare_id!("CaFjigEgJdtGPxQxRjneA1hzNcY5MsHoAAL6Et67QrC5");
+    }
+}
 
 #[derive(Copy, Clone, IntoPrimitive, TryFromPrimitive, Debug)]
 #[cfg_attr(test, derive(Arbitrary))]
@@ -15,6 +37,7 @@ pub enum FeeTier {
     SRM5,
     SRM6,
     MSRM,
+    Stable,
 }
 
 #[repr(transparent)]
@@ -56,19 +79,30 @@ impl U64F64 {
 }
 
 #[inline(always)]
-const fn fee_bps(bps: u64) -> U64F64 {
-    U64F64(((bps as u128) << 64) / 10_000)
+const fn fee_tenth_of_bps(tenth_of_bps: u64) -> U64F64 {
+    U64F64(((tenth_of_bps as u128) << 64) / 100_000)
 }
 
 #[inline(always)]
-const fn rebate_bps(bps: u64) -> U64F64 {
-    U64F64(fee_bps(bps).0 + 1)
+const fn rebate_tenth_of_bps(tenth_of_bps: u64) -> U64F64 {
+    U64F64(fee_tenth_of_bps(tenth_of_bps).0 + 1)
 }
 
 impl FeeTier {
     #[inline]
-    pub fn from_srm_and_msrm_balances(srm_held: u64, msrm_held: u64) -> FeeTier {
+    pub fn from_srm_and_msrm_balances(market: &Pubkey, srm_held: u64, msrm_held: u64) -> FeeTier {
         let one_srm = 1_000_000;
+
+        if market == &stable_markets::usdt_usdc::ID
+            || market == &stable_markets::msol_sol::ID
+            || market == &stable_markets::ust_usdc::ID
+            || market == &stable_markets::ust_usdt::ID
+            || market == &stable_markets::stsol_sol::ID
+            || market == &stable_markets::usdh_usdc::ID
+        {
+            return FeeTier::Stable;
+        }
+
         match () {
             () if msrm_held >= 1 => FeeTier::MSRM,
             () if srm_held >= one_srm * 1_000_000 => FeeTier::SRM6,
@@ -82,24 +116,20 @@ impl FeeTier {
 
     #[inline]
     pub fn maker_rebate(self, pc_qty: u64) -> u64 {
-        use FeeTier::*;
-        let rate: U64F64 = match self {
-            MSRM => rebate_bps(5),
-            Base | SRM2 | SRM3 | SRM4 | SRM5 | SRM6 => rebate_bps(3),
-        };
-        rate.mul_u64(pc_qty).floor()
+        rebate_tenth_of_bps(0).mul_u64(pc_qty).floor()
     }
 
     fn taker_rate(self) -> U64F64 {
         use FeeTier::*;
         match self {
-            Base => fee_bps(22),
-            SRM2 => fee_bps(20),
-            SRM3 => fee_bps(18),
-            SRM4 => fee_bps(16),
-            SRM5 => fee_bps(14),
-            SRM6 => fee_bps(12),
-            MSRM => fee_bps(10),
+            Base => fee_tenth_of_bps(40),
+            SRM2 => fee_tenth_of_bps(39),
+            SRM3 => fee_tenth_of_bps(38),
+            SRM4 => fee_tenth_of_bps(36),
+            SRM5 => fee_tenth_of_bps(34),
+            SRM6 => fee_tenth_of_bps(32),
+            MSRM => fee_tenth_of_bps(30),
+            Stable => fee_tenth_of_bps(10),
         }
     }
 
@@ -136,20 +166,20 @@ mod tests {
             let fee = tt.taker_fee(qty);
             let rebate = mt.maker_rebate(qty) + referrer_rebate(fee);
             assert!(fee > rebate);
-            let net_bps_u64f64 = (fee - rebate) as u128 * 10_000;
+            let net_bps_u64f64 = (fee - rebate) as u128 * 100_000;
             let three_bps = (qty as u128) * 3;
             let dust_qty_u64f64 = 1 << 32;
             assert!(net_bps_u64f64 + dust_qty_u64f64 > three_bps, "{:x}, {:x}, {:x}", qty, net_bps_u64f64, three_bps);
         }
 
         #[test]
-        fn fee_bps_approx(bps in 1..100u64) {
-            let rate = fee_bps(bps);
-            let rate_bps: U64F64 = rate.mul_u64(10_000);
+        fn fee_tenth_of_bps_approx(tenth_of_bps in 1..1000u64) {
+            let rate = fee_tenth_of_bps(tenth_of_bps);
+            let rate_bps: U64F64 = rate.mul_u64(100_000);
             let rate_bps_int: u64 = rate_bps.floor();
             let rate_bps_frac: u64 = rate_bps.frac_part();
             let inexact = rate_bps_frac != 0;
-            assert!(rate_bps_int == bps - (inexact as u64));
+            assert!(rate_bps_int == tenth_of_bps - (inexact as u64));
         }
 
         #[test]

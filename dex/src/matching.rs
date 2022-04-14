@@ -226,12 +226,9 @@ struct OrderRemaining {
 impl<'ob> OrderBookState<'ob> {
     fn new_order(
         &mut self,
-
         params: NewOrderParams,
         event_q: &mut EventQueue,
-
         proceeds: &mut RequestProceeds,
-
         limit: &mut u16,
     ) -> DexResult<Option<OrderRemaining>> {
         let NewOrderParams {

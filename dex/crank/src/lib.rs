@@ -1,4 +1,4 @@
-#![deny(safe_packed_borrows)]
+#![deny(unaligned_references)]
 #![allow(dead_code)]
 
 use std::borrow::Cow;
@@ -8,10 +8,11 @@ use std::convert::identity;
 use std::mem::size_of;
 use std::num::NonZeroU64;
 use std::sync::{Arc, Mutex};
+use std::time::SystemTime;
 use std::{thread, time};
 
 use anyhow::{format_err, Result};
-use clap::Clap;
+use clap::Parser;
 use debug_print::debug_println;
 use enumflags2::BitFlags;
 use log::{error, info};
@@ -42,6 +43,7 @@ use serum_common::client::rpc::{
 use serum_common::client::Cluster;
 use serum_dex::instruction::{
     cancel_order_by_client_order_id as cancel_order_by_client_order_id_ix,
+    cancel_orders_by_client_order_ids as cancel_orders_by_client_order_ids_ix,
     close_open_orders as close_open_orders_ix, init_open_orders as init_open_orders_ix,
     MarketInstruction, NewOrderInstructionV3, SelfTradeBehavior,
 };
@@ -63,7 +65,7 @@ fn read_keypair_file(s: &str) -> Result<Keypair> {
         .map_err(|_| format_err!("failed to read keypair from {}", s))
 }
 
-#[derive(Clap, Debug)]
+#[derive(Parser, Debug)]
 pub struct Opts {
     #[clap(default_value = "mainnet")]
     pub cluster: Cluster,
@@ -77,7 +79,7 @@ impl Opts {
     }
 }
 
-#[derive(Clap, Debug)]
+#[derive(Parser, Debug)]
 pub enum Command {
     Genesis {
         #[clap(long, short)]
@@ -430,13 +432,15 @@ fn get_keys_for_market<'a>(
         if account_flags.intersects(AccountFlag::Permissioned) {
             let state = transmute_one_pedantic::<MarketStateV2>(transmute_to_bytes(&words))
                 .map_err(|e| e.without_src())?;
+            state.check_flags(true)?;
             state.inner
         } else {
-            transmute_one_pedantic::<MarketState>(transmute_to_bytes(&words))
-                .map_err(|e| e.without_src())?
+            let state = transmute_one_pedantic::<MarketState>(transmute_to_bytes(&words))
+                .map_err(|e| e.without_src())?;
+            state.check_flags(true)?;
+            state
         }
     };
-    market_state.check_flags()?;
     let vault_signer_key =
         gen_vault_signer_key(market_state.vault_signer_nonce, market, program_id)?;
     assert_eq!(
@@ -703,7 +707,7 @@ fn consume_events_wrapper(
     };
 }
 
-fn consume_events_once(
+pub fn consume_events_once(
     client: &RpcClient,
     program_id: &Pubkey,
     payer: &Keypair,
@@ -724,7 +728,7 @@ fn consume_events_once(
         &payer.pubkey(),
         rand::random::<u64>() % 10000 + 1,
     );
-    let (recent_hash, _fee_calc) = client.get_recent_blockhash()?;
+    let recent_hash = client.get_latest_blockhash()?;
     let txn = Transaction::new_signed_with_payer(
         &[instruction, random_instruction],
         Some(&payer.pubkey()),
@@ -759,7 +763,7 @@ fn consume_events(
             Some(i) => i,
         }
     };
-    let (recent_hash, _fee_calc) = client.get_recent_blockhash()?;
+    let recent_hash = client.get_latest_blockhash()?;
     info!("Consuming events ...");
     let txn = Transaction::new_signed_with_payer(
         std::slice::from_ref(&instruction),
@@ -863,7 +867,11 @@ fn whole_shebang(client: &RpcClient, program_id: &Pubkey, payer: &Keypair) -> Re
     debug_println!("Initializing open orders");
     init_open_orders(client, program_id, payer, &market_keys, &mut orders)?;
 
-    debug_println!("Placing bid...");
+    debug_println!("Placing successful bid...");
+    let now = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64;
     place_order(
         client,
         program_id,
@@ -880,43 +888,83 @@ fn whole_shebang(client: &RpcClient, program_id: &Pubkey, payer: &Keypair) -> Re
             client_order_id: 019269,
             self_trade_behavior: SelfTradeBehavior::DecrementTake,
             limit: std::u16::MAX,
+            max_ts: now + 20,
         },
     )?;
 
     debug_println!("Bid account: {}", orders.unwrap());
 
-    debug_println!("Placing offer...");
-    let mut orders = None;
-    place_order(
+    debug_println!("Placing failing bid...");
+
+    let result = place_order(
         client,
         program_id,
         payer,
-        &coin_wallet.pubkey(),
+        &pc_wallet.pubkey(),
         &market_keys,
         &mut orders,
         NewOrderInstructionV3 {
-            side: Side::Ask,
-            limit_price: NonZeroU64::new(499).unwrap(),
+            side: Side::Bid,
+            limit_price: NonZeroU64::new(500).unwrap(),
             max_coin_qty: NonZeroU64::new(1_000).unwrap(),
-            max_native_pc_qty_including_fees: NonZeroU64::new(std::u64::MAX).unwrap(),
+            max_native_pc_qty_including_fees: NonZeroU64::new(500_000).unwrap(),
             order_type: OrderType::Limit,
-            limit: std::u16::MAX,
+            client_order_id: 019269,
             self_trade_behavior: SelfTradeBehavior::DecrementTake,
-            client_order_id: 985982,
+            limit: std::u16::MAX,
+            max_ts: now - 5,
         },
+    );
+    assert!(result.is_err());
+
+    debug_println!("Placing 3 offers...");
+
+    let mut orders = None;
+
+    for i in 0..3 {
+        place_order(
+            client,
+            program_id,
+            payer,
+            &coin_wallet.pubkey(),
+            &market_keys,
+            &mut orders,
+            NewOrderInstructionV3 {
+                side: Side::Ask,
+                limit_price: NonZeroU64::new(499).unwrap(),
+                max_coin_qty: NonZeroU64::new(1_000).unwrap(),
+                max_native_pc_qty_including_fees: NonZeroU64::new(std::u64::MAX).unwrap(),
+                order_type: OrderType::Limit,
+                limit: std::u16::MAX,
+                self_trade_behavior: SelfTradeBehavior::DecrementTake,
+                // 985982, 985983, 985984
+                client_order_id: 985982 + i,
+                max_ts: i64::MAX,
+            },
+        )?;
+    }
+
+    debug_println!("Ask account: {}", orders.unwrap());
+
+    // Cancel 1st open offer (985982), 3rd open offer (985984), and fake orders
+    cancel_orders_by_client_order_ids(
+        client,
+        program_id,
+        payer,
+        &market_keys,
+        &orders.unwrap(),
+        [985985, 985982, 100, 985984, 234, 0, 985984, 0],
     )?;
 
-    // Cancel the open order so that we can close it later.
+    // Cancel the 2nd open order so that we can close it later.
     cancel_order_by_client_order_id(
         client,
         program_id,
         payer,
         &market_keys,
         &orders.unwrap(),
-        985982,
+        985983,
     )?;
-
-    debug_println!("Ask account: {}", orders.unwrap());
 
     debug_println!("Consuming events in 15s ...");
     std::thread::sleep(std::time::Duration::new(15, 0));
@@ -966,17 +1014,50 @@ pub fn cancel_order_by_client_order_id(
         &state.event_q,
         client_order_id,
     )?];
-    let (recent_hash, _fee_calc) = client.get_recent_blockhash()?;
+    let recent_hash = client.get_latest_blockhash()?;
     let txn = Transaction::new_signed_with_payer(ixs, Some(&owner.pubkey()), &[owner], recent_hash);
 
     debug_println!("Canceling order by client order id instruction ...");
     let result = simulate_transaction(client, &txn, true, CommitmentConfig::confirmed())?;
+    debug_println!("{:#?}", result.value.logs);
     if let Some(e) = result.value.err {
-        debug_println!("{:#?}", result.value.logs);
         return Err(format_err!("simulate_transaction error: {:?}", e));
     }
 
     send_txn(client, &txn, false)?;
+    Ok(())
+}
+
+pub fn cancel_orders_by_client_order_ids(
+    client: &RpcClient,
+    program_id: &Pubkey,
+    owner: &Keypair,
+    state: &MarketPubkeys,
+    orders: &Pubkey,
+    client_order_ids: [u64; 8],
+) -> Result<()> {
+    let ixs = &[cancel_orders_by_client_order_ids_ix(
+        program_id,
+        &state.market,
+        &state.bids,
+        &state.asks,
+        orders,
+        &owner.pubkey(),
+        &state.event_q,
+        client_order_ids,
+    )?];
+    let recent_hash = client.get_latest_blockhash()?;
+    let txn = Transaction::new_signed_with_payer(ixs, Some(&owner.pubkey()), &[owner], recent_hash);
+
+    debug_println!("Canceling orders by client order ids instruction ...");
+    let result = simulate_transaction(client, &txn, true, CommitmentConfig::confirmed())?;
+    debug_println!("{:#?}", result.value.logs);
+    if let Some(e) = result.value.err {
+        return Err(format_err!("simulate_transaction error: {:?}", e));
+    }
+
+    send_txn(client, &txn, false)?;
+
     Ok(())
 }
 
@@ -995,7 +1076,7 @@ pub fn close_open_orders(
         &owner.pubkey(),
         &state.market,
     )?];
-    let (recent_hash, _fee_calc) = client.get_recent_blockhash()?;
+    let recent_hash = client.get_latest_blockhash()?;
     let txn = Transaction::new_signed_with_payer(ixs, Some(&owner.pubkey()), &[owner], recent_hash);
 
     debug_println!("Simulating close open orders instruction ...");
@@ -1044,7 +1125,7 @@ pub fn init_open_orders(
     )?);
     signers.push(owner);
 
-    let (recent_hash, _fee_calc) = client.get_recent_blockhash()?;
+    let recent_hash = client.get_latest_blockhash()?;
     let txn = Transaction::new_signed_with_payer(
         &instructions,
         Some(&owner.pubkey()),
@@ -1107,7 +1188,7 @@ pub fn place_order(
     instructions.push(instruction);
     signers.push(payer);
 
-    let (recent_hash, _fee_calc) = client.get_recent_blockhash()?;
+    let recent_hash = client.get_latest_blockhash()?;
     let txn = Transaction::new_signed_with_payer(
         &instructions,
         Some(&payer.pubkey()),
@@ -1144,7 +1225,7 @@ fn settle_funds(
             AccountMeta::new_readonly(spl_token::ID, false),
         ],
     };
-    let (recent_hash, _fee_calc) = client.get_recent_blockhash()?;
+    let recent_hash = client.get_latest_blockhash()?;
     let mut signers = vec![payer];
     if let Some(s) = signer {
         signers.push(s);
@@ -1212,6 +1293,7 @@ pub fn list_market(
         &pc_vault.pubkey(),
         None,
         None,
+        None,
         &bids_key.pubkey(),
         &asks_key.pubkey(),
         &req_q_key.pubkey(),
@@ -1228,7 +1310,7 @@ pub fn list_market(
 
     instructions.push(init_market_instruction);
 
-    let (recent_hash, _fee_calc) = client.get_recent_blockhash()?;
+    let recent_hash = client.get_latest_blockhash()?;
     let signers = vec![
         payer,
         &market_key,
@@ -1360,7 +1442,7 @@ pub fn match_orders(
         data: instruction_data,
     };
 
-    let (recent_hash, _fee_calc) = client.get_recent_blockhash()?;
+    let recent_hash = client.get_latest_blockhash()?;
     let txn = Transaction::new_signed_with_payer(
         std::slice::from_ref(&instruction),
         Some(&payer.pubkey()),
@@ -1409,7 +1491,7 @@ fn create_account(
 
     let instructions = vec![create_account_instr, init_account_instr];
 
-    let (recent_hash, _fee_calc) = client.get_recent_blockhash()?;
+    let recent_hash = client.get_latest_blockhash()?;
 
     let txn = Transaction::new_signed_with_payer(
         &instructions,
@@ -1443,7 +1525,7 @@ fn mint_to_existing_account(
     )?;
 
     let instructions = vec![mint_tokens_instr];
-    let (recent_hash, _fee_calc) = client.get_recent_blockhash()?;
+    let recent_hash = client.get_latest_blockhash()?;
     let txn = Transaction::new_signed_with_payer(
         &instructions,
         Some(&payer.pubkey()),
@@ -1472,7 +1554,7 @@ fn initialize_token_account(client: &RpcClient, mint: &Pubkey, owner: &Keypair) 
     )?;
     let signers = vec![owner, &recip_keypair];
     let instructions = vec![create_recip_instr, init_recip_instr];
-    let (recent_hash, _fee_calc) = client.get_recent_blockhash()?;
+    let recent_hash = client.get_latest_blockhash()?;
     let txn = Transaction::new_signed_with_payer(
         &instructions,
         Some(&owner.pubkey()),

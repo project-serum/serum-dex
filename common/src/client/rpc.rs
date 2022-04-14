@@ -35,7 +35,7 @@ pub fn create_account_rent_exempt(
 
     let instructions = vec![create_account_instr];
 
-    let (recent_hash, _fee_calc) = client.get_recent_blockhash()?;
+    let recent_hash = client.get_latest_blockhash()?;
 
     let txn = Transaction::new_signed_with_payer(
         &instructions,
@@ -63,7 +63,7 @@ pub fn create_token_account(
         payer,
     )?;
 
-    let (recent_hash, _fee_calc) = client.get_recent_blockhash()?;
+    let recent_hash = client.get_latest_blockhash()?;
     let signers = vec![payer, &spl_account];
 
     let txn = Transaction::new_signed_with_payer(
@@ -143,7 +143,7 @@ pub fn create_and_init_mint(
     )?;
     let instructions = vec![create_mint_account_instruction, initialize_mint_instruction];
 
-    let (recent_hash, _fee_calc) = client.get_recent_blockhash()?;
+    let recent_hash = client.get_latest_blockhash()?;
     let txn = Transaction::new_signed_with_payer(
         &instructions,
         Some(&payer_keypair.pubkey()),
@@ -193,7 +193,7 @@ pub fn mint_to_new_account(
 
     let instructions = vec![create_recip_instr, init_recip_instr, mint_tokens_instr];
 
-    let (recent_hash, _fee_calc) = client.get_recent_blockhash()?;
+    let recent_hash = client.get_latest_blockhash()?;
     let txn = Transaction::new_signed_with_payer(
         &instructions,
         Some(&payer.pubkey()),
@@ -221,7 +221,7 @@ pub fn transfer(
         &[],
         amount,
     )?;
-    let (recent_hash, _fee_calc) = client.get_recent_blockhash()?;
+    let recent_hash = client.get_latest_blockhash()?;
     let signers = [payer, from_authority];
     let txn =
         Transaction::new_signed_with_payer(&[instr], Some(&payer.pubkey()), &signers, recent_hash);
