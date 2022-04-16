@@ -67,8 +67,9 @@ export PATH="/home/ubuntu/.local/share/solana/install/active_release/bin:$PATH"
 
 git clone https://github.com/project-serum/serum-dex
 cd serum-dex
-./do.sh update
-./do.sh build dex
+cargo build-bpf
+
+Cargo build will generate .so files you can deploy on Solana.
 
 # run a solana cluster. in a new shell:
 git clone https://github.com/solana-labs/solana --branch v1.4.14
