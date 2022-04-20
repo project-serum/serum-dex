@@ -1,10 +1,15 @@
 [package]
 name = "serum-dex-permissioned"
-version = "0.5.1"
+version = "0.5.4"
 edition = "2018"
+description = "Serum DEX Permissioned markets library for use with Anchor based caller programs"
+license = "Apache-2.0"
+
+[features]
+devnet = ["anchor-spl/devnet"]
 
 [dependencies]
-anchor-lang = "0.18.2"
-anchor-spl = { version = "0.18.2", features = ["dex"] }
-serum_dex = { path = "../", features = ["no-entrypoint"] }
+anchor-lang = "0.24.2"
+anchor-spl = { version = "0.24.2", features = ["dex"] }
+serum_dex = { version="0.5.4", features = ["no-entrypoint"] }
 spl-token = { version = "3.1.1", features = ["no-entrypoint"] }

@@ -17,7 +17,7 @@ use safe_transmute::{self, to_bytes::transmute_to_bytes, trivial::TriviallyTrans
 
 use solana_program::{
     account_info::AccountInfo, program_error::ProgramError, program_pack::Pack, pubkey::Pubkey,
-    rent::Rent, sysvar::Sysvar,
+    rent::Rent, sysvar::Sysvar
 };
 use spl_token::error::TokenError;
 

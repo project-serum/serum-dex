@@ -1,4 +1,4 @@
-use crate::{Context, ErrorCode, MarketMiddleware};
+use crate::{Context, middleware::ErrorCode, MarketMiddleware};
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::program;
 use anchor_lang::solana_program::pubkey::Pubkey;
@@ -38,7 +38,7 @@ impl<'a> MarketProxy<'a> {
         program_id: &Pubkey,
         accounts: &[AccountInfo],
         data: &[u8],
-    ) -> ProgramResult {
+    ) -> Result<()> {
         let mut ix_data = data;
 
         // First account is the Serum DEX executable--used for CPI.
