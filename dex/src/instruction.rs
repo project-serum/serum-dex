@@ -478,6 +478,40 @@ pub enum MarketInstruction {
     /// 4. `[signer]` the OpenOrders owner
     /// 5. `[writable]` event_q
     CancelOrdersByClientIds([u64; 8]),
+    /// 0. `[writable]` the market
+    /// 1. `[writable]` the OpenOrders account to use
+    /// 2. `[writable]` the request queue
+    /// 3. `[writable]` the event queue
+    /// 4. `[writable]` bids
+    /// 5. `[writable]` asks
+    /// 6. `[writable]` the (coin or price currency) account paying for the order
+    /// 7. `[signer]` owner of the OpenOrders account
+    /// 8. `[writable]` coin vault
+    /// 9. `[writable]` pc vault
+    /// 10. `[]` spl token program
+    /// 11. `[]` the rent sysvar
+    /// 12. `[]` (optional) the (M)SRM account used for fee discounts
+    ReplaceOrderByClientId(NewOrderInstructionV3),
+    /// 0. `[writable]` the market
+    /// 1. `[writable]` the OpenOrders account to use
+    /// 2. `[writable]` the request queue
+    /// 3. `[writable]` the event queue
+    /// 4. `[writable]` bids
+    /// 5. `[writable]` asks
+    /// 6. `[writable]` the (coin or price currency) account paying for the order
+    /// 7. `[signer]` owner of the OpenOrders account
+    /// 8. `[writable]` coin vault
+    /// 9. `[writable]` pc vault
+    /// 10. `[]` spl token program
+    /// 11. `[]` the rent sysvar
+    /// 12. `[]` (optional) the (M)SRM account used for fee discounts
+    #[cfg_attr(
+        test,
+        proptest(
+            strategy = "prop::collection::vec(any::<NewOrderInstructionV3>(), 0..=8).prop_map(MarketInstruction::ReplaceOrdersByClientIds)"
+        )
+    )]
+    ReplaceOrdersByClientIds(Vec<NewOrderInstructionV3>),
 }
 
 impl MarketInstruction {
@@ -486,7 +520,7 @@ impl MarketInstruction {
     }
 
     pub fn unpack(versioned_bytes: &[u8]) -> Option<Self> {
-        if versioned_bytes.len() < 5 || versioned_bytes.len() > 69 {
+        if versioned_bytes.len() < 5 || versioned_bytes.len() > 5 + 8 + 54 * 8 {
             return None;
         }
         let (&[version], &discrim, data) = array_refs![versioned_bytes, 1, 4; ..;];
@@ -592,6 +626,26 @@ impl MarketInstruction {
                     *client_id = u64::from_le_bytes(chunk.try_into().unwrap());
                 }
                 MarketInstruction::CancelOrdersByClientIds(client_ids)
+            }
+            (19, 54) => MarketInstruction::ReplaceOrderByClientId({
+                let data_arr = array_ref![data, 0, 54];
+                NewOrderInstructionV3::unpack(data_arr)?
+            }),
+            (20, len) if len % 54 == 8 && len <= 8 + 8 * 54 => {
+                if u64::from_le_bytes(data[0..8].try_into().unwrap())
+                    != (data.len() as u64 - 8) / 54
+                {
+                    return None;
+                }
+
+                let new_orders = data[8..]
+                    .chunks_exact(54)
+                    .map(|chunk| {
+                        let chunk_arr = array_ref![chunk, 0, 54];
+                        NewOrderInstructionV3::unpack(chunk_arr)
+                    })
+                    .collect::<Option<Vec<_>>>()?;
+                MarketInstruction::ReplaceOrdersByClientIds(new_orders)
             }
             _ => return None,
         })
