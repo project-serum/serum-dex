@@ -665,8 +665,56 @@ fn test_replace_orders() {
         assert_eq!(identity(open_orders.native_pc_total), 150_000);
     }
 
+    // Replace order 0xabc1
+    // 0xabc1: 50K -> 60K (replaced)
+    // 0xabc2: 50K (unchanged)
+    // 0xabc3: 50K (unchanged)
+    {
+        let instruction_data = MarketInstruction::ReplaceOrderByClientId(NewOrderInstructionV3 {
+            side: Side::Bid,
+            limit_price: NonZeroU64::new(10_000).unwrap(),
+            max_coin_qty: NonZeroU64::new(10).unwrap(),
+            max_native_pc_qty_including_fees: NonZeroU64::new(60_000).unwrap(),
+            order_type: OrderType::Limit,
+            client_order_id: 0xabc1,
+            self_trade_behavior: SelfTradeBehavior::AbortTransaction,
+            limit: 5,
+            max_ts: i64::MAX,
+        })
+        .pack();
+
+        let instruction_accounts: &[AccountInfo] = bump_vec![in &bump;
+            accounts.market.clone(),
+            orders_account.clone(),
+            accounts.req_q.clone(),
+            accounts.event_q.clone(),
+            accounts.bids.clone(),
+            accounts.asks.clone(),
+            pc_account.clone(),
+            owner.clone(),
+            accounts.coin_vault.clone(),
+            accounts.pc_vault.clone(),
+            spl_token_program.clone(),
+            accounts.rent_sysvar.clone(),
+        ]
+        .into_bump_slice();
+
+        State::process(dex_program_id, instruction_accounts, &instruction_data).unwrap();
+    }
+
+    {
+        let open_orders = Market::load(&accounts.market, &dex_program_id, false)
+            .unwrap()
+            .load_orders_mut(&orders_account, None, &dex_program_id, None, None)
+            .unwrap();
+        assert_eq!(identity(open_orders.native_coin_free), 0);
+        assert_eq!(identity(open_orders.native_coin_total), 0);
+        assert_eq!(identity(open_orders.native_pc_free), 0);
+        assert_eq!(identity(open_orders.native_pc_total), 160_000);
+    }
+
     // Replace orders 0xabc1, 0xabc3, 0xabc4
-    // 0xabc1: 50K -> 70K (replaced)
+    // 0xabc1: 60K -> 70K (replaced)
     // 0xabc2: 50K (unchanged)
     // 0xabc3: 50K -> 70K (replaced)
     // 0xabc4: 70K (new)

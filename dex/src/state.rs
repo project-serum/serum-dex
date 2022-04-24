@@ -1943,7 +1943,10 @@ pub(crate) mod account_parser {
             f: impl FnOnce(ReplaceOrdersByClientIdsArgs) -> DexResult<T>,
         ) -> DexResult<T> {
             // Account indices for market, bids, asks, OpenOrders, owner, event_q
-            let cancel_accounts = [0, 4, 5, 1, 7, 3].map(|i| accounts[i].clone());
+            let cancel_accounts = [0, 4, 5, 1, 7, 3]
+                .iter()
+                .map(|i| accounts[*i].clone())
+                .collect::<Vec<_>>();
             let mut client_order_ids = [0; 8];
             for (instruction, client_order_id) in
                 instructions.iter().zip(client_order_ids.iter_mut())
@@ -1955,7 +1958,7 @@ pub(crate) mod account_parser {
                 program_id,
                 instructions,
                 accounts,
-                cancel_accounts: &cancel_accounts[..],
+                cancel_accounts: cancel_accounts.as_slice(),
                 client_order_ids,
             })
         }
@@ -3198,7 +3201,6 @@ impl State {
 
         use solana_program::clock::Clock;
 
-        use crate::error::DexError;
         drop(open_orders);
 
         if deposit_amount != 0 {
