@@ -3239,6 +3239,7 @@ impl State {
         Ok(())
     }
 
+    #[cfg(feature = "program")]
     fn process_replace_orders_by_client_ids(
         args: account_parser::ReplaceOrdersByClientIdsArgs,
     ) -> DexResult {
