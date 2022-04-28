@@ -1157,6 +1157,7 @@ mod fuzzing {
         pub order_type: OrderType,
         pub client_order_id: u64,
         pub limit: u16,
+        pub max_ts: i64,
     }
 
     #[derive(arbitrary::Arbitrary)]
@@ -1203,6 +1204,7 @@ mod fuzzing {
                 client_order_id: value.client_order_id,
                 self_trade_behavior: value.self_trade_behavior,
                 limit: value.limit,
+                max_ts: value.max_ts,
             })
         }
     }
@@ -1261,6 +1263,7 @@ mod fuzzing {
                 order_type: value.order_type,
                 client_order_id: value.client_order_id,
                 limit: value.limit,
+                max_ts: value.max_ts,
             }
         }
     }
