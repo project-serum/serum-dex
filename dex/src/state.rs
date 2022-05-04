@@ -871,6 +871,10 @@ impl RequestQueue<'_> {
         self.header.next_seq_num += 1;
         seq_num
     }
+
+    pub fn get_next_seq_num(& self) -> u64 {
+        self.header.next_seq_num
+    }
 }
 
 #[derive(Copy, Clone, BitFlags, Debug)]
