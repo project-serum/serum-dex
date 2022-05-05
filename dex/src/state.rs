@@ -856,8 +856,9 @@ impl QueueHeader for RequestQueueHeader {
 pub type RequestQueue<'a> = Queue<'a, RequestQueueHeader>;
 
 impl RequestQueue<'_> {
-    fn gen_order_id(&mut self, limit_price: u64, side: Side) -> u128 {
-        let seq_num = self.gen_seq_num();
+
+    pub fn gen_order_id(&mut self, limit_price: u64, side: Side, increment_seq: bool) -> u128 {
+        let seq_num = self.gen_seq_num(increment_seq);
         let upper = (limit_price as u128) << 64;
         let lower = match side {
             Side::Bid => !seq_num,
@@ -866,14 +867,12 @@ impl RequestQueue<'_> {
         upper | (lower as u128)
     }
 
-    fn gen_seq_num(&mut self) -> u64 {
+    fn gen_seq_num(&mut self, increment_seq: bool) -> u64 {
         let seq_num = self.header.next_seq_num;
-        self.header.next_seq_num += 1;
+        if increment_seq {
+            self.header.next_seq_num += 1;
+        }
         seq_num
-    }
-
-    pub fn get_next_seq_num(& self) -> u64 {
-        self.header.next_seq_num
     }
 }
 
@@ -2908,7 +2907,7 @@ impl State {
             }
         };
 
-        let order_id = req_q.gen_order_id(instruction.limit_price.get(), instruction.side);
+        let order_id = req_q.gen_order_id(instruction.limit_price.get(), instruction.side, true);
         let owner_slot = open_orders_mut.add_order(order_id, instruction.side)?;
         open_orders_mut.client_order_ids[owner_slot as usize] = instruction.client_order_id;
 
