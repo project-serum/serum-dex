@@ -252,13 +252,13 @@ const_assert_eq!(_NODE_ALIGN, align_of::<AnyNode>());
 
 #[derive(Copy, Clone)]
 #[repr(packed)]
-struct SlabHeader {
+pub struct SlabHeader {
     bump_index: u64,
     free_list_len: u64,
     free_list_head: u32,
 
     root_node: u32,
-    leaf_count: u64,
+    pub leaf_count: u64,
 }
 unsafe impl Zeroable for SlabHeader {}
 unsafe impl Pod for SlabHeader {}
@@ -347,7 +347,7 @@ impl Slab {
         (header, nodes)
     }
 
-    fn header(&self) -> &SlabHeader {
+    pub fn header(&self) -> &SlabHeader {
         self.parts().0
     }
 
@@ -748,6 +748,36 @@ impl Slab {
             self.hexdump();
         }
         assert_eq!(buf.len(), buf.capacity());
+        buf
+    }
+
+    pub fn traverse_ordered(&self, bids: bool) -> Vec<&LeafNode> {
+        fn walk_rec<'a>(
+            slab: &'a Slab,
+            sub_root: NodeHandle,
+            buf: &mut Vec<&'a LeafNode>,
+            bids: bool,
+        ) {
+            match slab.get(sub_root).unwrap().case().unwrap() {
+                NodeRef::Leaf(leaf) => {
+                    buf.push(leaf);
+                }
+                NodeRef::Inner(inner) => {
+                    if bids {
+                        walk_rec(slab, inner.children[1], buf, bids);
+                        walk_rec(slab, inner.children[0], buf, bids);
+                    } else {
+                        walk_rec(slab, inner.children[0], buf, bids);
+                        walk_rec(slab, inner.children[1], buf, bids);
+                    }
+                }
+            }
+        }
+
+        let mut buf = Vec::with_capacity(self.header().leaf_count as usize);
+        if let Some(r) = self.root() {
+            walk_rec(self, r, &mut buf, bids);
+        }
         buf
     }
 
