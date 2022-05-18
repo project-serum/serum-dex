@@ -320,6 +320,23 @@ impl CancelOrderInstructionV2 {
 #[derive(PartialEq, Eq, Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(test, derive(Arbitrary))]
 #[cfg_attr(feature = "fuzz", derive(arbitrary::Arbitrary))]
+pub struct CancelOrderInstructionV2NoError {
+    pub side: Side,
+    pub order_id: u128,
+}
+
+impl CancelOrderInstructionV2NoError {
+    fn unpack(data: &[u8; 20]) -> Option<Self> {
+        let (&side_arr, &oid_arr) = array_refs![data, 4, 16];
+        let side = Side::try_from_primitive(u32::from_le_bytes(side_arr).try_into().ok()?).ok()?;
+        let order_id = u128::from_le_bytes(oid_arr);
+        Some(CancelOrderInstructionV2NoError { side, order_id })
+    }
+}
+
+#[derive(PartialEq, Eq, Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(test, derive(Arbitrary))]
+#[cfg_attr(feature = "fuzz", derive(arbitrary::Arbitrary))]
 pub enum MarketInstruction {
     /// 0. `[writable]` the market to initialize
     /// 1. `[writable]` zeroed out request queue
@@ -429,7 +446,21 @@ pub enum MarketInstruction {
     /// 3. `[writable]` OpenOrders
     /// 4. `[signer]` the OpenOrders owner
     /// 5. `[writable]` event_q
+    CancelOrderV2NoError(CancelOrderInstructionV2NoError),
+    /// 0. `[writable]` market
+    /// 1. `[writable]` bids
+    /// 2. `[writable]` asks
+    /// 3. `[writable]` OpenOrders
+    /// 4. `[signer]` the OpenOrders owner
+    /// 5. `[writable]` event_q
     CancelOrderByClientIdV2(u64),
+    /// 0. `[writable]` market
+    /// 1. `[writable]` bids
+    /// 2. `[writable]` asks
+    /// 3. `[writable]` OpenOrders
+    /// 4. `[signer]` the OpenOrders owner
+    /// 5. `[writable]` event_q
+    CancelOrderByClientIdV2NoError(u64),
     /// 0. `[writable]` market
     /// 1. `[writable]` bids
     /// 2. `[writable]` asks
@@ -545,21 +576,29 @@ impl MarketInstruction {
                 let data_arr = array_ref![data, 0, 20];
                 CancelOrderInstructionV2::unpack(data_arr)?
             }),
-            (12, 8) => {
+            (12, 20) => MarketInstruction::CancelOrderV2NoError({
+                let data_arr = array_ref![data, 0, 20];
+                CancelOrderInstructionV2NoError::unpack(data_arr)?
+            }),
+            (13, 8) => {
                 let client_id = array_ref![data, 0, 8];
                 MarketInstruction::CancelOrderByClientIdV2(u64::from_le_bytes(*client_id))
             }
-            (13, 46) => MarketInstruction::SendTake({
+            (14, 8) => {
+                let client_id = array_ref![data, 0, 8];
+                MarketInstruction::CancelOrderByClientIdV2NoError(u64::from_le_bytes(*client_id))
+            }
+            (15, 46) => MarketInstruction::SendTake({
                 let data_arr = array_ref![data, 0, 46];
                 SendTakeInstruction::unpack(data_arr)?
             }),
-            (14, 0) => MarketInstruction::CloseOpenOrders,
-            (15, 0) => MarketInstruction::InitOpenOrders,
-            (16, 2) => {
+            (16, 0) => MarketInstruction::CloseOpenOrders,
+            (17, 0) => MarketInstruction::InitOpenOrders,
+            (18, 2) => {
                 let limit = array_ref![data, 0, 2];
                 MarketInstruction::Prune(u16::from_le_bytes(*limit))
             }
-            (17, 2) => {
+            (19, 2) => {
                 let limit = array_ref![data, 0, 2];
                 MarketInstruction::ConsumeEventsPermissioned(u16::from_le_bytes(*limit))
             }
@@ -822,6 +861,35 @@ pub fn cancel_order(
     })
 }
 
+pub fn cancel_order_no_error(
+    program_id: &Pubkey,
+    market: &Pubkey,
+    market_bids: &Pubkey,
+    market_asks: &Pubkey,
+    open_orders_account: &Pubkey,
+    open_orders_account_owner: &Pubkey,
+    event_queue: &Pubkey,
+    side: Side,
+    order_id: u128,
+) -> Result<Instruction, DexError> {
+    let data =
+        MarketInstruction::CancelOrderV2NoError(CancelOrderInstructionV2NoError { side, order_id })
+            .pack();
+    let accounts: Vec<AccountMeta> = vec![
+        AccountMeta::new(*market, false),
+        AccountMeta::new(*market_bids, false),
+        AccountMeta::new(*market_asks, false),
+        AccountMeta::new(*open_orders_account, false),
+        AccountMeta::new_readonly(*open_orders_account_owner, true),
+        AccountMeta::new(*event_queue, false),
+    ];
+    Ok(Instruction {
+        program_id: *program_id,
+        data,
+        accounts,
+    })
+}
+
 pub fn settle_funds(
     program_id: &Pubkey,
     market: &Pubkey,
@@ -868,6 +936,32 @@ pub fn cancel_order_by_client_order_id(
     client_order_id: u64,
 ) -> Result<Instruction, DexError> {
     let data = MarketInstruction::CancelOrderByClientIdV2(client_order_id).pack();
+    let accounts: Vec<AccountMeta> = vec![
+        AccountMeta::new(*market, false),
+        AccountMeta::new(*market_bids, false),
+        AccountMeta::new(*market_asks, false),
+        AccountMeta::new(*open_orders_account, false),
+        AccountMeta::new_readonly(*open_orders_account_owner, true),
+        AccountMeta::new(*event_queue, false),
+    ];
+    Ok(Instruction {
+        program_id: *program_id,
+        data,
+        accounts,
+    })
+}
+
+pub fn cancel_order_by_client_order_id_no_error(
+    program_id: &Pubkey,
+    market: &Pubkey,
+    market_bids: &Pubkey,
+    market_asks: &Pubkey,
+    open_orders_account: &Pubkey,
+    open_orders_account_owner: &Pubkey,
+    event_queue: &Pubkey,
+    client_order_id: u64,
+) -> Result<Instruction, DexError> {
+    let data = MarketInstruction::CancelOrderByClientIdV2NoError(client_order_id).pack();
     let accounts: Vec<AccountMeta> = vec![
         AccountMeta::new(*market, false),
         AccountMeta::new(*market_bids, false),

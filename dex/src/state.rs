@@ -27,8 +27,8 @@ use crate::{
     fees::{self, FeeTier},
     instruction::{
         disable_authority, fee_sweeper, msrm_token, srm_token, CancelOrderInstructionV2,
-        InitializeMarketInstruction, MarketInstruction, NewOrderInstructionV3, SelfTradeBehavior,
-        SendTakeInstruction,
+        CancelOrderInstructionV2NoError, InitializeMarketInstruction, MarketInstruction,
+        NewOrderInstructionV3, SelfTradeBehavior, SendTakeInstruction,
     },
     matching::{OrderBookState, OrderType, RequestProceeds, Side},
 };
@@ -856,7 +856,6 @@ impl QueueHeader for RequestQueueHeader {
 pub type RequestQueue<'a> = Queue<'a, RequestQueueHeader>;
 
 impl RequestQueue<'_> {
-
     pub fn gen_order_id(&mut self, limit_price: u64, side: Side, increment_seq: bool) -> u128 {
         let seq_num = self.gen_seq_num(increment_seq);
         let upper = (limit_price as u128) << 64;
@@ -2014,6 +2013,67 @@ pub(crate) mod account_parser {
         }
     }
 
+    pub struct CancelOrderV2NoErrorArgs<'a, 'b: 'a> {
+        pub instruction: &'a CancelOrderInstructionV2NoError,
+        pub open_orders_address: [u64; 4],
+        pub open_orders: &'a mut OpenOrders,
+        pub open_orders_signer: SignerAccount<'a, 'b>,
+        pub order_book_state: OrderBookState<'a>,
+        pub event_q: EventQueue<'a>,
+    }
+    impl<'a, 'b: 'a> CancelOrderV2NoErrorArgs<'a, 'b> {
+        pub fn with_parsed_args<T>(
+            program_id: &'a Pubkey,
+            accounts: &'a [AccountInfo<'b>],
+            instruction: &'a CancelOrderInstructionV2NoError,
+            f: impl FnOnce(CancelOrderV2NoErrorArgs) -> DexResult<T>,
+        ) -> DexResult<T> {
+            check_assert!(accounts.len() >= 6)?;
+            #[rustfmt::skip]
+            let &[
+                ref market_acc,
+                ref bids_acc,
+                ref asks_acc,
+                ref open_orders_acc,
+                ref open_orders_signer_acc,
+                ref event_q_acc,
+            ] = array_ref![accounts, 0, 6];
+
+            let mut market = Market::load(market_acc, program_id).or(check_unreachable!())?;
+
+            let open_orders_signer = SignerAccount::new(open_orders_signer_acc)?;
+            let mut open_orders = market.load_orders_mut(
+                open_orders_acc,
+                Some(open_orders_signer.inner()),
+                program_id,
+                None,
+                None,
+            )?;
+            let open_orders_address = open_orders_acc.key.to_aligned_bytes();
+
+            let mut bids = market.load_bids_mut(bids_acc).or(check_unreachable!())?;
+            let mut asks = market.load_asks_mut(asks_acc).or(check_unreachable!())?;
+
+            let event_q = market.load_event_queue_mut(event_q_acc)?;
+
+            let order_book_state = OrderBookState {
+                bids: bids.deref_mut(),
+                asks: asks.deref_mut(),
+                market_state: market.deref_mut(),
+            };
+
+            let args = CancelOrderV2NoErrorArgs {
+                instruction,
+                open_orders_address,
+                open_orders: open_orders.deref_mut(),
+                open_orders_signer,
+                order_book_state,
+                event_q,
+            };
+            f(args)
+        }
+    }
+
     pub struct CancelOrderByClientIdV2Args<'a, 'b: 'a> {
         pub client_order_id: NonZeroU64,
         pub open_orders_address: [u64; 4],
@@ -2066,6 +2126,69 @@ pub(crate) mod account_parser {
             };
 
             let args = CancelOrderByClientIdV2Args {
+                client_order_id,
+                open_orders_address,
+                open_orders: open_orders.deref_mut(),
+                open_orders_signer,
+                order_book_state,
+                event_q,
+            };
+            f(args)
+        }
+    }
+
+    pub struct CancelOrderByClientIdV2NoErrorArgs<'a, 'b: 'a> {
+        pub client_order_id: NonZeroU64,
+        pub open_orders_address: [u64; 4],
+        pub open_orders: &'a mut OpenOrders,
+        pub open_orders_signer: SignerAccount<'a, 'b>,
+        pub order_book_state: OrderBookState<'a>,
+        pub event_q: EventQueue<'a>,
+    }
+    impl<'a, 'b: 'a> CancelOrderByClientIdV2NoErrorArgs<'a, 'b> {
+        pub fn with_parsed_args<T>(
+            program_id: &'a Pubkey,
+            accounts: &'a [AccountInfo<'b>],
+            client_order_id: u64,
+            f: impl FnOnce(CancelOrderByClientIdV2NoErrorArgs) -> DexResult<T>,
+        ) -> DexResult<T> {
+            check_assert!(accounts.len() >= 6)?;
+            #[rustfmt::skip]
+            let &[
+                ref market_acc,
+                ref bids_acc,
+                ref asks_acc,
+                ref open_orders_acc,
+                ref open_orders_signer_acc,
+                ref event_q_acc,
+            ] = array_ref![accounts, 0, 6];
+
+            let client_order_id = NonZeroU64::new(client_order_id).ok_or(assertion_error!())?;
+
+            let mut market = Market::load(market_acc, program_id).or(check_unreachable!())?;
+
+            let open_orders_signer = SignerAccount::new(open_orders_signer_acc)?;
+            let mut open_orders = market.load_orders_mut(
+                open_orders_acc,
+                Some(open_orders_signer.inner()),
+                program_id,
+                None,
+                None,
+            )?;
+            let open_orders_address = open_orders_acc.key.to_aligned_bytes();
+
+            let mut bids = market.load_bids_mut(bids_acc).or(check_unreachable!())?;
+            let mut asks = market.load_asks_mut(asks_acc).or(check_unreachable!())?;
+
+            let event_q = market.load_event_queue_mut(event_q_acc)?;
+
+            let order_book_state = OrderBookState {
+                bids: bids.deref_mut(),
+                asks: asks.deref_mut(),
+                market_state: market.deref_mut(),
+            };
+
+            let args = CancelOrderByClientIdV2NoErrorArgs {
                 client_order_id,
                 open_orders_address,
                 open_orders: open_orders.deref_mut(),
@@ -2450,6 +2573,14 @@ impl State {
                     Self::process_cancel_order_v2,
                 )?
             }
+            MarketInstruction::CancelOrderV2NoError(ref inner) => {
+                account_parser::CancelOrderV2NoErrorArgs::with_parsed_args(
+                    program_id,
+                    accounts,
+                    inner,
+                    Self::process_cancel_order_no_error_v2,
+                ); // Purposely no "?" here so we ignore any errors
+            }
             MarketInstruction::SettleFunds => account_parser::SettleFundsArgs::with_parsed_args(
                 program_id,
                 accounts,
@@ -2465,6 +2596,14 @@ impl State {
                     client_id,
                     Self::process_cancel_order_by_client_id_v2,
                 )?
+            }
+            MarketInstruction::CancelOrderByClientIdV2NoError(client_id) => {
+                account_parser::CancelOrderByClientIdV2NoErrorArgs::with_parsed_args(
+                    program_id,
+                    accounts,
+                    client_id,
+                    Self::process_cancel_order_by_client_id_no_error_v2,
+                ); // Purposely no "?" here so we ignore any errors
             }
             MarketInstruction::DisableMarket => {
                 account_parser::DisableMarketArgs::with_parsed_args(
@@ -2709,6 +2848,55 @@ impl State {
         } = args;
 
         order_book_state.cancel_order_v2(
+            side,
+            open_orders_address,
+            open_orders,
+            order_id,
+            &mut event_q,
+        )
+    }
+
+    fn process_cancel_order_by_client_id_no_error_v2(
+        args: account_parser::CancelOrderByClientIdV2NoErrorArgs,
+    ) -> DexResult {
+        let account_parser::CancelOrderByClientIdV2NoErrorArgs {
+            client_order_id,
+            open_orders_address,
+            open_orders,
+            open_orders_signer: _,
+
+            mut order_book_state,
+            mut event_q,
+        } = args;
+
+        let (_, order_id, side) = open_orders
+            .orders_with_client_ids()
+            .find(|entry| client_order_id == entry.0)
+            .ok_or(DexErrorCode::ClientIdNotFound)?; // Although this returns, we catch and ignore it in process()
+        order_book_state.cancel_order_no_error_v2(
+            side,
+            open_orders_address,
+            open_orders,
+            order_id,
+            &mut event_q,
+        )
+    }
+
+    fn process_cancel_order_no_error_v2(
+        args: account_parser::CancelOrderV2NoErrorArgs,
+    ) -> DexResult {
+        let account_parser::CancelOrderV2NoErrorArgs {
+            instruction: &CancelOrderInstructionV2NoError { side, order_id },
+
+            open_orders_address,
+            open_orders,
+            open_orders_signer: _,
+
+            mut order_book_state,
+            mut event_q,
+        } = args;
+
+        order_book_state.cancel_order_no_error_v2(
             side,
             open_orders_address,
             open_orders,
