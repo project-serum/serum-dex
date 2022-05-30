@@ -446,21 +446,7 @@ pub enum MarketInstruction {
     /// 3. `[writable]` OpenOrders
     /// 4. `[signer]` the OpenOrders owner
     /// 5. `[writable]` event_q
-    CancelOrderV2NoError(CancelOrderInstructionV2NoError),
-    /// 0. `[writable]` market
-    /// 1. `[writable]` bids
-    /// 2. `[writable]` asks
-    /// 3. `[writable]` OpenOrders
-    /// 4. `[signer]` the OpenOrders owner
-    /// 5. `[writable]` event_q
     CancelOrderByClientIdV2(u64),
-    /// 0. `[writable]` market
-    /// 1. `[writable]` bids
-    /// 2. `[writable]` asks
-    /// 3. `[writable]` OpenOrders
-    /// 4. `[signer]` the OpenOrders owner
-    /// 5. `[writable]` event_q
-    CancelOrderByClientIdV2NoError(u64),
     /// 0. `[writable]` market
     /// 1. `[writable]` bids
     /// 2. `[writable]` asks
@@ -493,6 +479,20 @@ pub enum MarketInstruction {
     /// accounts.len() - 2 `[writable]` event queue
     /// accounts.len() - 1 `[signer]` crank authority
     ConsumeEventsPermissioned(u16),
+    /// 0. `[writable]` market
+    /// 1. `[writable]` bids
+    /// 2. `[writable]` asks
+    /// 3. `[writable]` OpenOrders
+    /// 4. `[signer]` the OpenOrders owner
+    /// 5. `[writable]` event_q
+    CancelOrderV2NoError(CancelOrderInstructionV2NoError),
+    /// 0. `[writable]` market
+    /// 1. `[writable]` bids
+    /// 2. `[writable]` asks
+    /// 3. `[writable]` OpenOrders
+    /// 4. `[signer]` the OpenOrders owner
+    /// 5. `[writable]` event_q
+    CancelOrderByClientIdV2NoError(u64),
 }
 
 impl MarketInstruction {
@@ -576,31 +576,33 @@ impl MarketInstruction {
                 let data_arr = array_ref![data, 0, 20];
                 CancelOrderInstructionV2::unpack(data_arr)?
             }),
-            (12, 20) => MarketInstruction::CancelOrderV2NoError({
-                let data_arr = array_ref![data, 0, 20];
-                CancelOrderInstructionV2NoError::unpack(data_arr)?
-            }),
-            (13, 8) => {
+
+            (12, 8) => {
                 let client_id = array_ref![data, 0, 8];
                 MarketInstruction::CancelOrderByClientIdV2(u64::from_le_bytes(*client_id))
             }
-            (14, 8) => {
-                let client_id = array_ref![data, 0, 8];
-                MarketInstruction::CancelOrderByClientIdV2NoError(u64::from_le_bytes(*client_id))
-            }
-            (15, 46) => MarketInstruction::SendTake({
+
+            (13, 46) => MarketInstruction::SendTake({
                 let data_arr = array_ref![data, 0, 46];
                 SendTakeInstruction::unpack(data_arr)?
             }),
-            (16, 0) => MarketInstruction::CloseOpenOrders,
-            (17, 0) => MarketInstruction::InitOpenOrders,
-            (18, 2) => {
+            (14, 0) => MarketInstruction::CloseOpenOrders,
+            (15, 0) => MarketInstruction::InitOpenOrders,
+            (16, 2) => {
                 let limit = array_ref![data, 0, 2];
                 MarketInstruction::Prune(u16::from_le_bytes(*limit))
             }
-            (19, 2) => {
+            (17, 2) => {
                 let limit = array_ref![data, 0, 2];
                 MarketInstruction::ConsumeEventsPermissioned(u16::from_le_bytes(*limit))
+            }
+            (18, 20) => MarketInstruction::CancelOrderV2NoError({
+                let data_arr = array_ref![data, 0, 20];
+                CancelOrderInstructionV2NoError::unpack(data_arr)?
+            }),
+            (19, 8) => {
+                let client_id = array_ref![data, 0, 8];
+                MarketInstruction::CancelOrderByClientIdV2NoError(u64::from_le_bytes(*client_id))
             }
             _ => return None,
         })
