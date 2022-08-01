@@ -1367,8 +1367,8 @@ pub fn gen_vault_signer_key(
     market: &Pubkey,
     program_id: &Pubkey,
 ) -> Result<Pubkey, ProgramError> {
-    let seeds = gen_vault_signer_seeds(&nonce, market);
-    Ok(Pubkey::create_program_address(&seeds, program_id)?)
+    let seeds = &[market.as_ref(), &[nonce as u8]];
+    Ok(Pubkey::create_program_address(seeds, program_id)?)
 }
 
 #[cfg(any(test, feature = "fuzz"))]
@@ -1377,7 +1377,7 @@ pub fn gen_vault_signer_key(
     market: &Pubkey,
     _program_id: &Pubkey,
 ) -> Result<Pubkey, ProgramError> {
-    gen_vault_signer_seeds(&nonce, market);
+    let seeds = &[market.as_ref(), &[nonce as u8]];
     Ok(Pubkey::default())
 }
 
