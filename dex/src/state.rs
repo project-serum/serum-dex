@@ -2811,7 +2811,7 @@ impl State {
 
         let nonce = market.vault_signer_nonce;
         let market_pubkey = market.pubkey();
-        let vault_signer_seeds = gen_vault_signer_seeds(&nonce, &market_pubkey);
+        let vault_signer_seeds = &[market_pubkey.as_ref(), &[nonce as u8]];
 
         for &(token_amount, wallet_account, vault) in token_infos.iter() {
             send_from_vault(
@@ -2820,7 +2820,7 @@ impl State {
                 vault,
                 spl_token_program,
                 vault_signer,
-                &vault_signer_seeds,
+                vault_signer_seeds,
             )?;
         }
 
@@ -2832,7 +2832,7 @@ impl State {
                     pc_vault.token_account(),
                     spl_token_program,
                     vault_signer,
-                    &vault_signer_seeds,
+                    vault_signer_seeds,
                 )?;
             }
             _ => {
@@ -3293,14 +3293,14 @@ impl State {
 
         let nonce = market.vault_signer_nonce;
         let market_pubkey = market.pubkey();
-        let vault_signer_seeds = gen_vault_signer_seeds(&nonce, &market_pubkey);
+        let vault_signer_seeds = &[market_pubkey.as_ref(), &[nonce as u8]];
         send_from_vault(
             token_amount,
             fee_receiver.token_account(),
             pc_vault.token_account(),
             spl_token_program,
             vault_signer,
-            &vault_signer_seeds,
+            vault_signer_seeds,
         )
     }
 
