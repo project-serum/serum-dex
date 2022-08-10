@@ -2709,9 +2709,12 @@ impl State {
         } = args;
 
         // Question about architecture of max coin, max price, min, etc
+        let limit_price = instruction.limit_price;
         let mut limit = instruction.limit;
+        let min_coin_qty = instruction.min_coin_qty;
+        let min_native_pc_qty = instruction.min_native_pc_qty;
 
-        let order_type = instruction.order_type;
+        let order_type = OrderType::ImmediateOrCancel;
         let self_trade_behavior = SelfTradeBehavior::AbortTransaction;
         let native_pc_qty_locked;
 
@@ -2750,7 +2753,7 @@ impl State {
             &mut limit,
         )?;
 
-
+        let pc_lot_size = order_book_state.market_state.pc_lot_size;
         let coin_lot_size = order_book_state.market_state.coin_lot_size;
 
         let RequestProceeds {
@@ -2764,12 +2767,32 @@ impl State {
             native_pc_debit, // 0
         } = proceeds;
 
+        let mut abort= false;
+
+        match instruction.side {
+            Side::Bid => {
+                if coin_credit < min_coin_qty {
+                    abort = true;
+                };
+            },
+            Side::Ask => {
+                if native_pc_credit < min_native_pc_qty {
+                    abort = true;
+                }
+            }
+        }
+
+        if abort {
+            return Ok(());
+        };
+
         let native_debit;
         let native_credit;
         let deposit_vault;
         let payer;
         let recipient;
         let payer_vault;
+        let native_taker_fee;
 
         match instruction.side {
             Side::Bid => {
@@ -2780,9 +2803,10 @@ impl State {
                 recipient = coin_wallet.token_account();
                 payer_vault = coin_vault.token_account();
 
-
                 order_book_state.market_state.pc_deposits_total += native_debit;
                 order_book_state.market_state.coin_deposits_total -= native_credit;
+
+                native_taker_fee = fee_tier.taker_fee(native_credit * limit_price.get() * pc_lot_size);
 
             }
             Side::Ask => {
@@ -2795,14 +2819,20 @@ impl State {
 
                 order_book_state.market_state.coin_deposits_total += native_debit;
                 order_book_state.market_state.pc_deposits_total -= native_credit;
+
+                native_taker_fee = fee_tier.taker_fee(coin_debit * limit_price.get() * pc_lot_size);
             }
         };
 
+        let net_fees_before_referrer_rebate = native_taker_fee;
+        let referrer_rebate = fees::referrer_rebate(native_taker_fee);
+        let net_fees = net_fees_before_referrer_rebate - referrer_rebate;
+
+        order_book_state.market_state.referrer_rebates_accrued += referrer_rebate;
+        order_book_state.market_state.pc_fees_accrued += net_fees;
+        order_book_state.market_state.pc_deposits_total -= net_fees_before_referrer_rebate;
+
         let deposit_amount = native_debit;
-
-
-
-        let coin_deposits_total3 = order_book_state.market_state.coin_deposits_total;
         
         if deposit_amount != 0 {
             // desposit vault = market's PC vault (in case of bid)

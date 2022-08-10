@@ -97,7 +97,6 @@ pub struct SendTakeInstruction {
     pub min_native_pc_qty: u64,
 
     pub limit: u16,
-    pub order_type: OrderType,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Serialize, Deserialize)]
@@ -191,7 +190,7 @@ impl NewOrderInstructionV1 {
 }
 
 impl SendTakeInstruction {
-    fn unpack(data: &[u8; 50]) -> Option<Self> {
+    fn unpack(data: &[u8; 46]) -> Option<Self> {
         let (
             &side_arr,
             &price_arr,
@@ -200,8 +199,7 @@ impl SendTakeInstruction {
             &min_coin_qty_arr,
             &min_native_pc_qty_arr,
             &limit_arr,
-            &otype_arr,
-        ) = array_refs![data, 4, 8, 8, 8, 8, 8, 2, 4];
+        ) = array_refs![data, 4, 8, 8, 8, 8, 8, 2];
 
         let side = Side::try_from_primitive(u32::from_le_bytes(side_arr).try_into().ok()?).ok()?;
         let limit_price = NonZeroU64::new(u64::from_le_bytes(price_arr))?;
@@ -211,8 +209,6 @@ impl SendTakeInstruction {
         let min_coin_qty = u64::from_le_bytes(min_coin_qty_arr);
         let min_native_pc_qty = u64::from_le_bytes(min_native_pc_qty_arr);
         let limit = u16::from_le_bytes(limit_arr);
-        let order_type =
-            OrderType::try_from_primitive(u32::from_le_bytes(otype_arr).try_into().ok()?).ok()?;
 
         Some(SendTakeInstruction {
             side,
@@ -222,7 +218,6 @@ impl SendTakeInstruction {
             min_coin_qty,
             min_native_pc_qty,
             limit,
-            order_type
         })
     }
 }
@@ -610,8 +605,8 @@ impl MarketInstruction {
                 let client_id = array_ref![data, 0, 8];
                 MarketInstruction::CancelOrderByClientIdV2(u64::from_le_bytes(*client_id))
             }
-            (13, 50) => MarketInstruction::SendTake({
-                let data_arr = array_ref![data, 0, 50];
+            (13, 46) => MarketInstruction::SendTake({
+                let data_arr = array_ref![data, 0, 46];
                 SendTakeInstruction::unpack(data_arr)?
             }),
             (14, 0) => MarketInstruction::CloseOpenOrders,

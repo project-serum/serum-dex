@@ -536,13 +536,15 @@ impl<'ob> OrderBookState<'ob> {
             }
         }
 
-        let net_fees_before_referrer_rebate = native_taker_fee - accum_maker_rebates;
-        let referrer_rebate = fees::referrer_rebate(native_taker_fee);
-        let net_fees = net_fees_before_referrer_rebate - referrer_rebate;
+        if owner != solana_program::system_program::ID.to_aligned_bytes() {
+            let net_fees_before_referrer_rebate = native_taker_fee - accum_maker_rebates;
+            let referrer_rebate = fees::referrer_rebate(native_taker_fee);
+            let net_fees = net_fees_before_referrer_rebate - referrer_rebate;
 
-        self.market_state.referrer_rebates_accrued += referrer_rebate;
-        self.market_state.pc_fees_accrued += net_fees;
-        self.market_state.pc_deposits_total -= net_fees_before_referrer_rebate;
+            self.market_state.referrer_rebates_accrued += referrer_rebate;
+            self.market_state.pc_fees_accrued += net_fees;
+            self.market_state.pc_deposits_total -= net_fees_before_referrer_rebate;
+        }
 
         if !done {
             if let Some(coin_qty_remaining) = NonZeroU64::new(unfilled_qty) {
@@ -856,13 +858,15 @@ impl<'ob> OrderBookState<'ob> {
             }
         }
 
-        let net_fees_before_referrer_rebate = native_taker_fee - accum_maker_rebates;
-        let referrer_rebate = fees::referrer_rebate(native_taker_fee);
-        let net_fees = net_fees_before_referrer_rebate - referrer_rebate;
+        if owner != solana_program::system_program::ID.to_aligned_bytes() {
+            let net_fees_before_referrer_rebate = native_taker_fee - accum_maker_rebates;
+            let referrer_rebate = fees::referrer_rebate(native_taker_fee);
+            let net_fees = net_fees_before_referrer_rebate - referrer_rebate;
 
-        self.market_state.referrer_rebates_accrued += referrer_rebate;
-        self.market_state.pc_fees_accrued += net_fees;
-        self.market_state.pc_deposits_total -= net_fees_before_referrer_rebate;
+            self.market_state.referrer_rebates_accrued += referrer_rebate;
+            self.market_state.pc_fees_accrued += net_fees;
+            self.market_state.pc_deposits_total -= net_fees_before_referrer_rebate;
+        }
 
         if !done {
             if let Some(coin_qty_remaining) = NonZeroU64::new(coin_qty_remaining) {
