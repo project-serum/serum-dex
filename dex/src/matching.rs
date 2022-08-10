@@ -6,7 +6,7 @@ use num_enum::{IntoPrimitive, TryFromPrimitive};
 use proptest_derive::Arbitrary;
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "program")]
-use solana_program::{msg, pubkey::Pubkey};
+use solana_program::{msg, pubkey::Pubkey, system_program};
 
 use crate::critbit::SlabTreeError;
 use crate::error::{DexErrorCode, DexResult, SourceFileId};
@@ -354,6 +354,8 @@ impl<'ob> OrderBookState<'ob> {
             client_order_id,
             self_trade_behavior,
         } = params;
+
+        let is_send_take = system_program::ID.to_aligned_bytes() == owner;
         let mut unfilled_qty = max_qty.get();
         let mut accum_fill_price = 0;
 
@@ -517,7 +519,7 @@ impl<'ob> OrderBookState<'ob> {
             to_release.credit_native_pc(net_taker_pc_qty);
             to_release.debit_coin(coin_lots_traded);
 
-            if native_taker_pc_qty > 0 && owner != solana_program::system_program::ID.to_aligned_bytes() {
+            if native_taker_pc_qty > 0 && !is_send_take {
                 let taker_fill = Event::new(EventView::Fill {
                     side: Side::Ask,
                     maker: false,
@@ -536,7 +538,7 @@ impl<'ob> OrderBookState<'ob> {
             }
         }
 
-        if owner != solana_program::system_program::ID.to_aligned_bytes() {
+        if !is_send_take {
             let net_fees_before_referrer_rebate = native_taker_fee - accum_maker_rebates;
             let referrer_rebate = fees::referrer_rebate(native_taker_fee);
             let net_fees = net_fees_before_referrer_rebate - referrer_rebate;
@@ -588,7 +590,7 @@ impl<'ob> OrderBookState<'ob> {
                 insert_result.unwrap();
             }
         } else {
-            if owner != solana_program::system_program::ID.to_aligned_bytes() {
+            if !is_send_take {
                 to_release.unlock_coin(unfilled_qty);
                 let out = Event::new(EventView::Out {
                     side: Side::Ask,
@@ -647,6 +649,8 @@ impl<'ob> OrderBookState<'ob> {
         if post_allowed {
             check_assert!(limit_price.is_some())?;
         }
+
+        let is_send_take = system_program::ID.to_aligned_bytes() == owner;
 
         let pc_lot_size = self.market_state.pc_lot_size;
         let coin_lot_size = self.market_state.coin_lot_size;
@@ -839,7 +843,7 @@ impl<'ob> OrderBookState<'ob> {
             to_release.credit_coin(coin_lots_received);
             to_release.debit_native_pc(native_pc_paid);
 
-            if native_accum_fill_price > 0 && owner != solana_program::system_program::ID.to_aligned_bytes() {
+            if native_accum_fill_price > 0 && !is_send_take {
                 let taker_fill = Event::new(EventView::Fill {
                     side: Side::Bid,
                     maker: false,

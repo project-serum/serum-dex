@@ -17,7 +17,7 @@ use safe_transmute::{self, to_bytes::transmute_to_bytes, trivial::TriviallyTrans
 
 use solana_program::{
     account_info::AccountInfo, program_error::ProgramError, program_pack::Pack, pubkey::Pubkey,
-    rent::Rent, sysvar::Sysvar,
+    rent::Rent, sysvar::Sysvar, system_program,
 };
 use spl_token::error::TokenError;
 
@@ -2708,7 +2708,7 @@ impl State {
             vault_signer
         } = args;
 
-        // Question about architecture of max coin, max price, min, etc
+
         let limit_price = instruction.limit_price;
         let mut limit = instruction.limit;
         let min_coin_qty = instruction.min_coin_qty;
@@ -2716,18 +2716,17 @@ impl State {
 
         let order_type = OrderType::ImmediateOrCancel;
         let self_trade_behavior = SelfTradeBehavior::AbortTransaction;
-        let native_pc_qty_locked;
 
         let order_id = req_q.gen_order_id(instruction.limit_price.get(), instruction.side); 
         let mut proceeds = RequestProceeds::zero();
         
-        match instruction.side {
+        let native_pc_qty_locked = match instruction.side {
             Side::Bid => {
                 let lock_qty_native = instruction.max_native_pc_qty_including_fees;
-                native_pc_qty_locked = Some(lock_qty_native);
+                Some(lock_qty_native)
             }
             Side::Ask => {
-                native_pc_qty_locked = None;
+                None
             }
         };
 
@@ -2738,7 +2737,7 @@ impl State {
             fee_tier,
             self_trade_behavior,
             // Pass dummy account - system program pubkey
-            owner: solana_program::system_program::ID.to_aligned_bytes(),
+            owner: system_program::ID.to_aligned_bytes(),
             // Pass 0 
             owner_slot: 0,
             max_coin_qty: instruction.max_coin_qty,
@@ -2753,18 +2752,20 @@ impl State {
             &mut limit,
         )?;
 
-        let pc_lot_size = order_book_state.market_state.pc_lot_size;
-        let coin_lot_size = order_book_state.market_state.coin_lot_size;
+        let mut market_state = order_book_state.market_state;
+
+        let pc_lot_size = market_state.pc_lot_size;
+        let coin_lot_size = market_state.coin_lot_size;
 
         let RequestProceeds {
             coin_unlocked,
-            coin_credit, // 0
+            coin_credit,
 
-            native_pc_unlocked, // 0
+            native_pc_unlocked, 
             native_pc_credit,
 
             coin_debit,
-            native_pc_debit, // 0
+            native_pc_debit,
         } = proceeds;
 
         let mut abort= false;
@@ -2783,7 +2784,8 @@ impl State {
         }
 
         if abort {
-            return Ok(());
+            solana_program::msg!("Min amount requested not met! Aborting");
+            return Err(DexErrorCode::MinAmountNotMet.into())
         };
 
         let native_debit;
@@ -2803,8 +2805,8 @@ impl State {
                 recipient = coin_wallet.token_account();
                 payer_vault = coin_vault.token_account();
 
-                order_book_state.market_state.pc_deposits_total += native_debit;
-                order_book_state.market_state.coin_deposits_total -= native_credit;
+                market_state.pc_deposits_total += native_debit;
+                market_state.coin_deposits_total -= native_credit;
 
                 native_taker_fee = fee_tier.taker_fee(native_credit * limit_price.get() * pc_lot_size);
 
@@ -2817,8 +2819,8 @@ impl State {
                 recipient = pc_wallet.token_account();
                 payer_vault = pc_vault.token_account();
 
-                order_book_state.market_state.coin_deposits_total += native_debit;
-                order_book_state.market_state.pc_deposits_total -= native_credit;
+                market_state.coin_deposits_total += native_debit;
+                market_state.pc_deposits_total -= native_credit;
 
                 native_taker_fee = fee_tier.taker_fee(coin_debit * limit_price.get() * pc_lot_size);
             }
@@ -2828,16 +2830,14 @@ impl State {
         let referrer_rebate = fees::referrer_rebate(native_taker_fee);
         let net_fees = net_fees_before_referrer_rebate - referrer_rebate;
 
-        order_book_state.market_state.referrer_rebates_accrued += referrer_rebate;
-        order_book_state.market_state.pc_fees_accrued += net_fees;
-        order_book_state.market_state.pc_deposits_total -= net_fees_before_referrer_rebate;
+        market_state.referrer_rebates_accrued += referrer_rebate;
+        market_state.pc_fees_accrued += net_fees;
+        market_state.pc_deposits_total -= net_fees_before_referrer_rebate;
 
         let deposit_amount = native_debit;
         
         if deposit_amount != 0 {
-            // desposit vault = market's PC vault (in case of bid)
             let balance_before = deposit_vault.balance()?;
-            // transfer from payer to deposit vault
             let deposit_instruction = spl_token::instruction::transfer(
                 &spl_token::ID,
                 payer.inner().key,
@@ -2869,8 +2869,8 @@ impl State {
             check_assert_eq!(Some(deposit_amount), balance_change)?;
         }
 
-        let nonce = order_book_state.market_state.vault_signer_nonce;
-        let market_pubkey = order_book_state.market_state.pubkey();
+        let nonce = market_state.vault_signer_nonce;
+        let market_pubkey = market_state.pubkey();
         let vault_signer_seeds = gen_vault_signer_seeds(&nonce, &market_pubkey);
 
         if native_credit != 0 {
