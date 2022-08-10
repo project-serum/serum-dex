@@ -2745,7 +2745,6 @@ impl State {
 
         let market_state = order_book_state.market_state;
 
-        let pc_lot_size = market_state.pc_lot_size;
         let coin_lot_size = market_state.coin_lot_size;
 
         let RequestProceeds {
@@ -2758,7 +2757,6 @@ impl State {
             coin_debit,
             native_pc_debit,
         } = proceeds;
-
 
         let abort = match instruction.side {
             Side::Bid if coin_credit < instruction.min_coin_qty => true,
@@ -2788,6 +2786,7 @@ impl State {
                 withdraw_vault = coin_vault.token_account();
 
                 market_state.pc_deposits_total += debit;
+                check_assert!(market_state.coin_deposits_total >= credit)?;
                 market_state.coin_deposits_total -= credit;
 
             }
@@ -2800,6 +2799,7 @@ impl State {
                 withdraw_vault = pc_vault.token_account();
 
                 market_state.coin_deposits_total += debit;
+                check_assert!(market_state.pc_deposits_total >= credit)?;
                 market_state.pc_deposits_total -= credit;
 
             }
