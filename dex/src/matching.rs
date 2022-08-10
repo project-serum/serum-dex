@@ -538,13 +538,13 @@ impl<'ob> OrderBookState<'ob> {
             }
         }
 
-        if !is_send_take {
-            let net_fees_before_referrer_rebate = native_taker_fee - accum_maker_rebates;
-            let referrer_rebate = fees::referrer_rebate(native_taker_fee);
-            let net_fees = net_fees_before_referrer_rebate - referrer_rebate;
+        let net_fees_before_referrer_rebate = native_taker_fee - accum_maker_rebates;
+        let referrer_rebate = fees::referrer_rebate(native_taker_fee);
+        let net_fees = net_fees_before_referrer_rebate - referrer_rebate;
 
-            self.market_state.referrer_rebates_accrued += referrer_rebate;
-            self.market_state.pc_fees_accrued += net_fees;
+        self.market_state.referrer_rebates_accrued += referrer_rebate;
+        self.market_state.pc_fees_accrued += net_fees;
+        if !is_send_take {
             self.market_state.pc_deposits_total -= net_fees_before_referrer_rebate;
         }
 
@@ -862,13 +862,13 @@ impl<'ob> OrderBookState<'ob> {
             }
         }
 
-        if !is_send_take {
-            let net_fees_before_referrer_rebate = native_taker_fee - accum_maker_rebates;
-            let referrer_rebate = fees::referrer_rebate(native_taker_fee);
-            let net_fees = net_fees_before_referrer_rebate - referrer_rebate;
+        let net_fees_before_referrer_rebate = native_taker_fee - accum_maker_rebates;
+        let referrer_rebate = fees::referrer_rebate(native_taker_fee);
+        let net_fees = net_fees_before_referrer_rebate - referrer_rebate;
 
-            self.market_state.referrer_rebates_accrued += referrer_rebate;
-            self.market_state.pc_fees_accrued += net_fees;
+        self.market_state.referrer_rebates_accrued += referrer_rebate;
+        self.market_state.pc_fees_accrued += net_fees;
+        if !is_send_take {
             self.market_state.pc_deposits_total -= net_fees_before_referrer_rebate;
         }
 

@@ -2708,18 +2708,7 @@ impl State {
             vault_signer
         } = args;
 
-
-        let limit_price = instruction.limit_price;
-        let mut limit = instruction.limit;
-        let min_coin_qty = instruction.min_coin_qty;
-        let min_native_pc_qty = instruction.min_native_pc_qty;
-
-        let order_type = OrderType::ImmediateOrCancel;
-        let self_trade_behavior = SelfTradeBehavior::AbortTransaction;
-
         let order_id = req_q.gen_order_id(instruction.limit_price.get(), instruction.side); 
-        let mut proceeds = RequestProceeds::zero();
-        
         let native_pc_qty_locked = match instruction.side {
             Side::Bid => {
                 let lock_qty_native = instruction.max_native_pc_qty_including_fees;
@@ -2732,10 +2721,10 @@ impl State {
 
         let request = RequestView::NewOrder {
             side: instruction.side,
-            order_type,
+            order_type: OrderType::ImmediateOrCancel,
             order_id,
             fee_tier,
-            self_trade_behavior,
+            self_trade_behavior: SelfTradeBehavior::AbortTransaction,
             // Pass dummy account - system program pubkey
             owner: system_program::ID.to_aligned_bytes(),
             // Pass 0 
@@ -2745,6 +2734,8 @@ impl State {
             client_order_id: None,
         };
 
+        let mut limit = instruction.limit;
+        let mut proceeds = RequestProceeds::zero();
         let _unfilled_portion = order_book_state.process_orderbook_request(
             &request,
             &mut event_q,
@@ -2752,89 +2743,70 @@ impl State {
             &mut limit,
         )?;
 
-        let mut market_state = order_book_state.market_state;
+        let market_state = order_book_state.market_state;
 
         let pc_lot_size = market_state.pc_lot_size;
         let coin_lot_size = market_state.coin_lot_size;
 
         let RequestProceeds {
-            coin_unlocked,
+            coin_unlocked: _,
             coin_credit,
 
-            native_pc_unlocked, 
+            native_pc_unlocked: _, 
             native_pc_credit,
 
             coin_debit,
             native_pc_debit,
         } = proceeds;
 
-        let mut abort= false;
 
-        match instruction.side {
-            Side::Bid => {
-                if coin_credit < min_coin_qty {
-                    abort = true;
-                };
-            },
-            Side::Ask => {
-                if native_pc_credit < min_native_pc_qty {
-                    abort = true;
-                }
-            }
-        }
+        let abort = match instruction.side {
+            Side::Bid if coin_credit < instruction.min_coin_qty => true,
+            Side::Ask if native_pc_credit < instruction.min_native_pc_qty => true,
+            _ => false,
+        };
 
         if abort {
             solana_program::msg!("Min amount requested not met! Aborting");
             return Err(DexErrorCode::MinAmountNotMet.into())
         };
 
-        let native_debit;
-        let native_credit;
+        let debit;
+        let credit;
         let deposit_vault;
         let payer;
         let recipient;
-        let payer_vault;
-        let native_taker_fee;
+        let withdraw_vault;
 
         match instruction.side {
             Side::Bid => {
-                native_debit = native_pc_debit;
-                native_credit = coin_credit.checked_mul(coin_lot_size).unwrap();
+                debit = native_pc_debit;
+                credit = coin_credit.checked_mul(coin_lot_size).unwrap();
                 deposit_vault = pc_vault.token_account();
                 payer = pc_wallet.token_account();
                 recipient = coin_wallet.token_account();
-                payer_vault = coin_vault.token_account();
+                withdraw_vault = coin_vault.token_account();
 
-                market_state.pc_deposits_total += native_debit;
-                market_state.coin_deposits_total -= native_credit;
-
-                native_taker_fee = fee_tier.taker_fee(native_credit * limit_price.get() * pc_lot_size);
+                market_state.pc_deposits_total += debit;
+                market_state.coin_deposits_total -= credit;
 
             }
             Side::Ask => {
-                native_debit = coin_debit.checked_mul(coin_lot_size).unwrap();
-                native_credit = native_pc_credit;
+                debit = coin_debit.checked_mul(coin_lot_size).unwrap();
+                credit = native_pc_credit;
                 deposit_vault = coin_vault.token_account();
                 payer = coin_wallet.token_account();
                 recipient = pc_wallet.token_account();
-                payer_vault = pc_vault.token_account();
+                withdraw_vault = pc_vault.token_account();
 
-                market_state.coin_deposits_total += native_debit;
-                market_state.pc_deposits_total -= native_credit;
+                market_state.coin_deposits_total += debit;
+                market_state.pc_deposits_total -= credit;
 
-                native_taker_fee = fee_tier.taker_fee(coin_debit * limit_price.get() * pc_lot_size);
             }
         };
 
-        let net_fees_before_referrer_rebate = native_taker_fee;
-        let referrer_rebate = fees::referrer_rebate(native_taker_fee);
-        let net_fees = net_fees_before_referrer_rebate - referrer_rebate;
 
-        market_state.referrer_rebates_accrued += referrer_rebate;
-        market_state.pc_fees_accrued += net_fees;
-        market_state.pc_deposits_total -= net_fees_before_referrer_rebate;
-
-        let deposit_amount = native_debit;
+        let deposit_amount = debit;
         
         if deposit_amount != 0 {
             let balance_before = deposit_vault.balance()?;
@@ -2873,11 +2845,11 @@ impl State {
         let market_pubkey = market_state.pubkey();
         let vault_signer_seeds = gen_vault_signer_seeds(&nonce, &market_pubkey);
 
-        if native_credit != 0 {
+        if credit != 0 {
             send_from_vault(
-                native_credit,
+                credit,
                 recipient,
-                payer_vault,
+                withdraw_vault,
                 spl_token_program,
                 vault_signer,
                 &vault_signer_seeds,
