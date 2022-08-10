@@ -862,7 +862,7 @@ impl<'ob> OrderBookState<'ob> {
             }
         }
 
-        if owner != solana_program::system_program::ID.to_aligned_bytes() {
+        if !is_send_take {
             let net_fees_before_referrer_rebate = native_taker_fee - accum_maker_rebates;
             let referrer_rebate = fees::referrer_rebate(native_taker_fee);
             let net_fees = net_fees_before_referrer_rebate - referrer_rebate;
@@ -892,7 +892,7 @@ impl<'ob> OrderBookState<'ob> {
             _ => (0, 0),
         };
 
-        if owner != solana_program::system_program::ID.to_aligned_bytes() {
+        if !is_send_take {
             let out = {
                 let native_qty_still_locked = pc_qty_to_keep_locked * pc_lot_size;
                 let native_qty_unlocked = native_pc_qty_remaining - native_qty_still_locked;
