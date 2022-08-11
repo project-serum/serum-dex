@@ -1360,7 +1360,6 @@ fn gen_vault_signer_seeds<'a>(nonce: &'a u64, market: &'a Pubkey) -> [&'a [u8]; 
     [market.as_ref(), bytes_of(nonce)]
 }
 
-#[cfg(not(any(test, feature = "fuzz")))]
 #[inline]
 pub fn gen_vault_signer_key(
     nonce: u64,
@@ -1371,15 +1370,6 @@ pub fn gen_vault_signer_key(
     Ok(Pubkey::create_program_address(&seeds, program_id)?)
 }
 
-#[cfg(any(test, feature = "fuzz"))]
-pub fn gen_vault_signer_key(
-    nonce: u64,
-    market: &Pubkey,
-    _program_id: &Pubkey,
-) -> Result<Pubkey, ProgramError> {
-    gen_vault_signer_seeds(&nonce, market);
-    Ok(Pubkey::default())
-}
 
 #[cfg(not(any(test, feature = "fuzz")))]
 fn invoke_spl_token(

@@ -256,7 +256,7 @@ impl<'ob> OrderBookState<'ob> {
             client_order_id,
             self_trade_behavior,
         } = params;
-        let (mut post_only, mut post_allowed) = match order_type {
+        let (mut post_only, post_allowed) = match order_type {
             OrderType::Limit => (false, true),
             OrderType::ImmediateOrCancel => (false, false),
             OrderType::PostOnly => (true, true),
@@ -266,7 +266,9 @@ impl<'ob> OrderBookState<'ob> {
             if *limit == 0 {
                 // Stop matching and release funds if we're out of cycles
                 post_only = true;
-                post_allowed = true;
+                // Remove this block of code as it can lead to undefined behavior where
+                // an ImmediateOrCancel order is allowed to place orders on the book             
+                // post_allowed = true;
             }
 
             let remaining_order = match side {
@@ -558,6 +560,7 @@ impl<'ob> OrderBookState<'ob> {
         }
 
         if post_allowed && !crossed && unfilled_qty > 0 {
+            check_assert!(!is_send_take)?;
             let offers = self.orders_mut(Side::Ask);
             let new_order = LeafNode::new(
                 owner_slot,
