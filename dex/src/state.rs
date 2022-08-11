@@ -2755,47 +2755,49 @@ impl State {
             return Err(DexErrorCode::MinAmountNotMet.into());
         };
 
-        let debit;
-        let credit;
+        // Amount that user deposits into the program
+        let deposit_amount;
+        // Amount that user receives after the exchange 
+        let withdraw_amount;
+
+        // Token accounts for transfers
         let deposit_vault;
-        let payer;
-        let recipient;
         let withdraw_vault;
+        let deposit_source;
+        let withdraw_destination;
 
         match instruction.side {
             Side::Bid => {
-                debit = native_pc_debit;
-                credit = coin_credit.checked_mul(coin_lot_size).unwrap();
+                deposit_amount = native_pc_debit;
+                withdraw_amount = coin_credit.checked_mul(coin_lot_size).unwrap();
                 deposit_vault = pc_vault.token_account();
-                payer = pc_wallet.token_account();
-                recipient = coin_wallet.token_account();
+                deposit_source = pc_wallet.token_account();
+                withdraw_destination = coin_wallet.token_account();
                 withdraw_vault = coin_vault.token_account();
 
-                market_state.pc_deposits_total += debit;
-                check_assert!(market_state.coin_deposits_total >= credit)?;
-                market_state.coin_deposits_total -= credit;
+                market_state.pc_deposits_total += deposit_amount;
+                check_assert!(market_state.coin_deposits_total >= withdraw_amount)?;
+                market_state.coin_deposits_total -= withdraw_amount;
             }
             Side::Ask => {
-                debit = coin_debit.checked_mul(coin_lot_size).unwrap();
-                credit = native_pc_credit;
+                deposit_amount = coin_debit.checked_mul(coin_lot_size).unwrap();
+                withdraw_amount = native_pc_credit;
                 deposit_vault = coin_vault.token_account();
-                payer = coin_wallet.token_account();
-                recipient = pc_wallet.token_account();
+                deposit_source = coin_wallet.token_account();
+                withdraw_destination = pc_wallet.token_account();
                 withdraw_vault = pc_vault.token_account();
 
-                market_state.coin_deposits_total += debit;
-                check_assert!(market_state.pc_deposits_total >= credit)?;
-                market_state.pc_deposits_total -= credit;
+                market_state.coin_deposits_total += deposit_amount;
+                check_assert!(market_state.pc_deposits_total >= withdraw_amount)?;
+                market_state.pc_deposits_total -= withdraw_amount;
             }
         };
-
-        let deposit_amount = debit;
 
         if deposit_amount != 0 {
             let balance_before = deposit_vault.balance()?;
             let deposit_instruction = spl_token::instruction::transfer(
                 &spl_token::ID,
-                payer.inner().key,
+                deposit_source.inner().key,
                 deposit_vault.inner().key,
                 signer.inner().key,
                 &[],
@@ -2805,7 +2807,7 @@ impl State {
             invoke_spl_token(
                 &deposit_instruction,
                 &[
-                    payer.inner().clone(),
+                    deposit_source.inner().clone(),
                     deposit_vault.inner().clone(),
                     signer.inner().clone(),
                     spl_token_program.inner().clone(),
@@ -2828,10 +2830,10 @@ impl State {
         let market_pubkey = market_state.pubkey();
         let vault_signer_seeds = gen_vault_signer_seeds(&nonce, &market_pubkey);
 
-        if credit != 0 {
+        if withdraw_amount != 0 {
             send_from_vault(
-                credit,
-                recipient,
+                withdraw_amount,
+                withdraw_destination,
                 withdraw_vault,
                 spl_token_program,
                 vault_signer,
