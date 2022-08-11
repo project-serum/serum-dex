@@ -742,17 +742,6 @@ fn test_send_take() {
     let pc_account = new_token_account(&mut rng, accounts.pc_mint.key, owner.key, 1_000_000, &bump);
     let spl_token_program = new_spl_token_program(&bump);
 
-    let new_order_ix = MarketInstruction::NewOrderV3(NewOrderInstructionV3 {
-        side: Side::Bid,
-        limit_price: NonZeroU64::new(1).unwrap(), // Placeholder
-        max_coin_qty: NonZeroU64::new(1).unwrap(), // Placeholder
-        max_native_pc_qty_including_fees: NonZeroU64::new(1).unwrap(), // Placeholder
-        order_type: OrderType::Limit,
-        client_order_id: 0xabcd,
-        self_trade_behavior: SelfTradeBehavior::AbortTransaction,
-        limit: 5,
-        max_ts: i64::MAX,
-    });
     let mut instruction_accounts = bump_vec![in &bump;
         accounts.market.clone(),
         orders_account.clone(),
