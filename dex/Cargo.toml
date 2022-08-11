@@ -47,6 +47,7 @@ bumpalo = { version = "3.4.0", features = ["collections"] }
 [profile.release]
 lto = "fat"
 codegen-units = 1
+overflow-checks = true
 
 [profile.release.build-override]
 opt-level = 3
