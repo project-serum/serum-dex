@@ -18,13 +18,11 @@ use spl_token::state::{Account, AccountState, Mint};
 
 use instruction::{initialize_market, MarketInstruction, NewOrderInstructionV3, SelfTradeBehavior};
 use matching::{OrderType, Side};
-use state::gen_vault_signer_key;
 use state::{Market, MarketState, OpenOrders, State, ToAlignedBytes};
 
 use crate::critbit::SlabView;
 use crate::error::DexErrorCode;
 use crate::instruction::SendTakeInstruction;
-use crate::state::account_parser::CancelOrderByClientIdV2Args;
 use crate::state::account_parser::TokenAccount;
 
 use super::*;
@@ -174,7 +172,7 @@ fn setup_market<'bump, R: Rng>(rng: &mut R, bump: &'bump Bump) -> MarketAccounts
     let program_id = random_pubkey(rng, bump);
 
     let mut i: u64 = 0;
-    let (market_key, vault_signer_nonce, vault_signer, vault_pk) = loop {
+    let (market_key, vault_signer_nonce, vault_signer) = loop {
         assert!(i < 100);
         let market = Pubkey::new(transmute_to_bytes(&rand::random::<[u64; 4]>()));
         new_dex_owned_account(rng, size_of::<MarketState>(), program_id, bump);
@@ -196,7 +194,7 @@ fn setup_market<'bump, R: Rng>(rng: &mut R, bump: &'bump Bump) -> MarketAccounts
             false,
             Epoch::default(),
         );
-        break (market, i, vault_signer, vault_signer_pk);
+        break (market, i, vault_signer);
     };
 
     let market = AccountInfo::new(
@@ -326,15 +324,32 @@ fn layer_orders(
             client_order_id: i as u64,
             order_type: OrderType::Limit,
             self_trade_behavior: SelfTradeBehavior::AbortTransaction,
-            limit: 5,
+            limit: 1,
             max_ts: i64::MAX,
         });
+        let starting_balance = TokenAccount::new(&instruction_accounts[6])
+            .unwrap()
+            .balance()
+            .unwrap();
         State::process(
             dex_program_id,
             instruction_accounts,
             &new_order_instruction.pack().clone(),
         )
         .unwrap();
+        let owner = instruction_accounts[7].key;
+        let ending_balance = TokenAccount::new(&instruction_accounts[6])
+            .unwrap()
+            .balance()
+            .unwrap();
+        let side_str = match side {
+            Side::Bid => "BUY",
+            Side::Ask => "SELL",
+        };
+        println!(
+            "{} placed {} LIMIT {} @ {}, balance {} -> {}",
+            owner, s, side_str, p, starting_balance, ending_balance
+        );
     }
 }
 
@@ -563,17 +578,6 @@ fn test_ioc_new_order() {
     let pc_account = new_token_account(&mut rng, accounts.pc_mint.key, owner.key, 1_000_000, &bump);
     let spl_token_program = new_spl_token_program(&bump);
 
-    let new_order_ix = MarketInstruction::NewOrderV3(NewOrderInstructionV3 {
-        side: Side::Bid,
-        limit_price: NonZeroU64::new(100_000).unwrap(),
-        max_coin_qty: NonZeroU64::new(5).unwrap(),
-        max_native_pc_qty_including_fees: NonZeroU64::new(520_000).unwrap(),
-        order_type: OrderType::Limit,
-        client_order_id: 0xabcd,
-        self_trade_behavior: SelfTradeBehavior::AbortTransaction,
-        limit: 5,
-        max_ts: i64::MAX,
-    });
     let mut instruction_accounts = bump_vec![in &bump;
         accounts.market.clone(),
         orders_account.clone(),
@@ -756,6 +760,16 @@ fn test_send_take() {
         spl_token_program.clone(),
         accounts.rent_sysvar.clone(),
     ];
+    let market = Market::load(&accounts.market, &dex_program_id, false).unwrap();
+    let pc = market.pc_deposits_total;
+    let pcf = market.pc_fees_accrued;
+    let cdt = market.coin_deposits_total;
+    let cf = market.coin_fees_accrued;
+    println!(
+        "pc_deposits_total: {}, pc_fees_accrued: {}, coin_deposits_total: {}, coin_fees_accrued: {}",
+        pc, pcf, cdt, cf
+    );
+    drop(market);
     layer_orders(
         dex_program_id,
         10_000,
@@ -766,6 +780,16 @@ fn test_send_take() {
         Side::Bid,
         instruction_accounts.as_slice(),
     );
+    let market = Market::load(&accounts.market, &dex_program_id, false).unwrap();
+    let pc = market.pc_deposits_total;
+    let pcf = market.pc_fees_accrued;
+    let cdt = market.coin_deposits_total;
+    let cf = market.coin_fees_accrued;
+    println!(
+        "pc_deposits_total: {}, pc_fees_accrued: {}, coin_deposits_total: {}, coin_fees_accrued: {}",
+        pc, pcf, cdt, cf
+    );
+    drop(market);
     instruction_accounts[6] = coin_account.clone();
     layer_orders(
         dex_program_id,
@@ -777,6 +801,24 @@ fn test_send_take() {
         Side::Ask,
         instruction_accounts.as_slice(),
     );
+    let market = Market::load(&accounts.market, &dex_program_id, false).unwrap();
+    let pc = market.pc_deposits_total;
+    let pcf = market.pc_fees_accrued;
+    let cdt = market.coin_deposits_total;
+    let cf = market.coin_fees_accrued;
+    println!(
+        "pc_deposits_total: {}, pc_fees_accrued: {}, coin_deposits_total: {}, coin_fees_accrued: {}",
+        pc, pcf, cdt, cf
+    );
+    drop(market);
+    let mut total_pc_on_book = 0;
+    let mut p = 10_000;
+    let mut s = 1;
+    while p >= 9_000 {
+        total_pc_on_book += p * s;
+        s += 2;
+        p -= 200
+    }
 
     let taker = new_sol_account(&mut rng, 1_000_000_000, &bump);
     let taker_coin_account =
@@ -799,6 +841,14 @@ fn test_send_take() {
         accounts.vault_signer.clone(),
     ];
 
+    let starting_balance = TokenAccount::new(&taker_coin_account)
+        .unwrap()
+        .balance()
+        .unwrap();
+    let starting_pc = TokenAccount::new(&taker_pc_account)
+        .unwrap()
+        .balance()
+        .unwrap();
     let max_coin_qty = 3;
     let limit_price = 10_299;
     let max_pc_qty = max_coin_qty * limit_price;
@@ -812,6 +862,31 @@ fn test_send_take() {
         limit: 50,
     });
     State::process(dex_program_id, &instruction_accounts, &send_take_ix.pack()).unwrap();
+    let ending_balance = TokenAccount::new(&taker_coin_account)
+        .unwrap()
+        .balance()
+        .unwrap();
+    let ending_pc = TokenAccount::new(&taker_pc_account)
+        .unwrap()
+        .balance()
+        .unwrap();
+    println!(
+        "{} sends 3 MARKET BUY @ {}, matched {}, paid {}",
+        taker.key,
+        limit_price,
+        ending_balance - starting_balance,
+        starting_pc - ending_pc
+    );
+    let market = Market::load(&accounts.market, &dex_program_id, false).unwrap();
+    let pc = market.pc_deposits_total;
+    let pcf = market.pc_fees_accrued;
+    let cdt = market.coin_deposits_total;
+    let cf = market.coin_fees_accrued;
+    println!(
+        "pc_deposits_total: {}, pc_fees_accrued: {}, coin_deposits_total: {}, coin_fees_accrued: {}",
+        pc, pcf, cdt, cf
+    );
+    drop(market);
 
     let tca = TokenAccount::new(&taker_coin_account).unwrap();
     assert_eq!(tca.balance().unwrap(), 7_000);
@@ -819,9 +894,16 @@ fn test_send_take() {
     // There's a default 4bps fee applied, but the fee rounds up always
     // See fees.rs:taker_fee (line 137)
     assert_eq!(tpca.balance().unwrap(), 100_000 - 10_100 - 5);
-    let prev_coin_balance = tca.balance().unwrap();
     let prev_pc_balance = tpca.balance().unwrap();
 
+    let starting_balance = TokenAccount::new(&taker_coin_account)
+        .unwrap()
+        .balance()
+        .unwrap();
+    let starting_pc = TokenAccount::new(&taker_pc_account)
+        .unwrap()
+        .balance()
+        .unwrap();
     let max_coin_qty = 3;
     let limit_price = 9999;
     let max_pc_qty = max_coin_qty * limit_price;
@@ -835,18 +917,52 @@ fn test_send_take() {
         limit: 1,
     });
     State::process(dex_program_id, &instruction_accounts, &send_take_ix.pack()).unwrap();
-    
+    let ending_balance = TokenAccount::new(&taker_coin_account)
+        .unwrap()
+        .balance()
+        .unwrap();
+    let ending_pc = TokenAccount::new(&taker_pc_account)
+        .unwrap()
+        .balance()
+        .unwrap();
+    println!(
+        "{} sends 3 MARKET SELL @ {}, matched {}, received {}",
+        taker.key,
+        limit_price,
+        starting_balance - ending_balance,
+        ending_pc - starting_pc
+    );
+    let market = Market::load(&accounts.market, &dex_program_id, false).unwrap();
+    let pc = market.pc_deposits_total;
+    let pcf = market.pc_fees_accrued;
+    let cdt = market.coin_deposits_total;
+    let cf = market.coin_fees_accrued;
+    println!(
+        "pc_deposits_total: {}, pc_fees_accrued: {}, coin_deposits_total: {}, coin_fees_accrued: {}",
+        pc, pcf, cdt, cf
+    );
+    drop(market);
+
     let tca = TokenAccount::new(&taker_coin_account).unwrap();
     assert_eq!(tca.balance().unwrap(), 6_000);
     let tpca = TokenAccount::new(&taker_pc_account).unwrap();
-    assert_eq!(tpca.balance().unwrap(), prev_pc_balance + 10_000 - 4 /* This time the fee is exactly 4 bps */);
-    let prev_coin_balance = tca.balance().unwrap();
+    assert_eq!(
+        tpca.balance().unwrap(),
+        prev_pc_balance + 10_000 - 4 /* This time the fee is exactly 4 bps */
+    );
     let prev_pc_balance = tpca.balance().unwrap();
 
+    let starting_balance = TokenAccount::new(&taker_coin_account)
+        .unwrap()
+        .balance()
+        .unwrap();
+    let starting_pc = TokenAccount::new(&taker_pc_account)
+        .unwrap()
+        .balance()
+        .unwrap();
     let max_coin_qty = 3;
     let limit_price = 9999;
     let max_pc_qty = max_coin_qty * limit_price;
-
     let mut send_take_ix = SendTakeInstruction {
         side: Side::Ask,
         limit_price: NonZeroU64::new(limit_price).unwrap(),
@@ -858,12 +974,52 @@ fn test_send_take() {
     };
     let send_take = MarketInstruction::SendTake(send_take_ix.clone());
     assert!(State::process(dex_program_id, &instruction_accounts, &send_take.pack()).is_err());
+    let ending_balance = TokenAccount::new(&taker_coin_account)
+        .unwrap()
+        .balance()
+        .unwrap();
+    let ending_pc = TokenAccount::new(&taker_pc_account)
+        .unwrap()
+        .balance()
+        .unwrap();
+    println!(
+        "{} sends 3 MARKET SELL @ {}, matched {}, received {}",
+        taker.key,
+        limit_price,
+        starting_balance - ending_balance,
+        ending_pc - starting_pc
+    );
     send_take_ix.limit_price = NonZeroU64::new(9800).unwrap();
     send_take_ix.min_coin_qty = 1;
     send_take_ix.min_native_pc_qty = 0;
     let send_take = MarketInstruction::SendTake(send_take_ix.clone());
     assert!(!State::process(dex_program_id, &instruction_accounts, &send_take.pack()).is_err());
-    
+    let ending_balance = TokenAccount::new(&taker_coin_account)
+        .unwrap()
+        .balance()
+        .unwrap();
+    let ending_pc = TokenAccount::new(&taker_pc_account)
+        .unwrap()
+        .balance()
+        .unwrap();
+    println!(
+        "{} sends 3 MARKET SELL @ {}, matched {}, received {}",
+        taker.key,
+        send_take_ix.limit_price.get(),
+        starting_balance - ending_balance,
+        ending_pc - starting_pc
+    );
+    let market = Market::load(&accounts.market, &dex_program_id, false).unwrap();
+    let pc = market.pc_deposits_total;
+    let pcf = market.pc_fees_accrued;
+    let cdt = market.coin_deposits_total;
+    let cf = market.coin_fees_accrued;
+    println!(
+        "pc_deposits_total: {}, pc_fees_accrued: {}, coin_deposits_total: {}, coin_fees_accrued: {}",
+        pc, pcf, cdt, cf
+    );
+    drop(market);
+
     let BBO {
         bid,
         ask,
@@ -882,6 +1038,48 @@ fn test_send_take() {
     assert_eq!(nbid, 5);
     assert_eq!(nask, 2);
     assert_eq!(buyer, seller);
+    let tca = TokenAccount::new(&taker_coin_account).unwrap();
+    assert_eq!(tca.balance().unwrap(), 3_000);
+    let tpca = TokenAccount::new(&taker_pc_account).unwrap();
+    assert_eq!(tpca.balance().unwrap(), prev_pc_balance + (3 * 9800) - 12);
+
+    {
+        let crank_accounts = bump_vec![in &bump;
+            orders_account.clone(),
+            accounts.market.clone(),
+            accounts.event_q.clone(),
+            coin_account.clone(),
+            pc_account.clone(),
+        ]
+        .into_bump_slice_mut();
+        let instruction_data = MarketInstruction::ConsumeEvents(200).pack();
+        State::process(dex_program_id, crank_accounts, &instruction_data).unwrap();
+    }
+    {
+        let open_orders = Market::load(&accounts.market, &dex_program_id, false)
+            .unwrap()
+            .load_orders_mut(&orders_account, None, &dex_program_id, None, None)
+            .unwrap();
+
+        // The taker sold a total of 4 coins
+        assert_eq!(identity(open_orders.native_coin_free), 4_000);
+        // The maker places 21 offers (1+2+...+6) and 1 was filled. Then there were 4 sells
+        assert_eq!(identity(open_orders.native_coin_total), 24_000);
+        assert_eq!(identity(open_orders.native_pc_free), 10100);
+        assert_eq!(
+            identity(open_orders.native_pc_total),
+            total_pc_on_book - 10000 - (9800 * 3) + 10100
+        );
+    }
+    let market = Market::load(&accounts.market, &dex_program_id, false).unwrap();
+    let pc = market.pc_deposits_total;
+    let pcf = market.pc_fees_accrued;
+    let cdt = market.coin_deposits_total;
+    let cf = market.coin_fees_accrued;
+    println!(
+        "pc_deposits_total: {}, pc_fees_accrued: {}, coin_deposits_total: {}, coin_fees_accrued: {}",
+        pc, pcf, cdt, cf
+    );
 }
 
 #[test]
@@ -896,8 +1094,6 @@ fn test_cancel_orders() {
     let owner = new_sol_account(&mut rng, 1_000_000_000, &bump);
     let orders_account =
         new_dex_owned_account(&mut rng, size_of::<OpenOrders>(), dex_program_id, &bump);
-    let coin_account =
-        new_token_account(&mut rng, accounts.coin_mint.key, owner.key, 10_000, &bump);
     let pc_account = new_token_account(&mut rng, accounts.pc_mint.key, owner.key, 1_000_000, &bump);
     let spl_token_program = new_spl_token_program(&bump);
 
@@ -991,8 +1187,6 @@ fn test_max_ts_order() {
     let owner = new_sol_account(&mut rng, 1_000_000_000, &bump);
     let orders_account =
         new_dex_owned_account(&mut rng, size_of::<OpenOrders>(), dex_program_id, &bump);
-    let coin_account =
-        new_token_account(&mut rng, accounts.coin_mint.key, owner.key, 10_000, &bump);
     let pc_account = new_token_account(&mut rng, accounts.pc_mint.key, owner.key, 1_000_000, &bump);
     let spl_token_program = new_spl_token_program(&bump);
 
@@ -1079,8 +1273,6 @@ fn test_replace_orders() {
     let owner = new_sol_account(&mut rng, 1_000_000_000, &bump);
     let orders_account =
         new_dex_owned_account(&mut rng, size_of::<OpenOrders>(), dex_program_id, &bump);
-    let coin_account =
-        new_token_account(&mut rng, accounts.coin_mint.key, owner.key, 10_000, &bump);
     let pc_account = new_token_account(&mut rng, accounts.pc_mint.key, owner.key, 1_000_000, &bump);
     let spl_token_program = new_spl_token_program(&bump);
 

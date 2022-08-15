@@ -16,7 +16,7 @@ use crate::{
     state::{Event, EventQueue, EventView, MarketState, OpenOrders, RequestView},
 };
 
-use bytemuck::{cast};
+use bytemuck::cast;
 
 #[cfg(not(feature = "program"))]
 macro_rules! msg {
@@ -27,7 +27,7 @@ declare_check_assert_macros!(SourceFileId::Matching);
 pub trait ToAlignedBytes {
     fn to_aligned_bytes(&self) -> [u64; 4];
 }
-  
+
 impl ToAlignedBytes for Pubkey {
     #[inline]
     fn to_aligned_bytes(&self) -> [u64; 4] {
@@ -267,7 +267,7 @@ impl<'ob> OrderBookState<'ob> {
                 // Stop matching and release funds if we're out of cycles
                 post_only = true;
                 // Remove this block of code as it can lead to undefined behavior where
-                // an ImmediateOrCancel order is allowed to place orders on the book             
+                // an ImmediateOrCancel order is allowed to place orders on the book
                 // post_allowed = true;
             }
 
@@ -592,23 +592,21 @@ impl<'ob> OrderBookState<'ob> {
             } else {
                 insert_result.unwrap();
             }
-        } else {
-            if !is_send_take {
-                to_release.unlock_coin(unfilled_qty);
-                let out = Event::new(EventView::Out {
-                    side: Side::Ask,
-                    release_funds: false,
-                    native_qty_unlocked: unfilled_qty * coin_lot_size,
-                    native_qty_still_locked: 0,
-                    order_id,
-                    owner,
-                    owner_slot,
-                    client_order_id: NonZeroU64::new(client_order_id),
-                });
-                event_q
-                    .push_back(out)
-                    .map_err(|_| DexErrorCode::EventQueueFull)?;
-            }
+        } else if !is_send_take {
+            to_release.unlock_coin(unfilled_qty);
+            let out = Event::new(EventView::Out {
+                side: Side::Ask,
+                release_funds: false,
+                native_qty_unlocked: unfilled_qty * coin_lot_size,
+                native_qty_still_locked: 0,
+                order_id,
+                owner,
+                owner_slot,
+                client_order_id: NonZeroU64::new(client_order_id),
+            });
+            event_q
+                .push_back(out)
+                .map_err(|_| DexErrorCode::EventQueueFull)?;
         }
 
         Ok(None)

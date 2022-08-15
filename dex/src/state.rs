@@ -17,7 +17,7 @@ use safe_transmute::{self, to_bytes::transmute_to_bytes, trivial::TriviallyTrans
 
 use solana_program::{
     account_info::AccountInfo, program_error::ProgramError, program_pack::Pack, pubkey::Pubkey,
-    rent::Rent, sysvar::Sysvar, system_program,
+    rent::Rent, system_program, sysvar::Sysvar,
 };
 use spl_token::error::TokenError;
 
@@ -1370,7 +1370,6 @@ pub fn gen_vault_signer_key(
     Ok(Pubkey::create_program_address(&seeds, program_id)?)
 }
 
-
 #[cfg(not(any(test, feature = "fuzz")))]
 fn invoke_spl_token(
     instruction: &solana_program::instruction::Instruction,
@@ -2682,7 +2681,6 @@ impl State {
 
     #[cfg(feature = "program")]
     fn process_send_take(args: account_parser::SendTakeArgs) -> DexResult {
-
         let account_parser::SendTakeArgs {
             instruction,
             signer,
@@ -2695,18 +2693,16 @@ impl State {
             pc_vault,
             spl_token_program,
             fee_tier,
-            vault_signer
+            vault_signer,
         } = args;
 
-        let order_id = req_q.gen_order_id(instruction.limit_price.get(), instruction.side); 
+        let order_id = req_q.gen_order_id(instruction.limit_price.get(), instruction.side);
         let native_pc_qty_locked = match instruction.side {
             Side::Bid => {
                 let lock_qty_native = instruction.max_native_pc_qty_including_fees;
                 Some(lock_qty_native)
             }
-            Side::Ask => {
-                None
-            }
+            Side::Ask => None,
         };
 
         let request = RequestView::NewOrder {
@@ -2717,7 +2713,7 @@ impl State {
             self_trade_behavior: SelfTradeBehavior::AbortTransaction,
             // Pass dummy account - system program pubkey
             owner: system_program::ID.to_aligned_bytes(),
-            // Pass 0 
+            // Pass 0
             owner_slot: 0,
             max_coin_qty: instruction.max_coin_qty,
             native_pc_qty_locked,
@@ -2741,7 +2737,7 @@ impl State {
             coin_unlocked: _,
             coin_credit,
 
-            native_pc_unlocked: _, 
+            native_pc_unlocked: _,
             native_pc_credit,
 
             coin_debit,
@@ -2756,53 +2752,52 @@ impl State {
 
         if abort {
             solana_program::msg!("Min amount requested not met! Aborting");
-            return Err(DexErrorCode::MinAmountNotMet.into())
+            return Err(DexErrorCode::MinAmountNotMet.into());
         };
 
-        let debit;
-        let credit;
+        // Amount that user deposits into the program
+        let deposit_amount;
+        // Amount that user receives after the exchange 
+        let withdraw_amount;
+
+        // Token accounts for transfers
         let deposit_vault;
-        let payer;
-        let recipient;
         let withdraw_vault;
+        let deposit_source;
+        let withdraw_destination;
 
         match instruction.side {
             Side::Bid => {
-                debit = native_pc_debit;
-                credit = coin_credit.checked_mul(coin_lot_size).unwrap();
+                deposit_amount = native_pc_debit;
+                withdraw_amount = coin_credit.checked_mul(coin_lot_size).unwrap();
                 deposit_vault = pc_vault.token_account();
-                payer = pc_wallet.token_account();
-                recipient = coin_wallet.token_account();
+                deposit_source = pc_wallet.token_account();
+                withdraw_destination = coin_wallet.token_account();
                 withdraw_vault = coin_vault.token_account();
 
-                market_state.pc_deposits_total += debit;
-                check_assert!(market_state.coin_deposits_total >= credit)?;
-                market_state.coin_deposits_total -= credit;
-
+                market_state.pc_deposits_total += deposit_amount;
+                check_assert!(market_state.coin_deposits_total >= withdraw_amount)?;
+                market_state.coin_deposits_total -= withdraw_amount;
             }
             Side::Ask => {
-                debit = coin_debit.checked_mul(coin_lot_size).unwrap();
-                credit = native_pc_credit;
+                deposit_amount = coin_debit.checked_mul(coin_lot_size).unwrap();
+                withdraw_amount = native_pc_credit;
                 deposit_vault = coin_vault.token_account();
-                payer = coin_wallet.token_account();
-                recipient = pc_wallet.token_account();
+                deposit_source = coin_wallet.token_account();
+                withdraw_destination = pc_wallet.token_account();
                 withdraw_vault = pc_vault.token_account();
 
-                market_state.coin_deposits_total += debit;
-                check_assert!(market_state.pc_deposits_total >= credit)?;
-                market_state.pc_deposits_total -= credit;
-
+                market_state.coin_deposits_total += deposit_amount;
+                check_assert!(market_state.pc_deposits_total >= withdraw_amount)?;
+                market_state.pc_deposits_total -= withdraw_amount;
             }
         };
 
-
-        let deposit_amount = debit;
-        
         if deposit_amount != 0 {
             let balance_before = deposit_vault.balance()?;
             let deposit_instruction = spl_token::instruction::transfer(
                 &spl_token::ID,
-                payer.inner().key,
+                deposit_source.inner().key,
                 deposit_vault.inner().key,
                 signer.inner().key,
                 &[],
@@ -2812,7 +2807,7 @@ impl State {
             invoke_spl_token(
                 &deposit_instruction,
                 &[
-                    payer.inner().clone(),
+                    deposit_source.inner().clone(),
                     deposit_vault.inner().clone(),
                     signer.inner().clone(),
                     spl_token_program.inner().clone(),
@@ -2835,10 +2830,10 @@ impl State {
         let market_pubkey = market_state.pubkey();
         let vault_signer_seeds = gen_vault_signer_seeds(&nonce, &market_pubkey);
 
-        if credit != 0 {
+        if withdraw_amount != 0 {
             send_from_vault(
-                credit,
-                recipient,
+                withdraw_amount,
+                withdraw_destination,
                 withdraw_vault,
                 spl_token_program,
                 vault_signer,
@@ -2847,7 +2842,6 @@ impl State {
         };
 
         Ok(())
-        
     }
 
     fn process_prune(args: account_parser::PruneArgs) -> DexResult {
