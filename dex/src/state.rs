@@ -23,7 +23,7 @@ use spl_token::error::TokenError;
 
 use crate::{
     critbit::Slab,
-    error::{DexErrorCode, DexResult, SourceFileId},
+    error::{DexErrorCode, DexResult, SourceFileId, DexError},
     fees::{self, FeeTier},
     instruction::{
         disable_authority, fee_sweeper, msrm_token, srm_token, CancelOrderInstructionV2,
@@ -2892,13 +2892,29 @@ impl State {
         }
 
         for (order_id, side) in orders {
-            let _ = order_book_state.cancel_order_v2(
+            if let Err(err) = order_book_state.cancel_order_v2(
                 side,
                 open_orders_address,
                 open_orders,
                 order_id,
                 &mut event_q,
-            );
+            ) {
+                // Cancel returns OrderNotFound when the order isn't in bids or
+                // asks. In this case, no Serum state is modified so it is safe
+                // to continue. Any other type of error could be accompanied by
+                // a partial state change, so we must error. For example, if the
+                // event queue is full, we should abort to prevent the cancelled
+                // order from being removed from bids/asks.
+                match err {
+                    DexError::ErrorCode(code) => {
+                        if code == DexErrorCode::OrderNotFound {
+                            continue;
+                        }
+                        return Err(err);
+                    }
+                    _ => return Err(err)
+                }
+            }
         }
 
         Ok(())
