@@ -140,6 +140,35 @@ impl<'a> Market<'a> {
         }
     }
 
+    pub fn load_orders_mut_no_rent(
+        &self,
+        orders_account: &'a AccountInfo,
+        owner_account: Option<&AccountInfo>,
+        program_id: &Pubkey,
+        open_orders_authority: Option<account_parser::SignerAccount>,
+    ) -> DexResult<RefMut<'a, OpenOrders>> {
+        check_assert_eq!(orders_account.owner, program_id)?;
+        let mut open_orders: RefMut<'a, OpenOrders>;
+
+        let open_orders_data_len = orders_account.data_len();
+        let open_orders_lamports = orders_account.lamports();
+        let (_, data) = strip_header::<[u8; 0], u8>(orders_account, true)?;
+        open_orders = RefMut::map(data, |data| from_bytes_mut(data));
+
+        check_assert!(open_orders.account_flags != 0)
+            .map_err(|_| DexErrorCode::OpenOrdersNotInitialized)?;
+
+        open_orders.check_flags()?;
+        check_assert_eq!(identity(open_orders.market), identity(self.own_address))
+            .map_err(|_| DexErrorCode::WrongOrdersAccount)?;
+        if let Some(owner) = owner_account {
+            check_assert_eq!(&identity(open_orders.owner), &owner.key.to_aligned_bytes())
+                .map_err(|_| DexErrorCode::WrongOrdersAccount)?;
+        }
+
+        Ok(open_orders)
+    }
+
     pub fn load_orders_mut(
         &self,
         orders_account: &'a AccountInfo,
@@ -1877,6 +1906,93 @@ pub(crate) mod account_parser {
             };
             f(args)
         }
+
+        pub fn with_parsed_args_no_rent<T>(
+            program_id: &'a Pubkey,
+            instruction: &'a NewOrderInstructionV3,
+            accounts: &'a [AccountInfo<'b>],
+            f: impl FnOnce(NewOrderV3Args) -> DexResult<T>,
+        ) -> DexResult<T> {
+            const MIN_ACCOUNTS: usize = 11;
+            check_assert!(
+                accounts.len() == MIN_ACCOUNTS
+                    || accounts.len() == MIN_ACCOUNTS + 1
+                    || accounts.len() == MIN_ACCOUNTS + 2
+            )?;
+            let (fixed_accounts, fee_discount_account): (
+                &'a [AccountInfo<'b>; MIN_ACCOUNTS],
+                &'a [AccountInfo<'b>],
+            ) = array_refs![accounts, MIN_ACCOUNTS; .. ;];
+            let &[
+                ref market_acc,
+                ref open_orders_acc,
+                ref req_q_acc,
+                ref event_q_acc,
+                ref bids_acc,
+                ref asks_acc,
+                ref payer_acc,
+                ref owner_acc,
+                ref coin_vault_acc,
+                ref pc_vault_acc,
+                ref spl_token_program_acc,
+            ]: &'a [AccountInfo<'b>; MIN_ACCOUNTS] = fixed_accounts;
+            let srm_or_msrm_account = match fee_discount_account {
+                &[] => None,
+                &[ref account] => Some(TokenAccount::new(account)?),
+                _ => check_unreachable!()?,
+            };
+
+            let mut market = Market::load(market_acc, program_id)?;
+            let owner = SignerAccount::new(owner_acc)?;
+            let fee_tier =
+                market.load_fee_tier(&owner.inner().key.to_aligned_bytes(), srm_or_msrm_account)?;
+            let open_orders_address = open_orders_acc.key.to_aligned_bytes();
+            let req_q = market.load_request_queue_mut(req_q_acc)?;
+            let event_q = market.load_event_queue_mut(event_q_acc)?;
+
+            let payer = TokenAccount::new(payer_acc)?;
+            match instruction.side {
+                Side::Bid => market.check_pc_payer(payer).or(check_unreachable!())?,
+                Side::Ask => market.check_coin_payer(payer).or(check_unreachable!())?,
+            };
+            let coin_vault = CoinVault::from_account(coin_vault_acc, &market)?;
+            let pc_vault = PcVault::from_account(pc_vault_acc, &market)?;
+            market.check_enabled()?;
+            let spl_token_program = SplTokenProgram::new(spl_token_program_acc)?;
+
+            let mut bids = market.load_bids_mut(bids_acc).or(check_unreachable!())?;
+            let mut asks = market.load_asks_mut(asks_acc).or(check_unreachable!())?;
+
+            // Assume account created.
+            let open_orders = market.load_orders_mut_no_rent(
+                open_orders_acc,
+                Some(owner.inner()),
+                program_id,
+                None, // To use an open orders authority, explicitly use the
+                      // InitOpenOrders instruction.
+            )?;
+            let order_book_state = OrderBookState {
+                bids: bids.deref_mut(),
+                asks: asks.deref_mut(),
+                market_state: market.deref_mut(),
+            };
+
+            let args = NewOrderV3Args {
+                instruction,
+                order_book_state,
+                open_orders,
+                open_orders_address,
+                owner,
+                req_q,
+                event_q,
+                payer,
+                coin_vault,
+                pc_vault,
+                spl_token_program,
+                fee_tier,
+            };
+            f(args)
+        }
     }
 
     pub struct ConsumeEventsArgs<'a, 'b: 'a> {
@@ -2539,6 +2655,14 @@ impl State {
             }
             MarketInstruction::NewOrderV3(ref inner) => {
                 account_parser::NewOrderV3Args::with_parsed_args(
+                    program_id,
+                    inner,
+                    accounts,
+                    Self::process_new_order_v3,
+                )?
+            }
+            MarketInstruction::NewOrderV4(ref inner) => {
+                account_parser::NewOrderV3Args::with_parsed_args_no_rent(
                     program_id,
                     inner,
                     accounts,

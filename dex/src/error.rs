@@ -111,6 +111,7 @@ pub enum DexErrorCode {
 
     WouldSelfTrade,
     InvalidOpenOrdersAuthority,
+    OpenOrdersNotInitialized,
 
     Unknown = 1000,
 
