@@ -772,7 +772,7 @@ pub fn new_order(
     })
 }
 
-pub fn new_order_v4(
+pub fn new_order_no_rent(
     market: &Pubkey,
     open_orders_account: &Pubkey,
     request_queue: &Pubkey,
