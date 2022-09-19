@@ -504,7 +504,7 @@ pub enum MarketInstruction {
     /// 8. `[writable]` coin vault
     /// 9. `[writable]` pc vault
     /// 10. `[]` spl token program
-    NewOrderV4(NewOrderInstructionV3),
+    NewOrderV3NoRent(NewOrderInstructionV3),
 }
 
 impl MarketInstruction {
@@ -616,7 +616,7 @@ impl MarketInstruction {
                 let client_id = array_ref![data, 0, 8];
                 MarketInstruction::CancelOrderByClientIdV2NoError(u64::from_le_bytes(*client_id))
             }
-            (20, 46) => MarketInstruction::NewOrderV3({
+            (20, 46) => MarketInstruction::NewOrderV3NoRent({
                 let data_arr = array_ref![data, 0, 46];
                 NewOrderInstructionV3::unpack(data_arr)?
             }),
@@ -794,7 +794,7 @@ pub fn new_order_v4(
     limit: u16,
     max_native_pc_qty_including_fees: NonZeroU64,
 ) -> Result<Instruction, DexError> {
-    let data = MarketInstruction::NewOrderV4(NewOrderInstructionV3 {
+    let data = MarketInstruction::NewOrderV3NoRent(NewOrderInstructionV3 {
         side,
         limit_price,
         max_coin_qty,

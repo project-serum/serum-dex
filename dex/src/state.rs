@@ -145,13 +145,11 @@ impl<'a> Market<'a> {
         orders_account: &'a AccountInfo,
         owner_account: Option<&AccountInfo>,
         program_id: &Pubkey,
-        open_orders_authority: Option<account_parser::SignerAccount>,
+        _open_orders_authority: Option<account_parser::SignerAccount>,
     ) -> DexResult<RefMut<'a, OpenOrders>> {
         check_assert_eq!(orders_account.owner, program_id)?;
-        let mut open_orders: RefMut<'a, OpenOrders>;
+        let open_orders: RefMut<'a, OpenOrders>;
 
-        let open_orders_data_len = orders_account.data_len();
-        let open_orders_lamports = orders_account.lamports();
         let (_, data) = strip_header::<[u8; 0], u8>(orders_account, true)?;
         open_orders = RefMut::map(data, |data| from_bytes_mut(data));
 
@@ -2675,7 +2673,7 @@ impl State {
                     Self::process_new_order_v3,
                 )?
             }
-            MarketInstruction::NewOrderV4(ref inner) => {
+            MarketInstruction::NewOrderV3NoRent(ref inner) => {
                 account_parser::NewOrderV3Args::with_parsed_args_no_rent(
                     program_id,
                     inner,
