@@ -740,6 +740,7 @@ pub trait QueueHeader: Pod {
 
     fn incr_event_id(&mut self);
     fn decr_event_id(&mut self, n: u64);
+    fn event_id(&self) -> u64;
 }
 
 pub struct Queue<'a, H: QueueHeader> {
@@ -765,6 +766,11 @@ impl<'a, H: QueueHeader> Queue<'a, H> {
     #[inline]
     pub fn empty(&self) -> bool {
         self.header.count() == 0
+    }
+
+    #[inline]
+    pub fn seq_num(&self) -> u64 {
+        self.header.event_id()
     }
 
     #[inline]
@@ -880,6 +886,11 @@ impl QueueHeader for RequestQueueHeader {
     fn incr_event_id(&mut self) {}
     #[inline(always)]
     fn decr_event_id(&mut self, _n: u64) {}
+
+    #[inline(always)]
+    fn event_id(&self) -> u64 {
+        self.next_seq_num
+    }
 }
 
 pub type RequestQueue<'a> = Queue<'a, RequestQueueHeader>;
@@ -1114,6 +1125,9 @@ impl QueueHeader for EventQueueHeader {
     }
     fn decr_event_id(&mut self, n: u64) {
         self.seq_num -= n;
+    }
+    fn event_id(&self) -> u64 {
+        self.seq_num
     }
 }
 
