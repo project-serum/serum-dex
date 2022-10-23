@@ -6,7 +6,7 @@ use num_enum::{IntoPrimitive, TryFromPrimitive};
 use proptest_derive::Arbitrary;
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "program")]
-use solana_program::msg;
+use solana_program::{msg, pubkey::Pubkey, system_program};
 
 use crate::critbit::SlabTreeError;
 use crate::error::{DexErrorCode, DexResult, SourceFileId};
@@ -16,11 +16,24 @@ use crate::{
     state::{Event, EventQueue, EventView, MarketState, OpenOrders, RequestView},
 };
 
+use bytemuck::cast;
+
 #[cfg(not(feature = "program"))]
 macro_rules! msg {
     ($($i:expr),*) => { { ($($i),*) } };
 }
 declare_check_assert_macros!(SourceFileId::Matching);
+
+pub trait ToAlignedBytes {
+    fn to_aligned_bytes(&self) -> [u64; 4];
+}
+
+impl ToAlignedBytes for Pubkey {
+    #[inline]
+    fn to_aligned_bytes(&self) -> [u64; 4] {
+        cast(self.to_bytes())
+    }
+}
 
 #[derive(
     Eq, PartialEq, Copy, Clone, TryFromPrimitive, IntoPrimitive, Debug, Serialize, Deserialize,
@@ -243,7 +256,7 @@ impl<'ob> OrderBookState<'ob> {
             client_order_id,
             self_trade_behavior,
         } = params;
-        let (mut post_only, mut post_allowed) = match order_type {
+        let (mut post_only, post_allowed) = match order_type {
             OrderType::Limit => (false, true),
             OrderType::ImmediateOrCancel => (false, false),
             OrderType::PostOnly => (true, true),
@@ -253,7 +266,9 @@ impl<'ob> OrderBookState<'ob> {
             if *limit == 0 {
                 // Stop matching and release funds if we're out of cycles
                 post_only = true;
-                post_allowed = true;
+                // Remove this block of code as it can lead to undefined behavior where
+                // an ImmediateOrCancel order is allowed to place orders on the book
+                // post_allowed = true;
             }
 
             let remaining_order = match side {
@@ -341,6 +356,8 @@ impl<'ob> OrderBookState<'ob> {
             client_order_id,
             self_trade_behavior,
         } = params;
+
+        let is_send_take = system_program::ID.to_aligned_bytes() == owner;
         let mut unfilled_qty = max_qty.get();
         let mut accum_fill_price = 0;
 
@@ -504,7 +521,7 @@ impl<'ob> OrderBookState<'ob> {
             to_release.credit_native_pc(net_taker_pc_qty);
             to_release.debit_coin(coin_lots_traded);
 
-            if native_taker_pc_qty > 0 {
+            if native_taker_pc_qty > 0 && !is_send_take {
                 let taker_fill = Event::new(EventView::Fill {
                     side: Side::Ask,
                     maker: false,
@@ -531,6 +548,7 @@ impl<'ob> OrderBookState<'ob> {
         self.market_state.pc_fees_accrued += net_fees;
         self.market_state.pc_deposits_total -= net_fees_before_referrer_rebate;
 
+
         if !done {
             if let Some(coin_qty_remaining) = NonZeroU64::new(unfilled_qty) {
                 return Ok(Some(OrderRemaining {
@@ -541,6 +559,7 @@ impl<'ob> OrderBookState<'ob> {
         }
 
         if post_allowed && !crossed && unfilled_qty > 0 {
+            check_assert!(!is_send_take)?;
             let offers = self.orders_mut(Side::Ask);
             let new_order = LeafNode::new(
                 owner_slot,
@@ -572,7 +591,7 @@ impl<'ob> OrderBookState<'ob> {
             } else {
                 insert_result.unwrap();
             }
-        } else {
+        } else if !is_send_take {
             to_release.unlock_coin(unfilled_qty);
             let out = Event::new(EventView::Out {
                 side: Side::Ask,
@@ -630,6 +649,8 @@ impl<'ob> OrderBookState<'ob> {
         if post_allowed {
             check_assert!(limit_price.is_some())?;
         }
+
+        let is_send_take = system_program::ID.to_aligned_bytes() == owner;
 
         let pc_lot_size = self.market_state.pc_lot_size;
         let coin_lot_size = self.market_state.coin_lot_size;
@@ -822,7 +843,7 @@ impl<'ob> OrderBookState<'ob> {
             to_release.credit_coin(coin_lots_received);
             to_release.debit_native_pc(native_pc_paid);
 
-            if native_accum_fill_price > 0 {
+            if native_accum_fill_price > 0 && !is_send_take {
                 let taker_fill = Event::new(EventView::Fill {
                     side: Side::Bid,
                     maker: false,
@@ -869,26 +890,28 @@ impl<'ob> OrderBookState<'ob> {
             _ => (0, 0),
         };
 
-        let out = {
-            let native_qty_still_locked = pc_qty_to_keep_locked * pc_lot_size;
-            let native_qty_unlocked = native_pc_qty_remaining - native_qty_still_locked;
+        if !is_send_take {
+            let out = {
+                let native_qty_still_locked = pc_qty_to_keep_locked * pc_lot_size;
+                let native_qty_unlocked = native_pc_qty_remaining - native_qty_still_locked;
 
-            to_release.unlock_native_pc(native_qty_unlocked);
+                to_release.unlock_native_pc(native_qty_unlocked);
 
-            Event::new(EventView::Out {
-                side: Side::Bid,
-                release_funds: false,
-                native_qty_unlocked,
-                native_qty_still_locked,
-                order_id,
-                owner,
-                owner_slot,
-                client_order_id: NonZeroU64::new(client_order_id),
-            })
-        };
-        event_q
-            .push_back(out)
-            .map_err(|_| DexErrorCode::EventQueueFull)?;
+                Event::new(EventView::Out {
+                    side: Side::Bid,
+                    release_funds: false,
+                    native_qty_unlocked,
+                    native_qty_still_locked,
+                    order_id,
+                    owner,
+                    owner_slot,
+                    client_order_id: NonZeroU64::new(client_order_id),
+                })
+            };
+            event_q
+                .push_back(out)
+                .map_err(|_| DexErrorCode::EventQueueFull)?;
+        }
 
         if pc_qty_to_keep_locked > 0 {
             let bids = self.orders_mut(Side::Bid);

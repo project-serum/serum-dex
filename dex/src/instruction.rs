@@ -443,7 +443,8 @@ pub enum MarketInstruction {
     /// 8. `[writable]` coin vault
     /// 9. `[writable]` pc vault
     /// 10. `[]` spl token program
-    /// 11. `[]` (optional) the (M)SRM account used for fee discounts
+    /// 11. `[]` vault signer
+    /// 12. `[]` (optional) the (M)SRM account used for fee discounts
     SendTake(SendTakeInstruction),
     /// 0. `[writable]` OpenOrders
     /// 1. `[signer]` the OpenOrders owner

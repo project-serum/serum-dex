@@ -17,7 +17,7 @@ use safe_transmute::{self, to_bytes::transmute_to_bytes, trivial::TriviallyTrans
 
 use solana_program::{
     account_info::AccountInfo, program_error::ProgramError, program_pack::Pack, pubkey::Pubkey,
-    rent::Rent, sysvar::Sysvar,
+    rent::Rent, system_program, sysvar::Sysvar,
 };
 use spl_token::error::TokenError;
 
@@ -1360,7 +1360,6 @@ fn gen_vault_signer_seeds<'a>(nonce: &'a u64, market: &'a Pubkey) -> [&'a [u8]; 
     [market.as_ref(), bytes_of(nonce)]
 }
 
-#[cfg(not(any(test, feature = "fuzz")))]
 #[inline]
 pub fn gen_vault_signer_key(
     nonce: u64,
@@ -1369,16 +1368,6 @@ pub fn gen_vault_signer_key(
 ) -> Result<Pubkey, ProgramError> {
     let seeds = gen_vault_signer_seeds(&nonce, market);
     Ok(Pubkey::create_program_address(&seeds, program_id)?)
-}
-
-#[cfg(any(test, feature = "fuzz"))]
-pub fn gen_vault_signer_key(
-    nonce: u64,
-    market: &Pubkey,
-    _program_id: &Pubkey,
-) -> Result<Pubkey, ProgramError> {
-    gen_vault_signer_seeds(&nonce, market);
-    Ok(Pubkey::default())
 }
 
 #[cfg(not(any(test, feature = "fuzz")))]
@@ -1741,6 +1730,7 @@ pub(crate) mod account_parser {
         pub pc_vault: PcVault<'a, 'b>,
         pub spl_token_program: SplTokenProgram<'a, 'b>,
         pub fee_tier: FeeTier,
+        pub vault_signer: VaultSigner<'a, 'b>,
     }
     impl<'a, 'b: 'a> SendTakeArgs<'a, 'b> {
         pub fn with_parsed_args<T>(
@@ -1749,7 +1739,7 @@ pub(crate) mod account_parser {
             accounts: &'a [AccountInfo<'b>],
             f: impl FnOnce(SendTakeArgs) -> DexResult<T>,
         ) -> DexResult<T> {
-            const MIN_ACCOUNTS: usize = 11;
+            const MIN_ACCOUNTS: usize = 12;
             check_assert!(accounts.len() == MIN_ACCOUNTS || accounts.len() == MIN_ACCOUNTS + 1)?;
             let (fixed_accounts, fee_discount_account): (
                 &'a [AccountInfo<'b>; MIN_ACCOUNTS],
@@ -1767,6 +1757,7 @@ pub(crate) mod account_parser {
                 ref coin_vault_acc,
                 ref pc_vault_acc,
                 ref spl_token_program_acc,
+                ref vault_signer_acc,
             ]: &'a [AccountInfo<'b>; MIN_ACCOUNTS] = fixed_accounts;
             let srm_or_msrm_account = match fee_discount_account {
                 &[] => None,
@@ -1791,6 +1782,8 @@ pub(crate) mod account_parser {
 
             let spl_token_program = SplTokenProgram::new(spl_token_program_acc)?;
 
+            let vault_signer = VaultSigner::new(vault_signer_acc, &market, program_id)?;
+
             let mut bids = market.load_bids_mut(bids_acc).or(check_unreachable!())?;
             let mut asks = market.load_asks_mut(asks_acc).or(check_unreachable!())?;
 
@@ -1812,6 +1805,7 @@ pub(crate) mod account_parser {
                 pc_vault,
                 order_book_state,
                 spl_token_program,
+                vault_signer,
             };
             f(args)
         }
@@ -2686,8 +2680,168 @@ impl State {
     }
 
     #[cfg(feature = "program")]
-    fn process_send_take(_args: account_parser::SendTakeArgs) -> DexResult {
-        unimplemented!()
+    fn process_send_take(args: account_parser::SendTakeArgs) -> DexResult {
+        let account_parser::SendTakeArgs {
+            instruction,
+            signer,
+            mut event_q,
+            mut req_q,
+            mut order_book_state,
+            coin_wallet,
+            pc_wallet,
+            coin_vault,
+            pc_vault,
+            spl_token_program,
+            fee_tier,
+            vault_signer,
+        } = args;
+
+        let order_id = req_q.gen_order_id(instruction.limit_price.get(), instruction.side);
+        let native_pc_qty_locked = match instruction.side {
+            Side::Bid => {
+                let lock_qty_native = instruction.max_native_pc_qty_including_fees;
+                Some(lock_qty_native)
+            }
+            Side::Ask => None,
+        };
+
+        let request = RequestView::NewOrder {
+            side: instruction.side,
+            order_type: OrderType::ImmediateOrCancel,
+            order_id,
+            fee_tier,
+            self_trade_behavior: SelfTradeBehavior::AbortTransaction,
+            // Pass dummy account - system program pubkey
+            owner: system_program::ID.to_aligned_bytes(),
+            // Pass 0
+            owner_slot: 0,
+            max_coin_qty: instruction.max_coin_qty,
+            native_pc_qty_locked,
+            client_order_id: None,
+        };
+
+        let mut limit = instruction.limit;
+        let mut proceeds = RequestProceeds::zero();
+        let _unfilled_portion = order_book_state.process_orderbook_request(
+            &request,
+            &mut event_q,
+            &mut proceeds,
+            &mut limit,
+        )?;
+
+        let market_state = order_book_state.market_state;
+
+        let coin_lot_size = market_state.coin_lot_size;
+
+        let RequestProceeds {
+            coin_unlocked: _,
+            coin_credit,
+
+            native_pc_unlocked: _,
+            native_pc_credit,
+
+            coin_debit,
+            native_pc_debit,
+        } = proceeds;
+
+        let abort = match instruction.side {
+            Side::Bid if coin_credit < instruction.min_coin_qty => true,
+            Side::Ask if native_pc_credit < instruction.min_native_pc_qty => true,
+            _ => false,
+        };
+
+        if abort {
+            solana_program::msg!("Min amount requested not met! Aborting");
+            return Err(DexErrorCode::MinAmountNotMet.into());
+        };
+
+        // Amount that user deposits into the program
+        let deposit_amount;
+        // Amount that user receives after the exchange 
+        let withdraw_amount;
+
+        // Token accounts for transfers
+        let deposit_vault;
+        let withdraw_vault;
+        let deposit_source;
+        let withdraw_destination;
+
+        match instruction.side {
+            Side::Bid => {
+                deposit_amount = native_pc_debit;
+                withdraw_amount = coin_credit.checked_mul(coin_lot_size).unwrap();
+                deposit_vault = pc_vault.token_account();
+                deposit_source = pc_wallet.token_account();
+                withdraw_destination = coin_wallet.token_account();
+                withdraw_vault = coin_vault.token_account();
+
+                market_state.pc_deposits_total += deposit_amount;
+                check_assert!(market_state.coin_deposits_total >= withdraw_amount)?;
+                market_state.coin_deposits_total -= withdraw_amount;
+            }
+            Side::Ask => {
+                deposit_amount = coin_debit.checked_mul(coin_lot_size).unwrap();
+                withdraw_amount = native_pc_credit;
+                deposit_vault = coin_vault.token_account();
+                deposit_source = coin_wallet.token_account();
+                withdraw_destination = pc_wallet.token_account();
+                withdraw_vault = pc_vault.token_account();
+
+                market_state.coin_deposits_total += deposit_amount;
+                check_assert!(market_state.pc_deposits_total >= withdraw_amount)?;
+                market_state.pc_deposits_total -= withdraw_amount;
+            }
+        };
+
+        if deposit_amount != 0 {
+            let balance_before = deposit_vault.balance()?;
+            let deposit_instruction = spl_token::instruction::transfer(
+                &spl_token::ID,
+                deposit_source.inner().key,
+                deposit_vault.inner().key,
+                signer.inner().key,
+                &[],
+                deposit_amount,
+            )
+            .unwrap();
+            invoke_spl_token(
+                &deposit_instruction,
+                &[
+                    deposit_source.inner().clone(),
+                    deposit_vault.inner().clone(),
+                    signer.inner().clone(),
+                    spl_token_program.inner().clone(),
+                ],
+                &[],
+            )
+            .map_err(|err| match err {
+                ProgramError::Custom(i) => match TokenError::from_u32(i) {
+                    Some(TokenError::InsufficientFunds) => DexErrorCode::InsufficientFunds,
+                    _ => DexErrorCode::TransferFailed,
+                },
+                _ => DexErrorCode::TransferFailed,
+            })?;
+            let balance_after = deposit_vault.balance()?;
+            let balance_change = balance_after.checked_sub(balance_before);
+            check_assert_eq!(Some(deposit_amount), balance_change)?;
+        }
+
+        let nonce = market_state.vault_signer_nonce;
+        let market_pubkey = market_state.pubkey();
+        let vault_signer_seeds = gen_vault_signer_seeds(&nonce, &market_pubkey);
+
+        if withdraw_amount != 0 {
+            send_from_vault(
+                withdraw_amount,
+                withdraw_destination,
+                withdraw_vault,
+                spl_token_program,
+                vault_signer,
+                &vault_signer_seeds,
+            )?;
+        };
+
+        Ok(())
     }
 
     fn process_prune(args: account_parser::PruneArgs) -> DexResult {

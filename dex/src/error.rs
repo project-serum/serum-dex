@@ -113,6 +113,8 @@ pub enum DexErrorCode {
     InvalidOpenOrdersAuthority,
     OrderMaxTimestampExceeded,
 
+    MinAmountNotMet,
+
     Unknown = 1000,
 
     // This contains the line number in the lower 16 bits,
