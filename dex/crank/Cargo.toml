@@ -8,7 +8,7 @@ name = "crank"
 path = "src/bin/main.rs"
 
 [dependencies]
-serum_dex = { path = "../", default-features = false, features = ["client"] }
+serum_dex = { path = "../", default-features = false, features = ["client", "program"] }
 serum-common = { path = "../../common", features = ["client"] }
 spl-token = { version = "3.0.0-pre1", features = ["no-entrypoint"], default-features = false }
 clap = { version = "3.1.6", features = ["derive"] }
