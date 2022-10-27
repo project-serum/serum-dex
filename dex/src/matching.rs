@@ -13,7 +13,7 @@ use crate::error::{DexErrorCode, DexResult, SourceFileId};
 use crate::{
     critbit::{LeafNode, NodeHandle, Slab, SlabView},
     fees::{self, FeeTier},
-    state::{Event, EventQueue, EventView, MarketState, OpenOrders, RequestView},
+    state::{Event, EventQueue, EventView, MarketStateV2, OpenOrders, RequestView},
 };
 
 #[cfg(not(feature = "program"))]
@@ -53,7 +53,7 @@ pub struct OrderBookState<'a> {
     // first byte of a key is 0xaa or 0xbb, disambiguating bids and asks
     pub bids: &'a mut Slab,
     pub asks: &'a mut Slab,
-    pub market_state: &'a mut MarketState,
+    pub market_state: &'a mut MarketStateV2,
 }
 
 impl<'ob> OrderBookState<'ob> {
@@ -90,6 +90,7 @@ impl<'ob> OrderBookState<'ob> {
                 native_pc_qty_locked,
                 client_order_id,
                 self_trade_behavior,
+                tif_offset,
             } => self
                 .new_order(
                     NewOrderParams {
@@ -103,6 +104,7 @@ impl<'ob> OrderBookState<'ob> {
                         native_pc_qty_locked,
                         client_order_id: client_order_id.map_or(0, NonZeroU64::get),
                         self_trade_behavior,
+                        tif_offset,
                     },
                     event_q,
                     proceeds,
@@ -119,6 +121,7 @@ impl<'ob> OrderBookState<'ob> {
                     native_pc_qty_locked: remaining.native_pc_qty_remaining,
                     client_order_id,
                     self_trade_behavior,
+                    tif_offset,
                 }),
             RequestView::CancelOrder {
                 side,
@@ -216,6 +219,7 @@ pub(crate) struct NewOrderParams {
     native_pc_qty_locked: Option<NonZeroU64>,
     client_order_id: u64,
     self_trade_behavior: SelfTradeBehavior,
+    tif_offset: u16,
 }
 
 struct OrderRemaining {
@@ -245,6 +249,7 @@ impl<'ob> OrderBookState<'ob> {
             mut native_pc_qty_locked,
             client_order_id,
             self_trade_behavior,
+            tif_offset,
         } = params;
         let (mut post_only, mut post_allowed) = match order_type {
             OrderType::Limit => (false, true),
@@ -273,6 +278,7 @@ impl<'ob> OrderBookState<'ob> {
                         post_allowed,
                         client_order_id,
                         self_trade_behavior,
+                        tif_offset,
                     },
                     event_q,
                     proceeds,
@@ -291,6 +297,7 @@ impl<'ob> OrderBookState<'ob> {
                             post_allowed,
                             client_order_id,
                             self_trade_behavior,
+                            tif_offset,
                         },
                         event_q,
                         proceeds,
@@ -323,6 +330,7 @@ struct NewAskParams {
     post_allowed: bool,
     client_order_id: u64,
     self_trade_behavior: SelfTradeBehavior,
+    tif_offset: u16,
 }
 
 impl<'ob> OrderBookState<'ob> {
@@ -343,6 +351,7 @@ impl<'ob> OrderBookState<'ob> {
             post_allowed,
             client_order_id,
             self_trade_behavior,
+            tif_offset,
         } = params;
         let mut unfilled_qty = max_qty.get();
         let mut accum_fill_price = 0;
@@ -544,6 +553,9 @@ impl<'ob> OrderBookState<'ob> {
         }
 
         if post_allowed && !crossed && unfilled_qty > 0 {
+            // Do some investigation here if i set it later it won't work?
+            self.market_state.start_epoch_seq_num = order_id;
+
             let offers = self.orders_mut(Side::Ask);
             let new_order = LeafNode::new(
                 owner_slot,
@@ -552,6 +564,7 @@ impl<'ob> OrderBookState<'ob> {
                 unfilled_qty,
                 fee_tier,
                 client_order_id,
+                tif_offset,
             );
             let insert_result = offers.insert_leaf(&new_order);
             if let Err(SlabTreeError::OutOfSpace) = insert_result {
@@ -608,6 +621,7 @@ struct NewBidParams {
     post_allowed: bool,
     client_order_id: u64,
     self_trade_behavior: SelfTradeBehavior,
+    tif_offset: u16,
 }
 
 impl<'ob> OrderBookState<'ob> {
@@ -629,6 +643,7 @@ impl<'ob> OrderBookState<'ob> {
             post_allowed,
             client_order_id,
             self_trade_behavior,
+            tif_offset,
         } = params;
         if post_allowed {
             check_assert!(limit_price.is_some())?;
@@ -894,6 +909,9 @@ impl<'ob> OrderBookState<'ob> {
             .map_err(|_| DexErrorCode::EventQueueFull)?;
 
         if pc_qty_to_keep_locked > 0 {
+            // Do some investigation here if i set it later it won't work?
+            self.market_state.start_epoch_seq_num = order_id;
+
             let bids = self.orders_mut(Side::Bid);
             let new_leaf = LeafNode::new(
                 owner_slot,
@@ -902,6 +920,7 @@ impl<'ob> OrderBookState<'ob> {
                 coin_qty_to_post,
                 fee_tier,
                 client_order_id,
+                tif_offset,
             );
             let insert_result = bids.insert_leaf(&new_leaf);
             if let Err(SlabTreeError::OutOfSpace) = insert_result {

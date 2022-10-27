@@ -52,7 +52,7 @@ pub struct LeafNode {
     tag: u32,
     owner_slot: u8,
     fee_tier: u8,
-    padding: [u8; 2],
+    tif_offset: u16,
     key: u128,
     owner: [u64; 4],
     quantity: u64,
@@ -70,12 +70,13 @@ impl LeafNode {
         quantity: u64,
         fee_tier: FeeTier,
         client_order_id: u64,
+        tif_offset: u16,
     ) -> Self {
         LeafNode {
             tag: NodeTag::LeafNode.into(),
             owner_slot,
             fee_tier: fee_tier.into(),
-            padding: [0; 2],
+            tif_offset,
             key,
             owner,
             quantity,
@@ -121,6 +122,11 @@ impl LeafNode {
     #[inline]
     pub fn client_order_id(&self) -> u64 {
         self.client_order_id
+    }
+
+    #[inline]
+    pub fn tif_offset(&self) -> u16 {
+        self.tif_offset
     }
 }
 
@@ -881,7 +887,7 @@ mod tests {
                 let key = rng.gen();
                 let owner = rng.gen();
                 let qty = rng.gen();
-                let leaf = LeafNode::new(offset, key, owner, qty, FeeTier::Base, 0);
+                let leaf = LeafNode::new(offset, key, owner, qty, FeeTier::Base, 0, 0);
 
                 println!("{:x}", key);
                 println!("{}", i);
@@ -976,7 +982,7 @@ mod tests {
                         };
                         let owner = rng.gen();
                         let qty = rng.gen();
-                        let leaf = LeafNode::new(offset, key, owner, qty, FeeTier::SRM5, 5);
+                        let leaf = LeafNode::new(offset, key, owner, qty, FeeTier::SRM5, 5, 0);
 
                         println!("Insert {:x}", key);
 
