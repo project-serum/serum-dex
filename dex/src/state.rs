@@ -2810,7 +2810,7 @@ pub(crate) mod account_parser {
             ] = array_ref![accounts, 0, 7];
 
             let _prune_authority = SignerAccount::new(prune_auth_acc)?;
-            let mut market = Market::load(market_acc, program_id)?;
+            let market = Market::load(market_acc, program_id)?;
             check_assert!(market.prune_authority() == Some(prune_auth_acc.key))?;
             let open_orders_address = open_orders_acc.key;
             let mut open_orders = market.load_orders_mut(
