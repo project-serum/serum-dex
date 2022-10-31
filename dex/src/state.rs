@@ -1740,7 +1740,8 @@ pub(crate) mod account_parser {
             f: impl FnOnce(SendTakeArgs) -> DexResult<T>,
         ) -> DexResult<T> {
             const MIN_ACCOUNTS: usize = 12;
-            check_assert!(accounts.len() == MIN_ACCOUNTS || accounts.len() == MIN_ACCOUNTS + 1)?;
+            const MAX_ACCOUNTS: usize = 13;
+            check_assert!(accounts.len() >= MIN_ACCOUNTS && accounts.len() <= MAX_ACCOUNTS)?;
             let (fixed_accounts, fee_discount_account): (
                 &'a [AccountInfo<'b>; MIN_ACCOUNTS],
                 &'a [AccountInfo<'b>],
@@ -1833,11 +1834,8 @@ pub(crate) mod account_parser {
             f: impl FnOnce(NewOrderV3Args) -> DexResult<T>,
         ) -> DexResult<T> {
             const MIN_ACCOUNTS: usize = 12;
-            check_assert!(
-                accounts.len() == MIN_ACCOUNTS
-                    || accounts.len() == MIN_ACCOUNTS + 1
-                    || accounts.len() == MIN_ACCOUNTS + 2
-            )?;
+            const MAX_ACCOUNTS: usize = 14;
+            check_assert!(accounts.len() >= MIN_ACCOUNTS && accounts.len() <= MAX_ACCOUNTS)?;
             let (fixed_accounts, fee_discount_account): (
                 &'a [AccountInfo<'b>; MIN_ACCOUNTS],
                 &'a [AccountInfo<'b>],
