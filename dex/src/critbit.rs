@@ -12,7 +12,6 @@ use std::{
     mem::{align_of, size_of},
     num::NonZeroU64,
 };
-
 pub type NodeHandle = u32;
 
 #[derive(IntoPrimitive, TryFromPrimitive)]

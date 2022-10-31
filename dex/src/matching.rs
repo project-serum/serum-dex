@@ -1,20 +1,19 @@
 use std::num::NonZeroU64;
 
-use crate::instruction::SelfTradeBehavior;
-use num_enum::{IntoPrimitive, TryFromPrimitive};
-#[cfg(test)]
-use proptest_derive::Arbitrary;
-use serde::{Deserialize, Serialize};
-#[cfg(feature = "program")]
-use solana_program::msg;
-
 use crate::critbit::SlabTreeError;
 use crate::error::{DexErrorCode, DexResult, SourceFileId};
+use crate::instruction::SelfTradeBehavior;
 use crate::{
     critbit::{LeafNode, NodeHandle, Slab, SlabView},
     fees::{self, FeeTier},
     state::{Event, EventQueue, EventView, MarketStateV2, OpenOrders, RequestView},
 };
+use num_enum::{IntoPrimitive, TryFromPrimitive};
+#[cfg(test)]
+use proptest_derive::Arbitrary;
+use serde::{Deserialize, Serialize};
+#[cfg(feature = "program")]
+use solana_program::{clock::Clock, msg, sysvar::Sysvar};
 
 #[cfg(not(feature = "program"))]
 macro_rules! msg {
@@ -353,6 +352,10 @@ impl<'ob> OrderBookState<'ob> {
             self_trade_behavior,
             tif_offset,
         } = params;
+
+        let clock = Clock::get()?;
+        let epoch_start_ts = self.market_state.epoch_start_ts;
+
         let mut unfilled_qty = max_qty.get();
         let mut accum_fill_price = 0;
 
@@ -361,6 +364,7 @@ impl<'ob> OrderBookState<'ob> {
 
         let mut accum_maker_rebates = 0;
         let crossed;
+
         let done = loop {
             let best_bid_h = match self.find_bbo(Side::Bid) {
                 None => {
@@ -377,6 +381,29 @@ impl<'ob> OrderBookState<'ob> {
                 .as_leaf_mut()
                 .unwrap();
 
+            if (epoch_start_ts + best_bid_ref.tif_offset() as u64) < (clock.unix_timestamp as u64) {
+                let order = self
+                    .orders_mut(Side::Bid)
+                    .remove_by_key(best_bid_ref.order_id())
+                    .unwrap();
+
+                msg!("Expired TIF bid! booting...");
+                let out = Event::new(EventView::Out {
+                    side: Side::Bid,
+                    release_funds: true,
+                    native_qty_unlocked: order.quantity() * order.price().get() * pc_lot_size,
+                    native_qty_still_locked: 0,
+                    order_id: order.order_id(),
+                    owner: order.owner(),
+                    owner_slot: order.owner_slot(),
+                    client_order_id: NonZeroU64::new(order.client_order_id()),
+                });
+                event_q
+                    .push_back(out)
+                    .map_err(|_| DexErrorCode::EventQueueFull)?;
+                msg!("Order has been booted");
+                continue;
+            }
             let trade_price = best_bid_ref.price();
             crossed = limit_price <= trade_price;
 
@@ -554,7 +581,7 @@ impl<'ob> OrderBookState<'ob> {
 
         if post_allowed && !crossed && unfilled_qty > 0 {
             // Do some investigation here if i set it later it won't work?
-            self.market_state.start_epoch_seq_num = order_id;
+            self.market_state.start_epoch_asks_seq_num = order_id;
 
             let offers = self.orders_mut(Side::Ask);
             let new_order = LeafNode::new(
@@ -649,6 +676,9 @@ impl<'ob> OrderBookState<'ob> {
             check_assert!(limit_price.is_some())?;
         }
 
+        let clock = Clock::get()?;
+        let epoch_start_ts = self.market_state.epoch_start_ts;
+
         let pc_lot_size = self.market_state.pc_lot_size;
         let coin_lot_size = self.market_state.coin_lot_size;
 
@@ -675,6 +705,29 @@ impl<'ob> OrderBookState<'ob> {
                 .as_leaf_mut()
                 .unwrap();
 
+            if (epoch_start_ts + best_offer_ref.tif_offset() as u64) < (clock.unix_timestamp as u64)
+            {
+                let order = self
+                    .orders_mut(Side::Ask)
+                    .remove_by_key(best_offer_ref.order_id())
+                    .unwrap();
+
+                msg!("Expired TIF ask! booting...");
+                let out = Event::new(EventView::Out {
+                    side: Side::Ask,
+                    release_funds: true,
+                    native_qty_unlocked: order.quantity() * order.price().get() * pc_lot_size,
+                    native_qty_still_locked: 0,
+                    order_id: order.order_id(),
+                    owner: order.owner(),
+                    owner_slot: order.owner_slot(),
+                    client_order_id: NonZeroU64::new(order.client_order_id()),
+                });
+                event_q
+                    .push_back(out)
+                    .map_err(|_| DexErrorCode::EventQueueFull)?;
+                continue;
+            }
             let trade_price = best_offer_ref.price();
             crossed = limit_price
                 .map(|limit_price| limit_price >= trade_price)
@@ -910,7 +963,7 @@ impl<'ob> OrderBookState<'ob> {
 
         if pc_qty_to_keep_locked > 0 {
             // Do some investigation here if i set it later it won't work?
-            self.market_state.start_epoch_seq_num = order_id;
+            self.market_state.start_epoch_bids_seq_num = order_id;
 
             let bids = self.orders_mut(Side::Bid);
             let new_leaf = LeafNode::new(

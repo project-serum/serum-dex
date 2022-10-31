@@ -154,17 +154,31 @@ impl<'a> Market<'a> {
         }
     }
 
-    pub fn start_epoch_seq_num(&self) -> Option<u128> {
+    pub fn start_epoch_bids_seq_num(&self) -> Option<u128> {
         match &self {
             Market::V1(_) => None,
-            Market::V2(state) => Some(state.start_epoch_seq_num),
+            Market::V2(state) => Some(state.start_epoch_bids_seq_num),
         }
     }
 
-    pub fn set_start_epoch_seq_num(&mut self, seq_num: u128) -> DexResult {
+    pub fn set_start_epoch_bids_seq_num(&mut self, seq_num: u128) -> DexResult {
         match self {
             Market::V1(_) => return Err(DexErrorCode::InvalidMarketFlags.into()),
-            Market::V2(state) => Ok(state.start_epoch_seq_num = seq_num),
+            Market::V2(state) => Ok(state.start_epoch_bids_seq_num = seq_num),
+        }
+    }
+
+    pub fn start_epoch_asks_seq_num(&self) -> Option<u128> {
+        match &self {
+            Market::V1(_) => None,
+            Market::V2(state) => Some(state.start_epoch_asks_seq_num),
+        }
+    }
+
+    pub fn set_start_epoch_asks_seq_num(&mut self, seq_num: u128) -> DexResult {
+        match self {
+            Market::V1(_) => return Err(DexErrorCode::InvalidMarketFlags.into()),
+            Market::V2(state) => Ok(state.start_epoch_asks_seq_num = seq_num),
         }
     }
 
@@ -249,9 +263,10 @@ pub struct MarketStateV2 {
     pub prune_authority: Pubkey,
     pub consume_events_authority: Pubkey,
     pub epoch_start_ts: u64,
-    pub start_epoch_seq_num: u128,
+    pub start_epoch_bids_seq_num: u128,
+    pub start_epoch_asks_seq_num: u128,
     // Unused bytes for future upgrades.
-    padding: [u8; 968],
+    padding: [u8; 952],
 }
 
 impl Deref for MarketStateV2 {
@@ -1930,7 +1945,7 @@ pub(crate) mod account_parser {
                 _ => check_unreachable!()?,
             };
 
-            let mut market = Market::load(market_acc, program_id)?;
+            let market = Market::load(market_acc, program_id)?;
 
             // Dynamic sysvars don't work in unit tests.
             #[cfg(any(test, feature = "fuzz"))]
@@ -2027,7 +2042,7 @@ pub(crate) mod account_parser {
                 _ => check_unreachable!()?,
             };
 
-            let mut market = Market::load(market_acc, program_id)?;
+            let market = Market::load(market_acc, program_id)?;
             let owner = SignerAccount::new(owner_acc)?;
             let fee_tier =
                 market.load_fee_tier(&owner.inner().key.to_aligned_bytes(), srm_or_msrm_account)?;
@@ -2133,7 +2148,7 @@ pub(crate) mod account_parser {
                 _ => check_unreachable!()?,
             };
 
-            let mut market = Market::load(market_acc, program_id)?;
+            let market = Market::load(market_acc, program_id)?;
             let owner = SignerAccount::new(owner_acc)?;
             let fee_tier =
                 market.load_fee_tier(&owner.inner().key.to_aligned_bytes(), srm_or_msrm_account)?;
@@ -2288,7 +2303,7 @@ pub(crate) mod account_parser {
                 ref event_q_acc,
             ] = array_ref![accounts, 0, 6];
 
-            let mut market = Market::load(market_acc, program_id).or(check_unreachable!())?;
+            let market = Market::load(market_acc, program_id).or(check_unreachable!())?;
 
             let open_orders_signer = SignerAccount::new(open_orders_signer_acc)?;
             let mut open_orders = market.load_orders_mut(
@@ -2351,7 +2366,7 @@ pub(crate) mod account_parser {
                 ref event_q_acc,
             ] = array_ref![accounts, 0, 6];
 
-            let mut market = Market::load(market_acc, program_id).or(check_unreachable!())?;
+            let market = Market::load(market_acc, program_id).or(check_unreachable!())?;
 
             let open_orders_signer = SignerAccount::new(open_orders_signer_acc)?;
             let mut open_orders = market.load_orders_mut(
@@ -2416,7 +2431,7 @@ pub(crate) mod account_parser {
 
             let client_order_id = NonZeroU64::new(client_order_id).ok_or(assertion_error!())?;
 
-            let mut market = Market::load(market_acc, program_id).or(check_unreachable!())?;
+            let market = Market::load(market_acc, program_id).or(check_unreachable!())?;
 
             let open_orders_signer = SignerAccount::new(open_orders_signer_acc)?;
             let mut open_orders = market.load_orders_mut(
@@ -2481,7 +2496,7 @@ pub(crate) mod account_parser {
 
             let client_order_id = NonZeroU64::new(client_order_id).ok_or(assertion_error!())?;
 
-            let mut market = Market::load(market_acc, program_id).or(check_unreachable!())?;
+            let market = Market::load(market_acc, program_id).or(check_unreachable!())?;
 
             let open_orders_signer = SignerAccount::new(open_orders_signer_acc)?;
             let mut open_orders = market.load_orders_mut(
@@ -3897,11 +3912,11 @@ impl State {
         let market = args.market;
         let clock = Clock::get()?;
 
-        let cycle_length = u16::MAX;
-        let current_remainder = clock.unix_timestamp as u64 % cycle_length as u64;
-        let epoch_cycle_start_ts = (clock.unix_timestamp as u64)
-            .checked_sub(current_remainder)
-            .unwrap();
+        // let cycle_length = u16::MAX;
+        // let current_remainder = clock.unix_timestamp as u64 % cycle_length as u64;
+        let epoch_cycle_start_ts = (clock.unix_timestamp as u64);
+        // .checked_sub(current_remainder)
+        // .unwrap();
         market.set_epoch_start_ts(epoch_cycle_start_ts)?;
         Ok(())
     }
