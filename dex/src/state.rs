@@ -2929,7 +2929,7 @@ impl State {
         } = args;
 
         let native_coin_amount = open_orders.native_coin_free;
-        let native_pc_amount = open_orders.native_pc_free;
+        let mut native_pc_amount = open_orders.native_pc_free;
 
         market.coin_deposits_total -= native_coin_amount;
         market.pc_deposits_total -= native_pc_amount;
@@ -2945,6 +2945,35 @@ impl State {
             .native_pc_total
             .checked_sub(native_pc_amount)
             .unwrap();
+
+        let nonce = market.vault_signer_nonce;
+        let market_pubkey = market.pubkey();
+        let vault_signer_seeds = gen_vault_signer_seeds(&nonce, &market_pubkey);
+
+        match referrer {
+            Some(referrer_pc_wallet) if open_orders.referrer_rebates_accrued > 0 => {
+                // If referrer is same as user, send_from_vault once
+                if referrer_pc_wallet.account().key == pc_wallet.account().key {
+                    native_pc_amount = native_pc_amount
+                        .checked_add(open_orders.referrer_rebates_accrued)
+                        .unwrap();
+                } else {
+                    send_from_vault(
+                        open_orders.referrer_rebates_accrued,
+                        referrer_pc_wallet.token_account(),
+                        pc_vault.token_account(),
+                        spl_token_program,
+                        vault_signer,
+                        &vault_signer_seeds,
+                    )?;
+                };
+            }
+            _ => {
+                market.pc_fees_accrued += open_orders.referrer_rebates_accrued;
+            }
+        };
+        market.referrer_rebates_accrued -= open_orders.referrer_rebates_accrued;
+        open_orders.referrer_rebates_accrued = 0;
 
         let token_infos: [(
             u64,
@@ -2963,10 +2992,6 @@ impl State {
             ),
         ];
 
-        let nonce = market.vault_signer_nonce;
-        let market_pubkey = market.pubkey();
-        let vault_signer_seeds = gen_vault_signer_seeds(&nonce, &market_pubkey);
-
         for &(token_amount, wallet_account, vault) in token_infos.iter() {
             send_from_vault(
                 token_amount,
@@ -2977,24 +3002,6 @@ impl State {
                 &vault_signer_seeds,
             )?;
         }
-
-        match referrer {
-            Some(referrer_pc_wallet) if open_orders.referrer_rebates_accrued > 0 => {
-                send_from_vault(
-                    open_orders.referrer_rebates_accrued,
-                    referrer_pc_wallet.token_account(),
-                    pc_vault.token_account(),
-                    spl_token_program,
-                    vault_signer,
-                    &vault_signer_seeds,
-                )?;
-            }
-            _ => {
-                market.pc_fees_accrued += open_orders.referrer_rebates_accrued;
-            }
-        };
-        market.referrer_rebates_accrued -= open_orders.referrer_rebates_accrued;
-        open_orders.referrer_rebates_accrued = 0;
 
         Ok(())
     }
@@ -3159,10 +3166,6 @@ impl State {
                         }
                         _ => (),
                     };
-                    if !maker {
-                        let referrer_rebate = fees::referrer_rebate(native_fee_or_rebate);
-                        open_orders.referrer_rebates_accrued += referrer_rebate;
-                    }
                     if let Some(client_id) = client_order_id {
                         debug_assert_eq!(
                             client_id.get(),
@@ -3317,6 +3320,7 @@ impl State {
         let mut limit = instruction.limit;
         let unfilled_portion = order_book_state.process_orderbook_request(
             &request,
+            open_orders,
             &mut event_q,
             &mut proceeds,
             &mut limit,
