@@ -1,6 +1,7 @@
 #![cfg_attr(not(feature = "program"), allow(unused))]
 use crate::error::DexError;
 use crate::matching::{OrderType, Side};
+use crate::state::account_parser::InitializeTIFEpochCycleArgs;
 use bytemuck::cast;
 use serde::{Deserialize, Serialize};
 use solana_program::{
@@ -583,7 +584,7 @@ pub enum MarketInstruction {
     NewOrderV3NoRent(NewOrderInstructionV3),
     /// 0. [writable] market
     /// 1. [writable] serum authority
-    InitializeTIFEpochCycle,
+    InitializeTIFEpochCycle(u16),
     /// 0. `[writable]` the market
     /// 1. `[writable]` the OpenOrders account to use
     /// 2. `[writable]` the request queue
@@ -712,7 +713,10 @@ impl MarketInstruction {
                 let data_arr = array_ref![data, 0, 46];
                 NewOrderInstructionV3::unpack(data_arr)?
             }),
-            (21, 0) => MarketInstruction::InitializeTIFEpochCycle,
+            (21, 2) => {
+                let epoch_length = array_ref![data, 0, 2];
+                MarketInstruction::InitializeTIFEpochCycle(u16::from_le_bytes(*epoch_length))
+            }
             (22, 48) => MarketInstruction::NewOrderV4({
                 let data_arr = array_ref![data, 0, 48];
                 NewOrderInstructionV4::unpack(data_arr)?
@@ -814,8 +818,9 @@ pub fn initialize_tif_epoch_cycle(
     program_id: &Pubkey,
     market: &Pubkey,
     authority: &Pubkey,
+    epoch_length: u16,
 ) -> Result<solana_program::instruction::Instruction, DexError> {
-    let data = MarketInstruction::InitializeTIFEpochCycle.pack();
+    let data = MarketInstruction::InitializeTIFEpochCycle(epoch_length).pack();
     let accounts: Vec<AccountMeta> = vec![
         AccountMeta::new(*market, false),
         AccountMeta::new_readonly(*authority, true),

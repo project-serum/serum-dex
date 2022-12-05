@@ -1,6 +1,7 @@
 use crate::{
     error::{DexErrorCode, DexResult},
     fees::FeeTier,
+    state::MarketStateV2,
 };
 use arrayref::{array_refs, mut_array_refs};
 use bytemuck::{cast, cast_mut, cast_ref, cast_slice, cast_slice_mut, Pod, Zeroable};
@@ -12,6 +13,7 @@ use std::{
     mem::{align_of, size_of},
     num::NonZeroU64,
 };
+
 pub type NodeHandle = u32;
 
 #[derive(IntoPrimitive, TryFromPrimitive)]
@@ -94,6 +96,17 @@ impl LeafNode {
     }
 
     #[inline]
+    pub fn seq_num(&self, is_bid: bool) -> u64 {
+        // seq num is bottom 64 bits
+        let lower = self.order_id() as u64;
+        // flipped based on which side it is
+        match is_bid {
+            true => !lower,
+            false => lower,
+        }
+    }
+
+    #[inline]
     pub fn order_id(&self) -> u128 {
         self.key
     }
@@ -126,6 +139,24 @@ impl LeafNode {
     #[inline]
     pub fn tif_offset(&self) -> u16 {
         self.tif_offset
+    }
+
+    pub fn is_order_expired(
+        &self,
+        epoch_start_ts: u64,
+        start_epoch_seq_num: u64,
+        current_ts: u64,
+        is_bid: bool,
+    ) -> bool {
+        if epoch_start_ts + (self.tif_offset() as u64) < current_ts {
+            return true;
+        }
+
+        if self.seq_num(is_bid) < start_epoch_seq_num {
+            return true;
+        }
+
+        return false;
     }
 }
 

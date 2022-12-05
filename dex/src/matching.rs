@@ -417,6 +417,7 @@ impl<'ob> OrderBookState<'ob> {
                 msg!("Order has been booted");
                 continue;
             }
+
             let trade_price = best_bid_clone.price();
             crossed = limit_price <= trade_price;
 
@@ -593,9 +594,6 @@ impl<'ob> OrderBookState<'ob> {
         }
 
         if post_allowed && !crossed && unfilled_qty > 0 {
-            // Do some investigation here if i set it later it won't work?
-            self.market_state.start_epoch_asks_seq_num = order_id;
-
             let offers = self.orders_mut(Side::Ask);
             let new_order = LeafNode::new(
                 owner_slot,
@@ -689,8 +687,9 @@ impl<'ob> OrderBookState<'ob> {
             check_assert!(limit_price.is_some())?;
         }
 
-        let clock = Clock::get()?;
+        let current_ts = (Clock::get()?).unix_timestamp as u64;
         let epoch_start_ts = self.market_state.epoch_start_ts;
+        let start_epoch_seq_num = self.market_state.start_epoch_seq_num;
 
         let pc_lot_size = self.market_state.pc_lot_size;
         let coin_lot_size = self.market_state.coin_lot_size;
@@ -726,9 +725,12 @@ impl<'ob> OrderBookState<'ob> {
                 .as_leaf_mut()
                 .unwrap();
 
-            if (epoch_start_ts + best_offer_clone.tif_offset() as u64)
-                < (clock.unix_timestamp as u64)
-            {
+            if best_offer_ref.is_order_expired(
+                epoch_start_ts,
+                start_epoch_seq_num,
+                current_ts,
+                false,
+            ) {
                 let order = self
                     .orders_mut(Side::Ask)
                     .remove_by_key(best_offer_clone.order_id())
@@ -755,6 +757,7 @@ impl<'ob> OrderBookState<'ob> {
                     .map_err(|_| DexErrorCode::EventQueueFull)?;
                 continue;
             }
+
             let trade_price = best_offer_clone.price();
             crossed = limit_price
                 .map(|limit_price| limit_price >= trade_price)
@@ -989,9 +992,6 @@ impl<'ob> OrderBookState<'ob> {
             .map_err(|_| DexErrorCode::EventQueueFull)?;
 
         if pc_qty_to_keep_locked > 0 {
-            // Do some investigation here if i set it later it won't work?
-            self.market_state.start_epoch_bids_seq_num = order_id;
-
             let bids = self.orders_mut(Side::Bid);
             let new_leaf = LeafNode::new(
                 owner_slot,

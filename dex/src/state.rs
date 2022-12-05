@@ -140,48 +140,6 @@ impl<'a> Market<'a> {
         }
     }
 
-    pub fn epoch_start_ts(&self) -> Option<u64> {
-        match &self {
-            Market::V1(_) => None,
-            Market::V2(state) => Some(state.epoch_start_ts),
-        }
-    }
-
-    pub fn set_epoch_start_ts(&mut self, ts: u64) -> DexResult {
-        match self {
-            Market::V1(_) => return Err(DexErrorCode::InvalidMarketFlags.into()),
-            Market::V2(state) => Ok(state.epoch_start_ts = ts),
-        }
-    }
-
-    pub fn start_epoch_bids_seq_num(&self) -> Option<u128> {
-        match &self {
-            Market::V1(_) => None,
-            Market::V2(state) => Some(state.start_epoch_bids_seq_num),
-        }
-    }
-
-    pub fn set_start_epoch_bids_seq_num(&mut self, seq_num: u128) -> DexResult {
-        match self {
-            Market::V1(_) => return Err(DexErrorCode::InvalidMarketFlags.into()),
-            Market::V2(state) => Ok(state.start_epoch_bids_seq_num = seq_num),
-        }
-    }
-
-    pub fn start_epoch_asks_seq_num(&self) -> Option<u128> {
-        match &self {
-            Market::V1(_) => None,
-            Market::V2(state) => Some(state.start_epoch_asks_seq_num),
-        }
-    }
-
-    pub fn set_start_epoch_asks_seq_num(&mut self, seq_num: u128) -> DexResult {
-        match self {
-            Market::V1(_) => return Err(DexErrorCode::InvalidMarketFlags.into()),
-            Market::V2(state) => Ok(state.start_epoch_asks_seq_num = seq_num),
-        }
-    }
-
     pub fn load_orders_mut_no_rent(
         &self,
         orders_account: &'a AccountInfo,
@@ -252,6 +210,41 @@ impl<'a> Market<'a> {
 
         Ok(open_orders)
     }
+
+    pub fn epoch_length(&self) -> Option<u16> {
+        match &self {
+            Market::V1(_) => None,
+            Market::V2(state) => Some(state.epoch_length),
+        }
+    }
+
+    pub fn set_epoch_length(&mut self, epoch_length: u16) -> DexResult {
+        match self {
+            Market::V1(_) => return Err(DexErrorCode::InvalidMarketFlags.into()),
+            Market::V2(state) => Ok(state.epoch_length = epoch_length),
+        }
+    }
+
+    pub fn epoch_start_ts(&self) -> Option<u64> {
+        match &self {
+            Market::V1(_) => None,
+            Market::V2(state) => Some(state.epoch_start_ts),
+        }
+    }
+
+    pub fn set_epoch_start_ts(&mut self, ts: u64) -> DexResult {
+        match self {
+            Market::V1(_) => return Err(DexErrorCode::InvalidMarketFlags.into()),
+            Market::V2(state) => Ok(state.epoch_start_ts = ts),
+        }
+    }
+
+    pub fn start_epoch_seq_num(&self) -> Option<u64> {
+        match &self {
+            Market::V1(_) => None,
+            Market::V2(state) => Some(state.start_epoch_seq_num),
+        }
+    }
 }
 
 #[derive(Copy, Clone)]
@@ -262,11 +255,11 @@ pub struct MarketStateV2 {
     pub open_orders_authority: Pubkey,
     pub prune_authority: Pubkey,
     pub consume_events_authority: Pubkey,
+    pub epoch_length: u16,
     pub epoch_start_ts: u64,
-    pub start_epoch_bids_seq_num: u128,
-    pub start_epoch_asks_seq_num: u128,
+    pub start_epoch_seq_num: u64,
     // Unused bytes for future upgrades.
-    padding: [u8; 952],
+    _padding: [u8; 974],
 }
 
 impl Deref for MarketStateV2 {
@@ -316,6 +309,25 @@ impl MarketStateV2 {
         if !flags.contains(required_flags) {
             Err(DexErrorCode::InvalidMarketFlags)?
         }
+        Ok(())
+    }
+
+    pub fn check_and_update_epoch_cycle(&mut self, seq_num: u64) -> DexResult {
+        let clock = Clock::get()?;
+
+        // Skip if we haven't surpassed the cycle.
+        if self.epoch_start_ts + (self.epoch_length as u64) >= (clock.unix_timestamp as u64) {
+            return Ok(());
+        }
+
+        let current_remainder = clock.unix_timestamp as u64 % self.epoch_length as u64;
+        let new_epoch_start_ts = (clock.unix_timestamp as u64)
+            .checked_sub(current_remainder)
+            .unwrap();
+
+        self.epoch_start_ts = new_epoch_start_ts;
+        self.start_epoch_seq_num = seq_num;
+
         Ok(())
     }
 }
@@ -939,14 +951,19 @@ impl QueueHeader for RequestQueueHeader {
 pub type RequestQueue<'a> = Queue<'a, RequestQueueHeader>;
 
 impl RequestQueue<'_> {
-    pub fn gen_order_id(&mut self, limit_price: u64, side: Side, increment_seq: bool) -> u128 {
+    pub fn gen_order_id(
+        &mut self,
+        limit_price: u64,
+        side: Side,
+        increment_seq: bool,
+    ) -> (u128, u64) {
         let seq_num = self.gen_seq_num(increment_seq);
         let upper = (limit_price as u128) << 64;
         let lower = match side {
             Side::Bid => !seq_num,
             Side::Ask => seq_num,
         };
-        upper | (lower as u128)
+        (upper | (lower as u128), seq_num)
     }
 
     fn gen_seq_num(&mut self, increment_seq: bool) -> u64 {
@@ -1776,12 +1793,14 @@ pub(crate) mod account_parser {
 
     pub struct InitializeTIFEpochCycleArgs<'a, 'b: 'a> {
         pub market: &'a mut Market<'b>,
+        pub epoch_length: u16,
     }
 
     impl<'a, 'b: 'a> InitializeTIFEpochCycleArgs<'a, 'b> {
         pub fn with_parsed_args<T>(
             program_id: &'a Pubkey,
             accounts: &'a [AccountInfo<'b>],
+            epoch_length: u16,
             f: impl FnOnce(InitializeTIFEpochCycleArgs) -> DexResult<T>,
         ) -> DexResult<T> {
             // Parse accounts.
@@ -1796,10 +1815,12 @@ pub(crate) mod account_parser {
             let mut market = Market::load(market_acc, program_id)?;
             // Arbitrary which authority we check they should all be serum authority from zeta
             check_assert_eq!(Some(authority.key), market.consume_events_authority())?;
+            check_assert!(epoch_length > 0)?;
 
             // Invoke processor.
             f(InitializeTIFEpochCycleArgs {
                 market: &mut market,
+                epoch_length,
             })
         }
     }
@@ -2867,10 +2888,11 @@ impl State {
             MarketInstruction::InitializeMarket(ref inner) => Self::process_initialize_market(
                 account_parser::InitializeMarketArgs::new(program_id, inner, accounts)?,
             )?,
-            MarketInstruction::InitializeTIFEpochCycle => {
+            MarketInstruction::InitializeTIFEpochCycle(epoch_length) => {
                 account_parser::InitializeTIFEpochCycleArgs::with_parsed_args(
                     program_id,
                     accounts,
+                    epoch_length,
                     Self::process_initialize_tif_epoch_cycle,
                 )?
             }
@@ -3454,7 +3476,13 @@ impl State {
             }
         };
 
-        let order_id = req_q.gen_order_id(instruction.limit_price.get(), instruction.side, true);
+        let (order_id, seq_num) =
+            req_q.gen_order_id(instruction.limit_price.get(), instruction.side, true);
+
+        order_book_state
+            .market_state
+            .check_and_update_epoch_cycle(seq_num)?;
+
         let owner_slot = open_orders_mut.add_order(order_id, instruction.side)?;
         open_orders_mut.client_order_ids[owner_slot as usize] = instruction.client_order_id;
 
@@ -3631,7 +3659,13 @@ impl State {
             }
         };
 
-        let order_id = req_q.gen_order_id(instruction.limit_price.get(), instruction.side, true);
+        let (order_id, seq_num) =
+            req_q.gen_order_id(instruction.limit_price.get(), instruction.side, true);
+
+        order_book_state
+            .market_state
+            .check_and_update_epoch_cycle(seq_num)?;
+
         let owner_slot = open_orders_mut.add_order(order_id, instruction.side)?;
         open_orders_mut.client_order_ids[owner_slot as usize] = instruction.client_order_id;
 
@@ -3910,14 +3944,17 @@ impl State {
         args: account_parser::InitializeTIFEpochCycleArgs,
     ) -> DexResult {
         let market = args.market;
+        let epoch_length = args.epoch_length;
         let clock = Clock::get()?;
 
-        // let cycle_length = u16::MAX;
-        // let current_remainder = clock.unix_timestamp as u64 % cycle_length as u64;
-        let epoch_cycle_start_ts = (clock.unix_timestamp as u64);
-        // .checked_sub(current_remainder)
-        // .unwrap();
+        let current_remainder = clock.unix_timestamp as u64 % epoch_length as u64;
+        let epoch_cycle_start_ts = (clock.unix_timestamp as u64)
+            .checked_sub(current_remainder)
+            .unwrap();
+
+        market.set_epoch_length(epoch_length)?;
         market.set_epoch_start_ts(epoch_cycle_start_ts)?;
+
         Ok(())
     }
 }
