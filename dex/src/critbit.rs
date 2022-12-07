@@ -1,7 +1,6 @@
 use crate::{
     error::{DexErrorCode, DexResult},
     fees::FeeTier,
-    state::MarketStateV2,
 };
 use arrayref::{array_refs, mut_array_refs};
 use bytemuck::{cast, cast_mut, cast_ref, cast_slice, cast_slice_mut, Pod, Zeroable};
@@ -148,6 +147,11 @@ impl LeafNode {
         current_ts: u64,
         is_bid: bool,
     ) -> bool {
+        // Unset tif
+        if self.tif_offset() == 0 {
+            return false;
+        }
+
         if epoch_start_ts + (self.tif_offset() as u64) < current_ts {
             return true;
         }

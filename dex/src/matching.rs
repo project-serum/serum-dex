@@ -353,8 +353,9 @@ impl<'ob> OrderBookState<'ob> {
             tif_offset,
         } = params;
 
-        let clock = Clock::get()?;
+        let current_ts = (Clock::get()?).unix_timestamp as u64;
         let epoch_start_ts = self.market_state.epoch_start_ts;
+        let start_epoch_seq_num = self.market_state.start_epoch_seq_num;
 
         let mut unfilled_qty = max_qty.get();
         let mut accum_fill_price = 0;
@@ -374,14 +375,6 @@ impl<'ob> OrderBookState<'ob> {
                 Some(h) => h,
             };
 
-            let best_bid_clone = self
-                .orders_mut(Side::Bid)
-                .get(best_bid_h)
-                .unwrap()
-                .as_leaf()
-                .unwrap()
-                .clone();
-
             let best_bid_ref = self
                 .orders_mut(Side::Bid)
                 .get_mut(best_bid_h)
@@ -389,18 +382,18 @@ impl<'ob> OrderBookState<'ob> {
                 .as_leaf_mut()
                 .unwrap();
 
-            if (epoch_start_ts + best_bid_clone.tif_offset() as u64) < (clock.unix_timestamp as u64)
+            let order_id = best_bid_ref.order_id();
+
+            if best_bid_ref.is_order_expired(epoch_start_ts, start_epoch_seq_num, current_ts, true)
             {
-                let order = self
-                    .orders_mut(Side::Bid)
-                    .remove_by_key(best_bid_clone.order_id())
-                    .unwrap();
+                let order = self.orders_mut(Side::Bid).remove_by_key(order_id).unwrap();
 
                 msg!(
                     "Expired TIF bid! booting..., price: {}, quantity: {}",
                     order.price().get(),
                     order.quantity()
                 );
+
                 let out = Event::new(EventView::Out {
                     side: Side::Bid,
                     release_funds: true,
@@ -418,23 +411,24 @@ impl<'ob> OrderBookState<'ob> {
                 continue;
             }
 
-            let trade_price = best_bid_clone.price();
+            let trade_price = best_bid_ref.price();
+            let bid_size = best_bid_ref.quantity();
+            let order_would_self_trade = owner == best_bid_ref.owner();
+
             crossed = limit_price <= trade_price;
 
             if !crossed || post_only {
                 break true;
             }
 
-            let bid_size = best_bid_clone.quantity();
             let trade_qty = bid_size.min(unfilled_qty);
 
             if trade_qty == 0 {
                 break true;
             }
 
-            let order_would_self_trade = owner == best_bid_clone.owner();
             if order_would_self_trade {
-                let best_bid_id = best_bid_clone.order_id();
+                let best_bid_id = order_id;
                 let cancelled_provide_qty;
                 let cancelled_take_qty;
 
@@ -444,7 +438,7 @@ impl<'ob> OrderBookState<'ob> {
                         cancelled_take_qty = trade_qty;
                     }
                     SelfTradeBehavior::CancelProvide => {
-                        cancelled_provide_qty = best_bid_clone.quantity();
+                        cancelled_provide_qty = best_bid_ref.quantity();
                         cancelled_take_qty = 0;
                     }
                     SelfTradeBehavior::AbortTransaction => {
@@ -461,9 +455,9 @@ impl<'ob> OrderBookState<'ob> {
                         * trade_price.get()
                         * pc_lot_size,
                     order_id: best_bid_id,
-                    owner: best_bid_clone.owner(),
-                    owner_slot: best_bid_clone.owner_slot(),
-                    client_order_id: NonZeroU64::new(best_bid_clone.client_order_id()),
+                    owner: best_bid_ref.owner(),
+                    owner_slot: best_bid_ref.owner_slot(),
+                    client_order_id: NonZeroU64::new(best_bid_ref.client_order_id()),
                 });
                 event_q
                     .push_back(provide_out)
@@ -710,14 +704,6 @@ impl<'ob> OrderBookState<'ob> {
                 Some(h) => h,
             };
 
-            let best_offer_clone = self
-                .orders_mut(Side::Ask)
-                .get(best_offer_h)
-                .unwrap()
-                .as_leaf()
-                .unwrap()
-                .clone();
-
             let best_offer_ref = self
                 .orders_mut(Side::Ask)
                 .get_mut(best_offer_h)
@@ -725,16 +711,15 @@ impl<'ob> OrderBookState<'ob> {
                 .as_leaf_mut()
                 .unwrap();
 
+            let order_id = best_offer_ref.order_id();
+
             if best_offer_ref.is_order_expired(
                 epoch_start_ts,
                 start_epoch_seq_num,
                 current_ts,
                 false,
             ) {
-                let order = self
-                    .orders_mut(Side::Ask)
-                    .remove_by_key(best_offer_clone.order_id())
-                    .unwrap();
+                let order = self.orders_mut(Side::Ask).remove_by_key(order_id).unwrap();
 
                 msg!(
                     "Expired TIF ask! booting..., price: {}, quantity: {}",
@@ -758,7 +743,10 @@ impl<'ob> OrderBookState<'ob> {
                 continue;
             }
 
-            let trade_price = best_offer_clone.price();
+            let trade_price = best_offer_ref.price();
+            let offer_size = best_offer_ref.quantity();
+            let order_would_self_trade = owner == best_offer_ref.owner();
+
             crossed = limit_price
                 .map(|limit_price| limit_price >= trade_price)
                 .unwrap_or(true);
@@ -766,18 +754,16 @@ impl<'ob> OrderBookState<'ob> {
                 break true;
             }
 
-            let offer_size = best_offer_clone.quantity();
             let trade_qty = offer_size
                 .min(coin_qty_remaining)
-                .min(pc_qty_remaining / best_offer_clone.price().get());
+                .min(pc_qty_remaining / trade_price.get());
 
             if trade_qty == 0 {
                 break true;
             }
 
-            let order_would_self_trade = owner == best_offer_clone.owner();
             if order_would_self_trade {
-                let best_offer_id = best_offer_clone.order_id();
+                let best_offer_id = order_id;
 
                 let cancelled_take_qty;
                 let cancelled_provide_qty;
@@ -785,7 +771,7 @@ impl<'ob> OrderBookState<'ob> {
                 match self_trade_behavior {
                     SelfTradeBehavior::CancelProvide => {
                         cancelled_take_qty = 0;
-                        cancelled_provide_qty = best_offer_clone.quantity();
+                        cancelled_provide_qty = offer_size;
                     }
                     SelfTradeBehavior::DecrementTake => {
                         cancelled_take_qty = trade_qty;
@@ -796,16 +782,16 @@ impl<'ob> OrderBookState<'ob> {
                     }
                 };
 
-                let remaining_provide_qty = best_offer_clone.quantity() - cancelled_provide_qty;
+                let remaining_provide_qty = offer_size - cancelled_provide_qty;
                 let provide_out = Event::new(EventView::Out {
                     side: Side::Ask,
                     release_funds: true,
                     native_qty_unlocked: cancelled_provide_qty * coin_lot_size,
                     native_qty_still_locked: remaining_provide_qty * coin_lot_size,
                     order_id: best_offer_id,
-                    owner: best_offer_clone.owner(),
-                    owner_slot: best_offer_clone.owner_slot(),
-                    client_order_id: NonZeroU64::new(best_offer_clone.client_order_id()),
+                    owner: best_offer_ref.owner(),
+                    owner_slot: best_offer_ref.owner_slot(),
+                    client_order_id: NonZeroU64::new(best_offer_ref.client_order_id()),
                 });
                 event_q
                     .push_back(provide_out)

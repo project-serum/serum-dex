@@ -312,7 +312,16 @@ impl MarketStateV2 {
         Ok(())
     }
 
+    pub fn check_tif_epoch_initialized(&self) -> DexResult {
+        if self.epoch_start_ts == 0 && self.epoch_length == 0 {
+            return Err(DexErrorCode::TIFNotInitialized);
+        }
+        Ok(())
+    }
+
     pub fn check_and_update_epoch_cycle(&mut self, seq_num: u64) -> DexResult {
+        self.check_tif_epoch_initialized()?;
+
         let clock = Clock::get()?;
 
         // Skip if we haven't surpassed the cycle.
@@ -993,7 +1002,7 @@ pub struct Request {
     owner_slot: u8,
     fee_tier: u8,
     self_trade_behavior: u8,
-    padding: [u8; 4],
+    _padding: [u8; 4],
     max_coin_qty_or_cancel_id: u64,
     native_pc_qty_locked: u64,
     order_id: u128,
@@ -1061,7 +1070,7 @@ impl Request {
                     owner_slot,
                     fee_tier: fee_tier.into(),
                     self_trade_behavior: self_trade_behavior.into(),
-                    padding: Zeroable::zeroed(),
+                    _padding: Zeroable::zeroed(),
                     order_id,
                     owner,
                     max_coin_qty_or_cancel_id: max_coin_qty.get(),
@@ -1091,7 +1100,7 @@ impl Request {
                     self_trade_behavior: 0,
                     owner: expected_owner,
                     native_pc_qty_locked: 0,
-                    padding: Zeroable::zeroed(),
+                    _padding: Zeroable::zeroed(),
                     client_order_id: client_order_id.map_or(0, NonZeroU64::get),
                     tif_offset: 0,
                 }
@@ -1696,7 +1705,7 @@ pub(crate) mod account_parser {
                 unchecked_serum_dex_accounts,
                 unchecked_vaults,
                 unchecked_mints,
-                unchecked_rent,
+                _unchecked_rent,
                 remaining_accounts,
             ) = array_refs![accounts, 5, 2, 2, 1; .. ;];
 
@@ -1815,6 +1824,7 @@ pub(crate) mod account_parser {
             let mut market = Market::load(market_acc, program_id)?;
             // Arbitrary which authority we check they should all be serum authority from zeta
             check_assert_eq!(Some(authority.key), market.consume_events_authority())?;
+
             check_assert!(epoch_length > 0)?;
 
             // Invoke processor.
@@ -1958,7 +1968,7 @@ pub(crate) mod account_parser {
                 ref coin_vault_acc,
                 ref pc_vault_acc,
                 ref spl_token_program_acc,
-                ref rent_sysvar_acc,
+                ref _rent_sysvar_acc,
             ]: &'a [AccountInfo<'b>; MIN_ACCOUNTS] = fixed_accounts;
             let srm_or_msrm_account = match fee_discount_account {
                 &[] => None,
@@ -2770,7 +2780,7 @@ pub(crate) mod account_parser {
                 ref open_orders_acc,
                 ref owner_acc,
                 ref market_acc,
-                ref rent_acc,
+                ref _rent_acc,
             ] = array_ref![accounts, 0, 4];
 
             let oo_authority = (&accounts[4..])
@@ -3684,6 +3694,7 @@ impl State {
             client_order_id: NonZeroU64::new(instruction.client_order_id),
             tif_offset: instruction.tif_offset,
         };
+
         let mut limit = instruction.limit;
         let unfilled_portion = order_book_state.process_orderbook_request(
             &request,

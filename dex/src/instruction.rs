@@ -1,7 +1,6 @@
 #![cfg_attr(not(feature = "program"), allow(unused))]
 use crate::error::DexError;
 use crate::matching::{OrderType, Side};
-use crate::state::account_parser::InitializeTIFEpochCycleArgs;
 use bytemuck::cast;
 use serde::{Deserialize, Serialize};
 use solana_program::{
@@ -944,7 +943,7 @@ pub fn new_order_no_rent(
     })
 }
 
-pub fn new_order_with_tif_no_rent(
+pub fn new_order_v4(
     market: &Pubkey,
     open_orders_account: &Pubkey,
     request_queue: &Pubkey,
