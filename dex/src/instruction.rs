@@ -569,18 +569,6 @@ pub enum MarketInstruction {
     /// 4. `[signer]` the OpenOrders owner
     /// 5. `[writable]` event_q
     CancelOrderByClientIdV2NoError(u64),
-    /// 0. `[writable]` the market
-    /// 1. `[writable]` the OpenOrders account to use
-    /// 2. `[writable]` the request queue
-    /// 3. `[writable]` the event queue
-    /// 4. `[writable]` bids
-    /// 5. `[writable]` asks
-    /// 6. `[writable]` the (coin or price currency) account paying for the order
-    /// 7. `[signer]` owner of the OpenOrders account
-    /// 8. `[writable]` coin vault
-    /// 9. `[writable]` pc vault
-    /// 10. `[]` spl token program
-    NewOrderV3NoRent(NewOrderInstructionV3),
     /// 0. [writable] market
     /// 1. [writable] serum authority
     InitializeTIFEpochCycle(u16),
@@ -708,15 +696,11 @@ impl MarketInstruction {
                 let client_id = array_ref![data, 0, 8];
                 MarketInstruction::CancelOrderByClientIdV2NoError(u64::from_le_bytes(*client_id))
             }
-            (20, 46) => MarketInstruction::NewOrderV3NoRent({
-                let data_arr = array_ref![data, 0, 46];
-                NewOrderInstructionV3::unpack(data_arr)?
-            }),
-            (21, 2) => {
+            (20, 2) => {
                 let epoch_length = array_ref![data, 0, 2];
                 MarketInstruction::InitializeTIFEpochCycle(u16::from_le_bytes(*epoch_length))
             }
-            (22, 48) => MarketInstruction::NewOrderV4({
+            (21, 48) => MarketInstruction::NewOrderV4({
                 let data_arr = array_ref![data, 0, 48];
                 NewOrderInstructionV4::unpack(data_arr)?
             }),
@@ -883,59 +867,6 @@ pub fn new_order(
     if let Some(key) = srm_account_referral {
         accounts.push(AccountMeta::new(*key, false))
     }
-    Ok(Instruction {
-        program_id: *program_id,
-        data,
-        accounts,
-    })
-}
-
-pub fn new_order_no_rent(
-    market: &Pubkey,
-    open_orders_account: &Pubkey,
-    request_queue: &Pubkey,
-    event_queue: &Pubkey,
-    market_bids: &Pubkey,
-    market_asks: &Pubkey,
-    order_payer: &Pubkey,
-    open_orders_account_owner: &Pubkey,
-    coin_vault: &Pubkey,
-    pc_vault: &Pubkey,
-    spl_token_program_id: &Pubkey,
-    program_id: &Pubkey,
-    side: Side,
-    limit_price: NonZeroU64,
-    max_coin_qty: NonZeroU64,
-    order_type: OrderType,
-    client_order_id: u64,
-    self_trade_behavior: SelfTradeBehavior,
-    limit: u16,
-    max_native_pc_qty_including_fees: NonZeroU64,
-) -> Result<Instruction, DexError> {
-    let data = MarketInstruction::NewOrderV3NoRent(NewOrderInstructionV3 {
-        side,
-        limit_price,
-        max_coin_qty,
-        order_type,
-        client_order_id,
-        self_trade_behavior,
-        limit,
-        max_native_pc_qty_including_fees,
-    })
-    .pack();
-    let accounts = vec![
-        AccountMeta::new(*market, false),
-        AccountMeta::new(*open_orders_account, false),
-        AccountMeta::new(*request_queue, false),
-        AccountMeta::new(*event_queue, false),
-        AccountMeta::new(*market_bids, false),
-        AccountMeta::new(*market_asks, false),
-        AccountMeta::new(*order_payer, false),
-        AccountMeta::new_readonly(*open_orders_account_owner, true),
-        AccountMeta::new(*coin_vault, false),
-        AccountMeta::new(*pc_vault, false),
-        AccountMeta::new_readonly(*spl_token_program_id, false),
-    ];
     Ok(Instruction {
         program_id: *program_id,
         data,

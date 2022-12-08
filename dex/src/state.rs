@@ -314,7 +314,7 @@ impl MarketStateV2 {
 
     pub fn check_tif_epoch_initialized(&self) -> DexResult {
         if self.epoch_start_ts == 0 && self.epoch_length == 0 {
-            return Err(DexErrorCode::TIFNotInitialized);
+            Err(DexErrorCode::TIFNotInitialized)?
         }
         Ok(())
     }
@@ -2914,14 +2914,6 @@ impl State {
             }
             MarketInstruction::NewOrderV3(ref inner) => {
                 account_parser::NewOrderV3Args::with_parsed_args(
-                    program_id,
-                    inner,
-                    accounts,
-                    Self::process_new_order_v3,
-                )?
-            }
-            MarketInstruction::NewOrderV3NoRent(ref inner) => {
-                account_parser::NewOrderV3Args::with_parsed_args_no_rent(
                     program_id,
                     inner,
                     accounts,
