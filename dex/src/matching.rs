@@ -384,14 +384,22 @@ impl<'ob> OrderBookState<'ob> {
 
             let order_id = best_bid_ref.order_id();
 
+            msg!(
+                "new_ask is_order_expired: epoch_start_ts = {}, tif_offset = {}, current_ts = {}",
+                epoch_start_ts,
+                best_bid_ref.tif_offset(),
+                current_ts
+            );
+
             if best_bid_ref.is_order_expired(epoch_start_ts, start_epoch_seq_num, current_ts, true)
             {
                 let order = self.orders_mut(Side::Bid).remove_by_key(order_id).unwrap();
 
                 msg!(
-                    "Expired TIF bid! booting..., price: {}, quantity: {}",
+                    "Expired TIF bid! booting..., price: {}, quantity: {}, tif_offset: {}",
                     order.price().get(),
-                    order.quantity()
+                    order.quantity(),
+                    order.tif_offset(),
                 );
 
                 let out = Event::new(EventView::Out {
@@ -712,6 +720,13 @@ impl<'ob> OrderBookState<'ob> {
                 .unwrap();
 
             let order_id = best_offer_ref.order_id();
+
+            msg!(
+                "new_bid is_order_expired: epoch_start_ts = {}, tif_offset = {}, current_ts = {}",
+                epoch_start_ts,
+                best_offer_ref.tif_offset(),
+                current_ts
+            );
 
             if best_offer_ref.is_order_expired(
                 epoch_start_ts,
