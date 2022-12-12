@@ -384,23 +384,11 @@ impl<'ob> OrderBookState<'ob> {
 
             let order_id = best_bid_ref.order_id();
 
-            msg!(
-                "new_ask is_order_expired: epoch_start_ts = {}, tif_offset = {}, current_ts = {}",
-                epoch_start_ts,
-                best_bid_ref.tif_offset(),
-                current_ts
-            );
-
             if best_bid_ref.is_order_expired(epoch_start_ts, start_epoch_seq_num, current_ts, true)
             {
                 let order = self.orders_mut(Side::Bid).remove_by_key(order_id).unwrap();
 
-                msg!(
-                    "Expired TIF bid! booting..., price: {}, quantity: {}, tif_offset: {}",
-                    order.price().get(),
-                    order.quantity(),
-                    order.tif_offset(),
-                );
+                msg!("Expired TIF bid! booting...",);
 
                 let out = Event::new(EventView::Out {
                     side: Side::Bid,
@@ -415,7 +403,6 @@ impl<'ob> OrderBookState<'ob> {
                 event_q
                     .push_back(out)
                     .map_err(|_| DexErrorCode::EventQueueFull)?;
-                msg!("Order has been booted");
                 continue;
             }
 
@@ -721,13 +708,6 @@ impl<'ob> OrderBookState<'ob> {
 
             let order_id = best_offer_ref.order_id();
 
-            msg!(
-                "new_bid is_order_expired: epoch_start_ts = {}, tif_offset = {}, current_ts = {}",
-                epoch_start_ts,
-                best_offer_ref.tif_offset(),
-                current_ts
-            );
-
             if best_offer_ref.is_order_expired(
                 epoch_start_ts,
                 start_epoch_seq_num,
@@ -736,11 +716,7 @@ impl<'ob> OrderBookState<'ob> {
             ) {
                 let order = self.orders_mut(Side::Ask).remove_by_key(order_id).unwrap();
 
-                msg!(
-                    "Expired TIF ask! booting..., price: {}, quantity: {}",
-                    order.price().get(),
-                    order.quantity()
-                );
+                msg!("Expired TIF ask! booting...",);
                 let out = Event::new(EventView::Out {
                     side: Side::Ask,
                     release_funds: true,
