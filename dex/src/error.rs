@@ -113,6 +113,8 @@ pub enum DexErrorCode {
     InvalidOpenOrdersAuthority,
     OpenOrdersNotInitialized,
     TIFNotInitialized,
+    TIFOffsetGreaterThanEqualToEpochCycleLength,
+    CannotPlaceExpiredOrder,
 
     Unknown = 1000,
 

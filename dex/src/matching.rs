@@ -387,9 +387,6 @@ impl<'ob> OrderBookState<'ob> {
             if best_bid_ref.is_order_expired(epoch_start_ts, start_epoch_seq_num, current_ts, true)
             {
                 let order = self.orders_mut(Side::Bid).remove_by_key(order_id).unwrap();
-
-                msg!("Expired TIF bid! booting...",);
-
                 let out = Event::new(EventView::Out {
                     side: Side::Bid,
                     release_funds: true,
@@ -715,8 +712,6 @@ impl<'ob> OrderBookState<'ob> {
                 false,
             ) {
                 let order = self.orders_mut(Side::Ask).remove_by_key(order_id).unwrap();
-
-                msg!("Expired TIF ask! booting...",);
                 let out = Event::new(EventView::Out {
                     side: Side::Ask,
                     release_funds: true,

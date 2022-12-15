@@ -2037,96 +2037,6 @@ pub(crate) mod account_parser {
             };
             f(args)
         }
-
-        pub fn with_parsed_args_no_rent<T>(
-            program_id: &'a Pubkey,
-            instruction: &'a NewOrderInstructionV3,
-            accounts: &'a [AccountInfo<'b>],
-            f: impl FnOnce(NewOrderV3Args) -> DexResult<T>,
-        ) -> DexResult<T> {
-            const MIN_ACCOUNTS: usize = 11;
-            check_assert!(
-                accounts.len() == MIN_ACCOUNTS
-                    || accounts.len() == MIN_ACCOUNTS + 1
-                    || accounts.len() == MIN_ACCOUNTS + 2
-            )?;
-            let (fixed_accounts, fee_discount_account): (
-                &'a [AccountInfo<'b>; MIN_ACCOUNTS],
-                &'a [AccountInfo<'b>],
-            ) = array_refs![accounts, MIN_ACCOUNTS; .. ;];
-            let &[
-                ref market_acc,
-                ref open_orders_acc,
-                ref req_q_acc,
-                ref event_q_acc,
-                ref bids_acc,
-                ref asks_acc,
-                ref payer_acc,
-                ref owner_acc,
-                ref coin_vault_acc,
-                ref pc_vault_acc,
-                ref spl_token_program_acc,
-            ]: &'a [AccountInfo<'b>; MIN_ACCOUNTS] = fixed_accounts;
-            let srm_or_msrm_account = match fee_discount_account {
-                &[] => None,
-                &[ref account] => Some(TokenAccount::new(account)?),
-                _ => check_unreachable!()?,
-            };
-
-            let market = Market::load(market_acc, program_id)?;
-            let owner = SignerAccount::new(owner_acc)?;
-            let fee_tier =
-                market.load_fee_tier(&owner.inner().key.to_aligned_bytes(), srm_or_msrm_account)?;
-            let open_orders_address = open_orders_acc.key.to_aligned_bytes();
-            let req_q = market.load_request_queue_mut(req_q_acc)?;
-            let event_q = market.load_event_queue_mut(event_q_acc)?;
-
-            let payer = TokenAccount::new(payer_acc)?;
-            match instruction.side {
-                Side::Bid => market.check_pc_payer(payer).or(check_unreachable!())?,
-                Side::Ask => market.check_coin_payer(payer).or(check_unreachable!())?,
-            };
-            let coin_vault = CoinVault::from_account(coin_vault_acc, &market)?;
-            let pc_vault = PcVault::from_account(pc_vault_acc, &market)?;
-            market.check_enabled()?;
-            let spl_token_program = SplTokenProgram::new(spl_token_program_acc)?;
-
-            let mut bids = market.load_bids_mut(bids_acc).or(check_unreachable!())?;
-            let mut asks = market.load_asks_mut(asks_acc).or(check_unreachable!())?;
-
-            // Assume account created.
-            let open_orders = market.load_orders_mut_no_rent(
-                open_orders_acc,
-                Some(owner.inner()),
-                program_id,
-                None, // To use an open orders authority, explicitly use the
-                      // InitOpenOrders instruction.
-            )?;
-
-            drop(market);
-            let mut market_state = MarketStateV2::load(market_acc, program_id)?;
-            let order_book_state = OrderBookState {
-                bids: bids.deref_mut(),
-                asks: asks.deref_mut(),
-                market_state: market_state.borrow_mut(),
-            };
-
-            let args = NewOrderV3Args {
-                instruction,
-                order_book_state,
-                open_orders,
-                open_orders_address,
-                owner,
-                req_q,
-                event_q,
-                payer,
-                coin_vault,
-                pc_vault,
-                spl_token_program,
-                fee_tier,
-            };
-            f(args)
-        }
     }
 
     pub struct NewOrderV4Args<'a, 'b: 'a> {
@@ -2211,6 +2121,27 @@ pub(crate) mod account_parser {
 
             drop(market);
             let mut market_state = MarketStateV2::load(market_acc, program_id)?;
+            if instruction.tif_offset > market_state.epoch_length {
+                return Err(DexErrorCode::TIFOffsetGreaterThanEqualToEpochCycleLength.into());
+            }
+
+            let now_secs = Clock::get()?.unix_timestamp as u64;
+
+            if instruction.tif_offset != 0 {
+                if market_state.epoch_start_ts + (market_state.epoch_length as u64) >= now_secs {
+                    if market_state.epoch_start_ts + (instruction.tif_offset as u64) <= now_secs {
+                        return Err(DexErrorCode::CannotPlaceExpiredOrder.into());
+                    }
+                } else {
+                    let current_remainder = now_secs % market_state.epoch_length as u64;
+                    let new_epoch_start_ts = now_secs.checked_sub(current_remainder).unwrap();
+
+                    if new_epoch_start_ts + (instruction.tif_offset as u64) <= now_secs {
+                        return Err(DexErrorCode::CannotPlaceExpiredOrder.into());
+                    }
+                }
+            }
+
             let order_book_state = OrderBookState {
                 bids: bids.deref_mut(),
                 asks: asks.deref_mut(),
