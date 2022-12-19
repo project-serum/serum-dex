@@ -2054,7 +2054,7 @@ pub(crate) mod account_parser {
         pub fee_tier: FeeTier,
     }
     impl<'a, 'b: 'a> NewOrderV4Args<'a, 'b> {
-        pub fn with_parsed_args_no_rent<T>(
+        pub fn with_parsed_args<T>(
             program_id: &'a Pubkey,
             instruction: &'a NewOrderInstructionV4,
             accounts: &'a [AccountInfo<'b>],
@@ -2122,24 +2122,7 @@ pub(crate) mod account_parser {
             drop(market);
             let mut market_state = MarketStateV2::load(market_acc, program_id)?;
             if instruction.tif_offset > market_state.epoch_length {
-                return Err(DexErrorCode::TIFOffsetGreaterThanEqualToEpochCycleLength.into());
-            }
-
-            let now_secs = Clock::get()?.unix_timestamp as u64;
-
-            if instruction.tif_offset != 0 {
-                if market_state.epoch_start_ts + (market_state.epoch_length as u64) >= now_secs {
-                    if market_state.epoch_start_ts + (instruction.tif_offset as u64) <= now_secs {
-                        return Err(DexErrorCode::CannotPlaceExpiredOrder.into());
-                    }
-                } else {
-                    let current_remainder = now_secs % market_state.epoch_length as u64;
-                    let new_epoch_start_ts = now_secs.checked_sub(current_remainder).unwrap();
-
-                    if new_epoch_start_ts + (instruction.tif_offset as u64) <= now_secs {
-                        return Err(DexErrorCode::CannotPlaceExpiredOrder.into());
-                    }
-                }
+                return Err(DexErrorCode::TIFOffsetGreaterThanEpochCycleLength.into());
             }
 
             let order_book_state = OrderBookState {
@@ -2852,7 +2835,7 @@ impl State {
                 )?
             }
             MarketInstruction::NewOrderV4(ref inner) => {
-                account_parser::NewOrderV4Args::with_parsed_args_no_rent(
+                account_parser::NewOrderV4Args::with_parsed_args(
                     program_id,
                     inner,
                     accounts,
@@ -3598,6 +3581,13 @@ impl State {
         order_book_state
             .market_state
             .check_and_update_epoch_cycle(seq_num)?;
+
+        if instruction.tif_offset != 0
+            && (order_book_state.market_state.epoch_start_ts + (instruction.tif_offset as u64)
+                <= (Clock::get()?.unix_timestamp as u64))
+        {
+            return Err(DexErrorCode::CannotPlaceExpiredOrder.into());
+        }
 
         let owner_slot = open_orders_mut.add_order(order_id, instruction.side)?;
         open_orders_mut.client_order_ids[owner_slot as usize] = instruction.client_order_id;
