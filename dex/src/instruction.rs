@@ -8,6 +8,7 @@ use solana_program::{
     pubkey::Pubkey,
     sysvar::rent,
 };
+
 use std::convert::TryInto;
 
 use arrayref::{array_ref, array_refs};
@@ -97,6 +98,36 @@ pub struct SendTakeInstruction {
     pub min_native_pc_qty: u64,
 
     pub limit: u16,
+}
+
+#[derive(PartialEq, Eq, Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(test, derive(Arbitrary))]
+pub struct NewOrderInstructionV4 {
+    pub side: Side,
+
+    #[cfg_attr(
+        test,
+        proptest(strategy = "(1u64..=std::u64::MAX).prop_map(|x| NonZeroU64::new(x).unwrap())")
+    )]
+    pub limit_price: NonZeroU64,
+
+    #[cfg_attr(
+        test,
+        proptest(strategy = "(1u64..=std::u64::MAX).prop_map(|x| NonZeroU64::new(x).unwrap())")
+    )]
+    pub max_coin_qty: NonZeroU64,
+    #[cfg_attr(
+        test,
+        proptest(strategy = "(1u64..=std::u64::MAX).prop_map(|x| NonZeroU64::new(x).unwrap())")
+    )]
+    pub max_native_pc_qty_including_fees: NonZeroU64,
+
+    pub self_trade_behavior: SelfTradeBehavior,
+
+    pub order_type: OrderType,
+    pub client_order_id: u64,
+    pub limit: u16,
+    pub tif_offset: u16,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Serialize, Deserialize)]
@@ -217,6 +248,51 @@ impl SendTakeInstruction {
             min_coin_qty,
             min_native_pc_qty,
             limit,
+        })
+    }
+}
+
+impl NewOrderInstructionV4 {
+    fn unpack(data: &[u8; 48]) -> Option<Self> {
+        let (
+            &side_arr,
+            &price_arr,
+            &max_coin_qty_arr,
+            &max_native_pc_qty_arr,
+            &self_trade_behavior_arr,
+            &otype_arr,
+            &client_order_id_bytes,
+            &limit_arr,
+            &tif_offset_arr,
+        ) = array_refs![data, 4, 8, 8, 8, 4, 4, 8, 2, 2];
+
+        let side = Side::try_from_primitive(u32::from_le_bytes(side_arr).try_into().ok()?).ok()?;
+        let limit_price = NonZeroU64::new(u64::from_le_bytes(price_arr))?;
+        let max_coin_qty = NonZeroU64::new(u64::from_le_bytes(max_coin_qty_arr))?;
+        let max_native_pc_qty_including_fees =
+            NonZeroU64::new(u64::from_le_bytes(max_native_pc_qty_arr))?;
+        let self_trade_behavior = SelfTradeBehavior::try_from_primitive(
+            u32::from_le_bytes(self_trade_behavior_arr)
+                .try_into()
+                .ok()?,
+        )
+        .ok()?;
+        let order_type =
+            OrderType::try_from_primitive(u32::from_le_bytes(otype_arr).try_into().ok()?).ok()?;
+        let client_order_id = u64::from_le_bytes(client_order_id_bytes);
+        let limit = u16::from_le_bytes(limit_arr);
+        let tif_offset = u16::from_le_bytes(tif_offset_arr);
+
+        Some(NewOrderInstructionV4 {
+            side,
+            limit_price,
+            max_coin_qty,
+            max_native_pc_qty_including_fees,
+            self_trade_behavior,
+            order_type,
+            client_order_id,
+            limit,
+            tif_offset,
         })
     }
 }
@@ -493,6 +569,9 @@ pub enum MarketInstruction {
     /// 4. `[signer]` the OpenOrders owner
     /// 5. `[writable]` event_q
     CancelOrderByClientIdV2NoError(u64),
+    /// 0. [writable] market
+    /// 1. [writable] serum authority
+    InitializeTIFEpochCycle(u16),
     /// 0. `[writable]` the market
     /// 1. `[writable]` the OpenOrders account to use
     /// 2. `[writable]` the request queue
@@ -504,7 +583,8 @@ pub enum MarketInstruction {
     /// 8. `[writable]` coin vault
     /// 9. `[writable]` pc vault
     /// 10. `[]` spl token program
-    NewOrderV3NoRent(NewOrderInstructionV3),
+    /// Also has no rent
+    NewOrderV4(NewOrderInstructionV4),
 }
 
 impl MarketInstruction {
@@ -616,9 +696,13 @@ impl MarketInstruction {
                 let client_id = array_ref![data, 0, 8];
                 MarketInstruction::CancelOrderByClientIdV2NoError(u64::from_le_bytes(*client_id))
             }
-            (20, 46) => MarketInstruction::NewOrderV3NoRent({
-                let data_arr = array_ref![data, 0, 46];
-                NewOrderInstructionV3::unpack(data_arr)?
+            (20, 2) => {
+                let epoch_length = array_ref![data, 0, 2];
+                MarketInstruction::InitializeTIFEpochCycle(u16::from_le_bytes(*epoch_length))
+            }
+            (21, 48) => MarketInstruction::NewOrderV4({
+                let data_arr = array_ref![data, 0, 48];
+                NewOrderInstructionV4::unpack(data_arr)?
             }),
             _ => return None,
         })
@@ -713,6 +797,24 @@ pub fn initialize_market(
     })
 }
 
+pub fn initialize_tif_epoch_cycle(
+    program_id: &Pubkey,
+    market: &Pubkey,
+    authority: &Pubkey,
+    epoch_length: u16,
+) -> Result<solana_program::instruction::Instruction, DexError> {
+    let data = MarketInstruction::InitializeTIFEpochCycle(epoch_length).pack();
+    let accounts: Vec<AccountMeta> = vec![
+        AccountMeta::new(*market, false),
+        AccountMeta::new_readonly(*authority, true),
+    ];
+    Ok(Instruction {
+        program_id: *program_id,
+        data,
+        accounts,
+    })
+}
+
 pub fn new_order(
     market: &Pubkey,
     open_orders_account: &Pubkey,
@@ -772,7 +874,7 @@ pub fn new_order(
     })
 }
 
-pub fn new_order_no_rent(
+pub fn new_order_v4(
     market: &Pubkey,
     open_orders_account: &Pubkey,
     request_queue: &Pubkey,
@@ -793,8 +895,9 @@ pub fn new_order_no_rent(
     self_trade_behavior: SelfTradeBehavior,
     limit: u16,
     max_native_pc_qty_including_fees: NonZeroU64,
+    tif_offset: u16,
 ) -> Result<Instruction, DexError> {
-    let data = MarketInstruction::NewOrderV3NoRent(NewOrderInstructionV3 {
+    let data = MarketInstruction::NewOrderV4(NewOrderInstructionV4 {
         side,
         limit_price,
         max_coin_qty,
@@ -803,6 +906,7 @@ pub fn new_order_no_rent(
         self_trade_behavior,
         limit,
         max_native_pc_qty_including_fees,
+        tif_offset,
     })
     .pack();
     let accounts = vec![

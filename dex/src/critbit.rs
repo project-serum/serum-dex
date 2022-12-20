@@ -52,7 +52,7 @@ pub struct LeafNode {
     tag: u32,
     owner_slot: u8,
     fee_tier: u8,
-    padding: [u8; 2],
+    tif_offset: u16,
     key: u128,
     owner: [u64; 4],
     quantity: u64,
@@ -70,12 +70,13 @@ impl LeafNode {
         quantity: u64,
         fee_tier: FeeTier,
         client_order_id: u64,
+        tif_offset: u16,
     ) -> Self {
         LeafNode {
             tag: NodeTag::LeafNode.into(),
             owner_slot,
             fee_tier: fee_tier.into(),
-            padding: [0; 2],
+            tif_offset,
             key,
             owner,
             quantity,
@@ -91,6 +92,17 @@ impl LeafNode {
     #[inline]
     pub fn price(&self) -> NonZeroU64 {
         NonZeroU64::new((self.key >> 64) as u64).unwrap()
+    }
+
+    #[inline]
+    pub fn seq_num(&self, is_bid: bool) -> u64 {
+        // seq num is bottom 64 bits
+        let lower = self.order_id() as u64;
+        // flipped based on which side it is
+        match is_bid {
+            true => !lower,
+            false => lower,
+        }
     }
 
     #[inline]
@@ -121,6 +133,34 @@ impl LeafNode {
     #[inline]
     pub fn client_order_id(&self) -> u64 {
         self.client_order_id
+    }
+
+    #[inline]
+    pub fn tif_offset(&self) -> u16 {
+        self.tif_offset
+    }
+
+    pub fn is_order_expired(
+        &self,
+        epoch_start_ts: u64,
+        start_epoch_seq_num: u64,
+        current_ts: u64,
+        is_bid: bool,
+    ) -> bool {
+        // Unset tif
+        if self.tif_offset() == 0 {
+            return false;
+        }
+
+        if epoch_start_ts + (self.tif_offset() as u64) < current_ts {
+            return true;
+        }
+
+        if self.seq_num(is_bid) < start_epoch_seq_num {
+            return true;
+        }
+
+        return false;
     }
 }
 
@@ -186,7 +226,6 @@ impl AnyNode {
         }
     }
 
-    #[cfg(test)]
     fn prefix_len(&self) -> u32 {
         match self.case().unwrap() {
             NodeRef::Inner(&InnerNode { prefix_len, .. }) => prefix_len,
@@ -599,8 +638,7 @@ impl Slab {
         }
     }
 
-    #[cfg(test)]
-    fn find_by_key(&self, search_key: u128) -> Option<NodeHandle> {
+    pub fn find_by_key(&self, search_key: u128) -> Option<NodeHandle> {
         let mut node_handle: NodeHandle = self.root()?;
         loop {
             let node_ref = self.get(node_handle).unwrap();
@@ -881,7 +919,7 @@ mod tests {
                 let key = rng.gen();
                 let owner = rng.gen();
                 let qty = rng.gen();
-                let leaf = LeafNode::new(offset, key, owner, qty, FeeTier::Base, 0);
+                let leaf = LeafNode::new(offset, key, owner, qty, FeeTier::Base, 0, 0);
 
                 println!("{:x}", key);
                 println!("{}", i);
@@ -976,7 +1014,7 @@ mod tests {
                         };
                         let owner = rng.gen();
                         let qty = rng.gen();
-                        let leaf = LeafNode::new(offset, key, owner, qty, FeeTier::SRM5, 5);
+                        let leaf = LeafNode::new(offset, key, owner, qty, FeeTier::SRM5, 5, 0);
 
                         println!("Insert {:x}", key);
 

@@ -1,20 +1,19 @@
 use std::num::NonZeroU64;
 
+use crate::critbit::SlabTreeError;
+use crate::error::{DexErrorCode, DexResult, SourceFileId};
 use crate::instruction::SelfTradeBehavior;
+use crate::{
+    critbit::{LeafNode, NodeHandle, Slab, SlabView},
+    fees::{self, FeeTier},
+    state::{Event, EventQueue, EventView, MarketStateV2, OpenOrders, RequestView},
+};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 #[cfg(test)]
 use proptest_derive::Arbitrary;
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "program")]
-use solana_program::msg;
-
-use crate::critbit::SlabTreeError;
-use crate::error::{DexErrorCode, DexResult, SourceFileId};
-use crate::{
-    critbit::{LeafNode, NodeHandle, Slab, SlabView},
-    fees::{self, FeeTier},
-    state::{Event, EventQueue, EventView, MarketState, OpenOrders, RequestView},
-};
+use solana_program::{clock::Clock, msg, sysvar::Sysvar};
 
 #[cfg(not(feature = "program"))]
 macro_rules! msg {
@@ -53,7 +52,7 @@ pub struct OrderBookState<'a> {
     // first byte of a key is 0xaa or 0xbb, disambiguating bids and asks
     pub bids: &'a mut Slab,
     pub asks: &'a mut Slab,
-    pub market_state: &'a mut MarketState,
+    pub market_state: &'a mut MarketStateV2,
 }
 
 impl<'ob> OrderBookState<'ob> {
@@ -90,6 +89,7 @@ impl<'ob> OrderBookState<'ob> {
                 native_pc_qty_locked,
                 client_order_id,
                 self_trade_behavior,
+                tif_offset,
             } => self
                 .new_order(
                     NewOrderParams {
@@ -103,6 +103,7 @@ impl<'ob> OrderBookState<'ob> {
                         native_pc_qty_locked,
                         client_order_id: client_order_id.map_or(0, NonZeroU64::get),
                         self_trade_behavior,
+                        tif_offset,
                     },
                     event_q,
                     proceeds,
@@ -119,6 +120,7 @@ impl<'ob> OrderBookState<'ob> {
                     native_pc_qty_locked: remaining.native_pc_qty_remaining,
                     client_order_id,
                     self_trade_behavior,
+                    tif_offset,
                 }),
             RequestView::CancelOrder {
                 side,
@@ -216,6 +218,7 @@ pub(crate) struct NewOrderParams {
     native_pc_qty_locked: Option<NonZeroU64>,
     client_order_id: u64,
     self_trade_behavior: SelfTradeBehavior,
+    tif_offset: u16,
 }
 
 struct OrderRemaining {
@@ -245,6 +248,7 @@ impl<'ob> OrderBookState<'ob> {
             mut native_pc_qty_locked,
             client_order_id,
             self_trade_behavior,
+            tif_offset,
         } = params;
         let (mut post_only, mut post_allowed) = match order_type {
             OrderType::Limit => (false, true),
@@ -273,6 +277,7 @@ impl<'ob> OrderBookState<'ob> {
                         post_allowed,
                         client_order_id,
                         self_trade_behavior,
+                        tif_offset,
                     },
                     event_q,
                     proceeds,
@@ -291,6 +296,7 @@ impl<'ob> OrderBookState<'ob> {
                             post_allowed,
                             client_order_id,
                             self_trade_behavior,
+                            tif_offset,
                         },
                         event_q,
                         proceeds,
@@ -323,6 +329,7 @@ struct NewAskParams {
     post_allowed: bool,
     client_order_id: u64,
     self_trade_behavior: SelfTradeBehavior,
+    tif_offset: u16,
 }
 
 impl<'ob> OrderBookState<'ob> {
@@ -343,7 +350,13 @@ impl<'ob> OrderBookState<'ob> {
             post_allowed,
             client_order_id,
             self_trade_behavior,
+            tif_offset,
         } = params;
+
+        let current_ts = (Clock::get()?).unix_timestamp as u64;
+        let epoch_start_ts = self.market_state.epoch_start_ts;
+        let start_epoch_seq_num = self.market_state.start_epoch_seq_num;
+
         let mut unfilled_qty = max_qty.get();
         let mut accum_fill_price = 0;
 
@@ -352,6 +365,7 @@ impl<'ob> OrderBookState<'ob> {
 
         let mut accum_maker_rebates = 0;
         let crossed;
+
         let done = loop {
             let best_bid_h = match self.find_bbo(Side::Bid) {
                 None => {
@@ -368,23 +382,45 @@ impl<'ob> OrderBookState<'ob> {
                 .as_leaf_mut()
                 .unwrap();
 
+            let order_id = best_bid_ref.order_id();
+
+            if best_bid_ref.is_order_expired(epoch_start_ts, start_epoch_seq_num, current_ts, true)
+            {
+                let order = self.orders_mut(Side::Bid).remove_by_key(order_id).unwrap();
+                let out = Event::new(EventView::Out {
+                    side: Side::Bid,
+                    release_funds: true,
+                    native_qty_unlocked: order.quantity() * order.price().get() * pc_lot_size,
+                    native_qty_still_locked: 0,
+                    order_id: order.order_id(),
+                    owner: order.owner(),
+                    owner_slot: order.owner_slot(),
+                    client_order_id: NonZeroU64::new(order.client_order_id()),
+                });
+                event_q
+                    .push_back(out)
+                    .map_err(|_| DexErrorCode::EventQueueFull)?;
+                continue;
+            }
+
             let trade_price = best_bid_ref.price();
+            let bid_size = best_bid_ref.quantity();
+            let order_would_self_trade = owner == best_bid_ref.owner();
+
             crossed = limit_price <= trade_price;
 
             if !crossed || post_only {
                 break true;
             }
 
-            let bid_size = best_bid_ref.quantity();
             let trade_qty = bid_size.min(unfilled_qty);
 
             if trade_qty == 0 {
                 break true;
             }
 
-            let order_would_self_trade = owner == best_bid_ref.owner();
             if order_would_self_trade {
-                let best_bid_id = best_bid_ref.order_id();
+                let best_bid_id = order_id;
                 let cancelled_provide_qty;
                 let cancelled_take_qty;
 
@@ -552,6 +588,7 @@ impl<'ob> OrderBookState<'ob> {
                 unfilled_qty,
                 fee_tier,
                 client_order_id,
+                tif_offset,
             );
             let insert_result = offers.insert_leaf(&new_order);
             if let Err(SlabTreeError::OutOfSpace) = insert_result {
@@ -608,6 +645,7 @@ struct NewBidParams {
     post_allowed: bool,
     client_order_id: u64,
     self_trade_behavior: SelfTradeBehavior,
+    tif_offset: u16,
 }
 
 impl<'ob> OrderBookState<'ob> {
@@ -629,10 +667,15 @@ impl<'ob> OrderBookState<'ob> {
             post_allowed,
             client_order_id,
             self_trade_behavior,
+            tif_offset,
         } = params;
         if post_allowed {
             check_assert!(limit_price.is_some())?;
         }
+
+        let current_ts = (Clock::get()?).unix_timestamp as u64;
+        let epoch_start_ts = self.market_state.epoch_start_ts;
+        let start_epoch_seq_num = self.market_state.start_epoch_seq_num;
 
         let pc_lot_size = self.market_state.pc_lot_size;
         let coin_lot_size = self.market_state.coin_lot_size;
@@ -660,7 +703,36 @@ impl<'ob> OrderBookState<'ob> {
                 .as_leaf_mut()
                 .unwrap();
 
+            let order_id = best_offer_ref.order_id();
+
+            if best_offer_ref.is_order_expired(
+                epoch_start_ts,
+                start_epoch_seq_num,
+                current_ts,
+                false,
+            ) {
+                let order = self.orders_mut(Side::Ask).remove_by_key(order_id).unwrap();
+                let out = Event::new(EventView::Out {
+                    side: Side::Ask,
+                    release_funds: true,
+                    native_qty_unlocked: order.quantity() * coin_lot_size,
+                    native_qty_still_locked: 0,
+                    order_id: order.order_id(),
+                    owner: order.owner(),
+                    owner_slot: order.owner_slot(),
+                    client_order_id: NonZeroU64::new(order.client_order_id()),
+                });
+
+                event_q
+                    .push_back(out)
+                    .map_err(|_| DexErrorCode::EventQueueFull)?;
+                continue;
+            }
+
             let trade_price = best_offer_ref.price();
+            let offer_size = best_offer_ref.quantity();
+            let order_would_self_trade = owner == best_offer_ref.owner();
+
             crossed = limit_price
                 .map(|limit_price| limit_price >= trade_price)
                 .unwrap_or(true);
@@ -668,18 +740,16 @@ impl<'ob> OrderBookState<'ob> {
                 break true;
             }
 
-            let offer_size = best_offer_ref.quantity();
             let trade_qty = offer_size
                 .min(coin_qty_remaining)
-                .min(pc_qty_remaining / best_offer_ref.price().get());
+                .min(pc_qty_remaining / trade_price.get());
 
             if trade_qty == 0 {
                 break true;
             }
 
-            let order_would_self_trade = owner == best_offer_ref.owner();
             if order_would_self_trade {
-                let best_offer_id = best_offer_ref.order_id();
+                let best_offer_id = order_id;
 
                 let cancelled_take_qty;
                 let cancelled_provide_qty;
@@ -687,7 +757,7 @@ impl<'ob> OrderBookState<'ob> {
                 match self_trade_behavior {
                     SelfTradeBehavior::CancelProvide => {
                         cancelled_take_qty = 0;
-                        cancelled_provide_qty = best_offer_ref.quantity();
+                        cancelled_provide_qty = offer_size;
                     }
                     SelfTradeBehavior::DecrementTake => {
                         cancelled_take_qty = trade_qty;
@@ -698,7 +768,7 @@ impl<'ob> OrderBookState<'ob> {
                     }
                 };
 
-                let remaining_provide_qty = best_offer_ref.quantity() - cancelled_provide_qty;
+                let remaining_provide_qty = offer_size - cancelled_provide_qty;
                 let provide_out = Event::new(EventView::Out {
                     side: Side::Ask,
                     release_funds: true,
@@ -902,6 +972,7 @@ impl<'ob> OrderBookState<'ob> {
                 coin_qty_to_post,
                 fee_tier,
                 client_order_id,
+                tif_offset,
             );
             let insert_result = bids.insert_leaf(&new_leaf);
             if let Err(SlabTreeError::OutOfSpace) = insert_result {
