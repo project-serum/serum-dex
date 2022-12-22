@@ -312,15 +312,18 @@ impl MarketStateV2 {
         Ok(())
     }
 
-    pub fn check_tif_epoch_initialized(&self) -> DexResult {
-        if self.epoch_start_ts == 0 && self.epoch_length == 0 {
-            Err(DexErrorCode::TIFNotInitialized)?
-        }
-        Ok(())
+    pub fn is_tif_epoch_initialized(&self) -> bool {
+        self.epoch_start_ts != 0 || self.epoch_length != 0
     }
 
-    pub fn check_and_update_epoch_cycle(&mut self, seq_num: u64) -> DexResult {
-        self.check_tif_epoch_initialized()?;
+    pub fn check_and_update_epoch_cycle(&mut self, seq_num: u64, tif_offset: u16) -> DexResult {
+        if !self.is_tif_epoch_initialized() {
+            if tif_offset != 0 {
+                Err(DexErrorCode::TIFNotInitialized)?
+            } else {
+                return Ok(());
+            }
+        }
 
         let clock = Clock::get()?;
 
@@ -3397,7 +3400,7 @@ impl State {
 
         order_book_state
             .market_state
-            .check_and_update_epoch_cycle(seq_num)?;
+            .check_and_update_epoch_cycle(seq_num, 0)?;
 
         let owner_slot = open_orders_mut.add_order(order_id, instruction.side)?;
         open_orders_mut.client_order_ids[owner_slot as usize] = instruction.client_order_id;
@@ -3580,7 +3583,7 @@ impl State {
 
         order_book_state
             .market_state
-            .check_and_update_epoch_cycle(seq_num)?;
+            .check_and_update_epoch_cycle(seq_num, instruction.tif_offset)?;
 
         if instruction.tif_offset != 0
             && (order_book_state.market_state.epoch_start_ts + (instruction.tif_offset as u64)
