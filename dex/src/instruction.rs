@@ -585,6 +585,14 @@ pub enum MarketInstruction {
     /// 10. `[]` spl token program
     /// Also has no rent
     NewOrderV4(NewOrderInstructionV4),
+    /// Removes all expired orders from the orderbook.
+    ///
+    /// 0. `[writable]` market
+    /// 1. `[writable]` bids
+    /// 2. `[writable]` asks
+    /// 3. `[signer]` prune authority
+    /// 4. `[writable]` event queue.
+    PruneExpired(u16),
 }
 
 impl MarketInstruction {
@@ -704,6 +712,10 @@ impl MarketInstruction {
                 let data_arr = array_ref![data, 0, 48];
                 NewOrderInstructionV4::unpack(data_arr)?
             }),
+            (22, 2) => {
+                let limit = array_ref![data, 0, 2];
+                MarketInstruction::PruneExpired(u16::from_le_bytes(*limit))
+            }
             _ => return None,
         })
     }
@@ -1258,6 +1270,30 @@ pub fn prune(
         AccountMeta::new_readonly(*prune_authority, true),
         AccountMeta::new(*open_orders, false),
         AccountMeta::new_readonly(*open_orders_owner, false),
+        AccountMeta::new(*event_q, false),
+    ];
+    Ok(Instruction {
+        program_id: *program_id,
+        data,
+        accounts,
+    })
+}
+
+pub fn prune_expired(
+    program_id: &Pubkey,
+    market: &Pubkey,
+    bids: &Pubkey,
+    asks: &Pubkey,
+    prune_authority: &Pubkey,
+    event_q: &Pubkey,
+    limit: u16,
+) -> Result<Instruction, DexError> {
+    let data = MarketInstruction::PruneExpired(limit).pack();
+    let accounts: Vec<AccountMeta> = vec![
+        AccountMeta::new(*market, false),
+        AccountMeta::new(*bids, false),
+        AccountMeta::new(*asks, false),
+        AccountMeta::new_readonly(*prune_authority, true),
         AccountMeta::new(*event_q, false),
     ];
     Ok(Instruction {

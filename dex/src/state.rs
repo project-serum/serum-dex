@@ -2790,6 +2790,55 @@ pub(crate) mod account_parser {
             f(args)
         }
     }
+
+    pub struct PruneExpiredArgs<'a> {
+        pub order_book_state: OrderBookState<'a>,
+        pub event_q: EventQueue<'a>,
+        pub limit: u16,
+    }
+
+    impl<'a> PruneExpiredArgs<'a> {
+        pub fn with_parsed_args<T>(
+            program_id: &Pubkey,
+            accounts: &[AccountInfo],
+            limit: u16,
+            f: impl FnOnce(PruneExpiredArgs) -> DexResult<T>,
+        ) -> DexResult<T> {
+            // Parse accounts.
+            check_assert!(accounts.len() == 5)?;
+            #[rustfmt::skip]
+            let &[
+                ref market_acc,
+                ref bids_acc,
+                ref asks_acc,
+                ref prune_auth_acc,
+                ref event_q_acc,
+            ] = array_ref![accounts, 0, 5];
+
+            let _prune_authority = SignerAccount::new(prune_auth_acc)?;
+            let market = Market::load(market_acc, program_id)?;
+            check_assert!(market.prune_authority() == Some(prune_auth_acc.key))?;
+
+            let mut bids = market.load_bids_mut(bids_acc).or(check_unreachable!())?;
+            let mut asks = market.load_asks_mut(asks_acc).or(check_unreachable!())?;
+            let event_q = market.load_event_queue_mut(event_q_acc)?;
+
+            drop(market);
+            let mut market_state = MarketStateV2::load(market_acc, program_id)?;
+            let order_book_state = OrderBookState {
+                bids: bids.deref_mut(),
+                asks: asks.deref_mut(),
+                market_state: market_state.borrow_mut(),
+            };
+
+            let args = PruneExpiredArgs {
+                order_book_state,
+                event_q,
+                limit,
+            };
+            f(args)
+        }
+    }
 }
 
 #[inline]
@@ -2945,6 +2994,14 @@ impl State {
                 limit,
                 Self::process_prune,
             )?,
+            MarketInstruction::PruneExpired(limit) => {
+                account_parser::PruneExpiredArgs::with_parsed_args(
+                    program_id,
+                    accounts,
+                    limit,
+                    Self::process_prune_expired,
+                )?
+            }
         };
         Ok(())
     }
@@ -2994,6 +3051,31 @@ impl State {
                 order_id,
                 &mut event_q,
             )?;
+        }
+
+        Ok(())
+    }
+
+    fn process_prune_expired(args: account_parser::PruneExpiredArgs) -> DexResult {
+        let account_parser::PruneExpiredArgs {
+            mut order_book_state,
+            mut event_q,
+            limit,
+        } = args;
+        let (bids_removed, asks_removed) = order_book_state.remove_all_expired(limit)?;
+
+        solana_program::msg!(
+            "Pruned {:?} bids and {:?} asks",
+            bids_removed.len(),
+            asks_removed.len()
+        );
+
+        for bid in bids_removed {
+            order_book_state.boot_order(bid, Side::Bid, &mut event_q)?;
+        }
+
+        for ask in asks_removed {
+            order_book_state.boot_order(ask, Side::Ask, &mut event_q)?;
         }
 
         Ok(())
