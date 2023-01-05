@@ -166,6 +166,41 @@ impl<'ob> OrderBookState<'ob> {
             .collect();
         Ok((bids_removed, asks_removed))
     }
+
+    pub fn remove_all_expired(
+        &mut self,
+        mut limit: u16,
+    ) -> DexResult<(Vec<LeafNode>, Vec<LeafNode>)> {
+        let current_ts = (Clock::get()?).unix_timestamp as u64;
+
+        let asks_expired = self.asks.find_by(&mut limit, |order| {
+            order.is_order_expired(
+                self.market_state.epoch_start_ts,
+                self.market_state.start_epoch_seq_num,
+                current_ts,
+                false,
+            )
+        });
+        let bids_expired = self.bids.find_by(&mut limit, |order| {
+            order.is_order_expired(
+                self.market_state.epoch_start_ts,
+                self.market_state.start_epoch_seq_num,
+                current_ts,
+                true,
+            )
+        });
+
+        let bids_removed: Vec<LeafNode> = bids_expired
+            .iter()
+            .filter_map(|order_to_remove| self.bids.remove_by_key(*order_to_remove))
+            .collect();
+        let asks_removed: Vec<LeafNode> = asks_expired
+            .iter()
+            .filter_map(|order_to_remove| self.asks.remove_by_key(*order_to_remove))
+            .collect();
+
+        Ok((bids_removed, asks_removed))
+    }
 }
 
 pub(crate) struct RequestProceeds {
@@ -1089,6 +1124,35 @@ impl<'ob> OrderBookState<'ob> {
                 client_order_id: NonZeroU64::new(leaf_node.client_order_id()),
             }))
             .map_err(|_| DexErrorCode::EventQueueFull)?;
+        Ok(())
+    }
+
+    pub(crate) fn boot_order(
+        &mut self,
+        leaf_node: LeafNode,
+        side: Side,
+        event_q: &mut EventQueue,
+    ) -> DexResult {
+        let native_qty_unlocked = match side {
+            Side::Bid => {
+                leaf_node.quantity() * leaf_node.price().get() * self.market_state.pc_lot_size
+            }
+            Side::Ask => leaf_node.quantity() * self.market_state.coin_lot_size,
+        };
+
+        event_q
+            .push_back(Event::new(EventView::Out {
+                side,
+                release_funds: true,
+                native_qty_unlocked,
+                native_qty_still_locked: 0,
+                order_id: leaf_node.order_id(),
+                owner: leaf_node.owner(),
+                owner_slot: leaf_node.owner_slot(),
+                client_order_id: NonZeroU64::new(leaf_node.client_order_id()),
+            }))
+            .map_err(|_| DexErrorCode::EventQueueFull)?;
+
         Ok(())
     }
 
