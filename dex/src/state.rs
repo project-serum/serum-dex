@@ -888,6 +888,27 @@ impl<'a, H: QueueHeader> Queue<'a, H> {
     }
 
     #[inline]
+    pub fn peek_back(&self) -> Option<&H::Item> {
+        if self.empty() {
+            return None;
+        }
+        Some(&self.buf[(self.header.head() + self.header.count() - 1) as usize])
+    }
+
+    #[inline]
+    pub fn pop_back(&mut self) -> Result<H::Item, ()> {
+        if self.empty() {
+            return Err(());
+        }
+        let value = self.buf[(self.header.head() + self.header.count() - 1) as usize];
+
+        let count = self.header.count();
+        self.header.set_count(count - 1);
+
+        Ok(value)
+    }
+
+    #[inline]
     pub fn revert_pushes(&mut self, desired_len: u64) -> DexResult<()> {
         check_assert!(desired_len <= self.header.count())?;
         let len_diff = self.header.count() - desired_len;
@@ -2225,6 +2246,63 @@ pub(crate) mod account_parser {
         }
     }
 
+    pub struct PopTailOutEventsArgs<'a, 'b: 'a> {
+        pub limit: u16,
+        pub program_id: &'a Pubkey,
+        pub open_orders_address: [u64; 4],
+        pub open_orders: &'a mut OpenOrders,
+        pub open_orders_signer: SignerAccount<'a, 'b>,
+        pub market: Market<'a>,
+        pub event_q: EventQueue<'a>,
+    }
+    impl<'a, 'b: 'a> PopTailOutEventsArgs<'a, 'b> {
+        pub fn with_parsed_args_permissioned<T>(
+            program_id: &'a Pubkey,
+            accounts: &'a [AccountInfo<'b>],
+            limit: u16,
+            f: impl FnOnce(PopTailOutEventsArgs) -> DexResult<T>,
+        ) -> DexResult<T> {
+            check_assert!(accounts.len() >= 5)?;
+            #[rustfmt::skip]
+            let &[
+                ref open_orders_acc,
+                ref open_orders_signer_acc,
+                ref market_acc,
+                ref event_q_acc,
+                ref consume_events_auth
+            ] = array_ref![accounts, 0, 5];
+
+            let market = Market::load(market_acc, program_id)?;
+            let open_orders_signer = SignerAccount::new(open_orders_signer_acc)?;
+            let mut open_orders = market.load_orders_mut(
+                open_orders_acc,
+                Some(open_orders_signer.inner()),
+                program_id,
+                None,
+                None,
+            )?;
+            let open_orders_address = open_orders_acc.key.to_aligned_bytes();
+
+            check_assert!(consume_events_auth.is_signer)?;
+            check_assert_eq!(
+                Some(consume_events_auth.key),
+                market.consume_events_authority()
+            )?;
+            let event_q = market.load_event_queue_mut(event_q_acc)?;
+            let args = PopTailOutEventsArgs {
+                limit,
+                program_id,
+                open_orders_address,
+                open_orders: open_orders.deref_mut(),
+                open_orders_signer,
+                market,
+                event_q,
+            };
+
+            f(args)
+        }
+    }
+
     pub struct CancelOrderV2Args<'a, 'b: 'a> {
         pub instruction: &'a CancelOrderInstructionV2,
         pub open_orders_address: [u64; 4],
@@ -2855,6 +2933,50 @@ fn remove_slop_mut<T: Pod>(bytes: &mut [u8]) -> &mut [T] {
     cast_slice_mut(&mut bytes[..new_len])
 }
 
+#[inline]
+fn action_out_event(
+    open_orders: &mut OpenOrders,
+    order_id: u128,
+    side: Side,
+    release_funds: bool,
+    native_qty_unlocked: u64,
+    native_qty_still_locked: u64,
+    owner_slot: u8,
+    client_order_id: Option<NonZeroU64>,
+) -> DexResult {
+    check_assert!(owner_slot < 128)?;
+    check_assert_eq!(&open_orders.slot_side(owner_slot), &Some(side))?;
+    check_assert_eq!(open_orders.orders[owner_slot as usize], order_id)?;
+
+    let fully_out = native_qty_still_locked == 0;
+
+    match side {
+        Side::Bid => {
+            if release_funds {
+                open_orders.native_pc_free += native_qty_unlocked;
+            }
+            check_assert!(open_orders.native_pc_free <= open_orders.native_pc_total)?;
+        }
+        Side::Ask => {
+            if release_funds {
+                open_orders.native_coin_free += native_qty_unlocked;
+            }
+            check_assert!(open_orders.native_coin_free <= open_orders.native_coin_total)?;
+        }
+    };
+    if let Some(client_id) = client_order_id {
+        debug_assert_eq!(
+            client_id.get(),
+            identity(open_orders.client_order_ids[owner_slot as usize])
+        );
+    }
+    if fully_out {
+        open_orders.remove_order(owner_slot)?;
+    }
+
+    Ok(())
+}
+
 #[cfg_attr(not(feature = "program"), allow(unused))]
 impl State {
     #[cfg(feature = "program")]
@@ -3000,6 +3122,14 @@ impl State {
                     accounts,
                     limit,
                     Self::process_prune_expired,
+                )?
+            }
+            MarketInstruction::PopTailOutEventsPermissioned(limit) => {
+                account_parser::PopTailOutEventsArgs::with_parsed_args_permissioned(
+                    program_id,
+                    accounts,
+                    limit,
+                    Self::process_pop_tail_out_events,
                 )?
             }
         };
@@ -3302,7 +3432,6 @@ impl State {
                 Some(e) => e,
             };
 
-            let view = event.as_view()?;
             let owner: [u64; 4] = event.owner;
             let owner_index: Result<usize, usize> = open_orders_accounts
                 .binary_search_by_key(&owner, |account_info| account_info.key.to_aligned_bytes());
@@ -3316,13 +3445,6 @@ impl State {
                     None,
                 )?,
             };
-
-            check_assert!(event.owner_slot < 128)?;
-            check_assert_eq!(&open_orders.slot_side(event.owner_slot), &Some(view.side()))?;
-            check_assert_eq!(
-                open_orders.orders[event.owner_slot as usize],
-                event.order_id
-            )?;
 
             match event.as_view()? {
                 EventView::Fill {
@@ -3367,45 +3489,99 @@ impl State {
                     release_funds,
                     native_qty_unlocked,
                     native_qty_still_locked,
-                    order_id: _,
+                    order_id,
                     owner: _,
                     owner_slot,
                     client_order_id,
                 } => {
-                    let fully_out = native_qty_still_locked == 0;
-
-                    match side {
-                        Side::Bid => {
-                            if release_funds {
-                                open_orders.native_pc_free += native_qty_unlocked;
-                            }
-                            check_assert!(
-                                open_orders.native_pc_free <= open_orders.native_pc_total
-                            )?;
-                        }
-                        Side::Ask => {
-                            if release_funds {
-                                open_orders.native_coin_free += native_qty_unlocked;
-                            }
-                            check_assert!(
-                                open_orders.native_coin_free <= open_orders.native_coin_total
-                            )?;
-                        }
-                    };
-                    if let Some(client_id) = client_order_id {
-                        debug_assert_eq!(
-                            client_id.get(),
-                            identity(open_orders.client_order_ids[owner_slot as usize])
-                        );
-                    }
-                    if fully_out {
-                        open_orders.remove_order(owner_slot)?;
-                    }
+                    action_out_event(
+                        &mut open_orders,
+                        order_id,
+                        side,
+                        release_funds,
+                        native_qty_unlocked,
+                        native_qty_still_locked,
+                        owner_slot,
+                        client_order_id,
+                    )?;
                 }
             };
 
             event_q
                 .pop_front()
+                .map_err(|()| DexErrorCode::ConsumeEventsQueueFailure)?;
+        }
+        Ok(())
+    }
+
+    fn process_pop_tail_out_events(args: account_parser::PopTailOutEventsArgs) -> DexResult {
+        let account_parser::PopTailOutEventsArgs {
+            limit,
+            program_id: _,
+            open_orders_address,
+            open_orders,
+            open_orders_signer: _,
+            market: _,
+            mut event_q,
+        } = args;
+
+        for _i in 0u16..limit {
+            let event = match event_q.peek_back() {
+                None => break,
+                Some(e) => e,
+            };
+
+            let view = event.as_view()?;
+            let owner: [u64; 4] = event.owner;
+            check_assert_eq!(owner, open_orders_address)?;
+
+            check_assert!(event.owner_slot < 128)?;
+            check_assert_eq!(&open_orders.slot_side(event.owner_slot), &Some(view.side()))?;
+            check_assert_eq!(
+                open_orders.orders[event.owner_slot as usize],
+                event.order_id
+            )?;
+
+            match event.as_view()? {
+                EventView::Fill {
+                    side: _,
+                    maker: _,
+                    native_qty_paid: _,
+                    native_qty_received: _,
+                    native_fee_or_rebate: _,
+                    fee_tier: _,
+                    order_id: _,
+                    owner: _,
+                    owner_slot: _,
+                    client_order_id: _,
+                } => {
+                    return Err(DexErrorCode::InvalidEventToPopFromTail.into());
+                }
+                EventView::Out {
+                    side,
+                    release_funds,
+                    native_qty_unlocked,
+                    native_qty_still_locked,
+                    order_id,
+                    owner: _,
+                    owner_slot,
+                    client_order_id,
+                } => {
+                    action_out_event(
+                        open_orders,
+                        order_id,
+                        side,
+                        release_funds,
+                        native_qty_unlocked,
+                        native_qty_still_locked,
+                        owner_slot,
+                        client_order_id,
+                    )?;
+                }
+            };
+
+            event_q
+                .pop_back()
                 .map_err(|()| DexErrorCode::ConsumeEventsQueueFailure)?;
         }
         Ok(())

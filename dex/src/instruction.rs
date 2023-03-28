@@ -593,6 +593,14 @@ pub enum MarketInstruction {
     /// 3. `[signer]` prune authority
     /// 4. `[writable]` event queue.
     PruneExpired(u16),
+    /// Pop out events from the tail of the event queue after a cancel or new bid order.
+    ///
+    /// 0. `[writable]` OpenOrders
+    /// 1. `[signer]` the OpenOrders owner
+    /// 2. `[writable]` market
+    /// 3. `[writable]` event queue
+    /// 4. `[signer]` crank authority
+    PopTailOutEventsPermissioned(u16),
 }
 
 impl MarketInstruction {
@@ -715,6 +723,10 @@ impl MarketInstruction {
             (22, 2) => {
                 let limit = array_ref![data, 0, 2];
                 MarketInstruction::PruneExpired(u16::from_le_bytes(*limit))
+            }
+            (23, 2) => {
+                let limit = array_ref![data, 0, 2];
+                MarketInstruction::PopTailOutEventsPermissioned(u16::from_le_bytes(*limit))
             }
             _ => return None,
         })
@@ -1014,6 +1026,30 @@ pub fn consume_events_permissioned(
         AccountMeta::new(*event_queue, false),
         AccountMeta::new_readonly(*consume_events_authority, true),
     ]);
+    Ok(Instruction {
+        program_id: *program_id,
+        data,
+        accounts,
+    })
+}
+
+pub fn pop_tail_out_events_permissioned(
+    program_id: &Pubkey,
+    open_orders_account: &Pubkey,
+    open_orders_account_owner: &Pubkey,
+    market: &Pubkey,
+    event_queue: &Pubkey,
+    consume_events_authority: &Pubkey,
+    limit: u16,
+) -> Result<Instruction, DexError> {
+    let data = MarketInstruction::PopTailOutEventsPermissioned(limit).pack();
+    let accounts: Vec<AccountMeta> = vec![
+        AccountMeta::new(*open_orders_account, false),
+        AccountMeta::new_readonly(*open_orders_account_owner, true),
+        AccountMeta::new(*market, false),
+        AccountMeta::new(*event_queue, false),
+        AccountMeta::new_readonly(*consume_events_authority, true),
+    ];
     Ok(Instruction {
         program_id: *program_id,
         data,

@@ -107,7 +107,7 @@ pub enum DexErrorCode {
     RentNotProvided,
     OrdersNotRentExempt,
     OrderNotFound,
-    OrderNotYours,
+    OrderNotYours = 60,
 
     WouldSelfTrade,
     InvalidOpenOrdersAuthority,
@@ -115,6 +115,7 @@ pub enum DexErrorCode {
     TIFNotInitialized,
     TIFOffsetGreaterThanEpochCycleLength,
     CannotPlaceExpiredOrder,
+    InvalidEventToPopFromTail,
 
     Unknown = 1000,
 
