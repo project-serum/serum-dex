@@ -841,6 +841,11 @@ impl<'a, H: QueueHeader> Queue<'a, H> {
     }
 
     #[inline]
+    fn get_tail_index(&self) -> usize {
+        ((self.header.head() + self.header.count() - 1) % self.buf.len() as u64) as usize
+    }
+
+    #[inline]
     pub fn push_back(&mut self, value: H::Item) -> Result<(), H::Item> {
         if self.full() {
             return Err(value);
@@ -892,7 +897,7 @@ impl<'a, H: QueueHeader> Queue<'a, H> {
         if self.empty() {
             return None;
         }
-        Some(&self.buf[(self.header.head() + self.header.count() - 1) as usize])
+        Some(&self.buf[self.get_tail_index()])
     }
 
     #[inline]
@@ -900,8 +905,7 @@ impl<'a, H: QueueHeader> Queue<'a, H> {
         if self.empty() {
             return Err(());
         }
-        let value = self.buf[(self.header.head() + self.header.count() - 1) as usize];
-
+        let value = self.buf[self.get_tail_index()];
         let count = self.header.count();
         self.header.set_count(count - 1);
 
